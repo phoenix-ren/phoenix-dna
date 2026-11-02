@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """Daemon-level tests: queueing, cancellation, root auth flow, sessions."""
@@ -9,10 +9,10 @@ import dataclasses
 
 from conftest import wait_for
 
-from phoenix_ai.daemon import AgentDaemon
-from phoenix_ai.modes import Mode
-from phoenix_ai.privileges import StaticPasswordProvider
-from phoenix_ai.provider import FakeProvider
+from phoenix_dna.daemon import AgentDaemon
+from phoenix_dna.modes import Mode
+from phoenix_dna.privileges import StaticPasswordProvider
+from phoenix_dna.provider import FakeProvider
 
 
 def events_of(events, kind):

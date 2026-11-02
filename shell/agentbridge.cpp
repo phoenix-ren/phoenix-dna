@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+// SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include "agentbridge.h"
@@ -17,16 +17,16 @@
 
 namespace
 {
-const QString kService = QStringLiteral("org.phoenixai.agent");
-const QString kPath = QStringLiteral("/org/phoenixai/Agent");
-const QString kInterface = QStringLiteral("org.phoenixai.agent.Agent");
+const QString kService = QStringLiteral("org.phoenixdna.agent");
+const QString kPath = QStringLiteral("/org/phoenixdna/Agent");
+const QString kInterface = QStringLiteral("org.phoenixdna.agent.Agent");
 
-// The live agent daemon, as implemented by agent/phoenix_ai/service.py.
+// The live agent daemon, as implemented by agent/phoenix_dna/service.py.
 // The dictation contract above is still aspirational; mode selection is
 // what already targets the running service.
-const QString kDaemonService = QStringLiteral("ai.phoenix.Agent");
-const QString kDaemonPath = QStringLiteral("/ai/phoenix/Agent");
-const QString kDaemonInterface = QStringLiteral("ai.phoenix.Agent");
+const QString kDaemonService = QStringLiteral("dna.phoenix.Agent");
+const QString kDaemonPath = QStringLiteral("/dna/phoenix/Agent");
+const QString kDaemonInterface = QStringLiteral("dna.phoenix.Agent");
 const QString kWatchedService = QStringLiteral("org.freedesktop.DBus");
 const QString kWatchedPath = QStringLiteral("/org/freedesktop/DBus");
 const QString kWatchedInterface = QStringLiteral("org.freedesktop.DBus");

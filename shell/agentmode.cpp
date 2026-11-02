@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+// SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include "agentmode.h"
@@ -47,7 +47,7 @@ QString iconName(Mode mode)
 
 QString modeName(Mode mode)
 {
-    // Matches the daemon's Mode enum values (agent/phoenix_ai/modes.py),
+    // Matches the daemon's Mode enum values (agent/phoenix_dna/modes.py),
     // which is what travels over D-Bus.
     switch (mode) {
     case Root:

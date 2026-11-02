@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """Live tests against real MiniMax / Tavily / Exa endpoints.
@@ -21,7 +21,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def _config():
-    from phoenix_ai.config import load_config
+    from phoenix_dna.config import load_config
 
     config = load_config()
     if not config.llm_api_key:
@@ -30,7 +30,7 @@ def _config():
 
 
 def test_minimax_streaming_completion():
-    from phoenix_ai.provider import OpenAICompatProvider
+    from phoenix_dna.provider import OpenAICompatProvider
 
     config = _config()
     provider = OpenAICompatProvider(
@@ -52,11 +52,11 @@ def test_minimax_streaming_completion():
 
 def test_web_mode_example_question():
     """The canonical web-mode question, run through the full agent loop."""
-    from phoenix_ai.loop import AgentLoop
-    from phoenix_ai.modes import MODE_PROFILES, Mode, build_toolset
-    from phoenix_ai.prompts import build_system_prompt
-    from phoenix_ai.provider import build_provider
-    from phoenix_ai.sessions import SessionManager, SessionStore
+    from phoenix_dna.loop import AgentLoop
+    from phoenix_dna.modes import MODE_PROFILES, Mode, build_toolset
+    from phoenix_dna.prompts import build_system_prompt
+    from phoenix_dna.provider import build_provider
+    from phoenix_dna.sessions import SessionManager, SessionStore
 
     config = _config()
     profile = MODE_PROFILES[Mode.WEB]
@@ -86,7 +86,7 @@ def test_web_mode_example_question():
 
 
 def test_search_tools_live():
-    from phoenix_ai.tools.search import ExaSearchTool, TavilySearchTool
+    from phoenix_dna.tools.search import ExaSearchTool, TavilySearchTool
 
     config = _config()
     tavily_key = config.keys.get("tavily_api_key")

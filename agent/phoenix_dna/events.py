@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """Event kinds shared by the agent loop, daemon and D-Bus layer.

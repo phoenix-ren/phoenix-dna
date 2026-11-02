@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """D-Bus service integration test.
@@ -36,11 +36,11 @@ def service(tmp_path_factory):
     import dbus
     from gi.repository import GLib
 
-    from phoenix_ai.config import Config
-    from phoenix_ai.daemon import AgentDaemon
-    from phoenix_ai.privileges import StaticPasswordProvider
-    from phoenix_ai.provider import FakeProvider
-    from phoenix_ai.service import BUS_NAME, PhoenixService
+    from phoenix_dna.config import Config
+    from phoenix_dna.daemon import AgentDaemon
+    from phoenix_dna.privileges import StaticPasswordProvider
+    from phoenix_dna.provider import FakeProvider
+    from phoenix_dna.service import BUS_NAME, PhoenixService
 
     tmp = tmp_path_factory.mktemp("dbus")
     config = Config(
@@ -71,7 +71,7 @@ def service(tmp_path_factory):
 def client(service):
     import dbus
 
-    from phoenix_ai.service import BUS_NAME, INTERFACE, OBJECT_PATH
+    from phoenix_dna.service import BUS_NAME, INTERFACE, OBJECT_PATH
 
     # private=True: dbus.SessionBus() is a process-wide singleton; reusing
     # the server's connection for the client deadlocks (call_blocking vs.
@@ -97,7 +97,7 @@ def test_get_modes(client):
 
 def test_full_run_over_dbus(client):
     bus, iface = client
-    from phoenix_ai.service import INTERFACE
+    from phoenix_dna.service import INTERFACE
 
     received = {"deltas": [], "finished": None, "tools": [], "auth": []}
     done = threading.Event()
@@ -166,7 +166,7 @@ def test_set_mode_invalid_raises_dbus_error(client):
 
 def test_run_started_carries_session_id(client):
     bus, iface = client
-    from phoenix_ai.service import INTERFACE
+    from phoenix_dna.service import INTERFACE
 
     seen = {}
     done = threading.Event()

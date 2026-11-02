@@ -1,11 +1,11 @@
-// SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+// SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 // SPDX-License-Identifier: BSD-2-Clause
 
 import QtQuick
 import org.kde.kirigami as Kirigami
 
 // The actual panel widget, exactly as the panel would render it.
-import plasma.applet.org.phoenixai.agent as Phoenix
+import plasma.applet.org.phoenixdna.agent as Phoenix
 
 // The buffered waveform component (design_docs/WAVEFORM_COMPONENT_2.md).
 import Phoenix.Waveform 1.0

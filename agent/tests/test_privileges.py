@@ -1,11 +1,11 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """Sudo credential cache tests (validation, TTL, retries, notifications)."""
 
 from __future__ import annotations
 
-from phoenix_ai.privileges import SudoCredentialCache, StaticPasswordProvider
+from phoenix_dna.privileges import SudoCredentialCache, StaticPasswordProvider
 
 
 def make_cache(passwords, fake_sudo, **kw):

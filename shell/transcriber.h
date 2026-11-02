@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+// SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 // SPDX-License-Identifier: BSD-2-Clause
 
 #pragma once
@@ -31,8 +31,8 @@ struct TranscriptionConfig
  *   openai:  POST https://api.openai.com/v1/audio/transcriptions
  *
  * MiniMax is the default since that key is already configured for the agent
- * daemon. Configuration follows the conventions of agent/phoenix_ai/config.py
- * (environment beats ~/.config/phoenix.ai/keys.json, and the PHOENIX_-prefixed
+ * daemon. Configuration follows the conventions of agent/phoenix_dna/config.py
+ * (environment beats ~/.config/phoenix-dna/keys.json, and the PHOENIX_-prefixed
  * spelling wins within the environment) and is re-resolved for every request,
  * so a changed key takes effect without restarting plasmashell:
  *

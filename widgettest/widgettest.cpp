@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+// SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include <QCommandLineParser>
@@ -24,7 +24,7 @@ int main(int argc, char **argv)
 
     QCommandLineParser parser;
     parser.setApplicationDescription(
-        QStringLiteral("Testbench for the Phoenix AI panel widget, hosting the real applet "
+        QStringLiteral("Testbench for the Phoenix DNA panel widget, hosting the real applet "
                        "plugin from the build tree, plus the buffered waveform component "
                        "(design_docs/WAVEFORM_COMPONENT_2.md)."));
     parser.addHelpOption();
@@ -126,7 +126,7 @@ int main(int argc, char **argv)
     }
     view.engine()->rootContext()->setContextProperty(QStringLiteral("waveAutoStopSeconds"),
                                                      stopAfter);
-    view.setTitle(QStringLiteral("Phoenix AI — widget testbench"));
+    view.setTitle(QStringLiteral("Phoenix DNA — widget testbench"));
     // The root Rectangle has no implicit size of its own: make the view size
     // the root object, or the content collapses to zero.
     view.setResizeMode(QQuickView::SizeRootObjectToView);

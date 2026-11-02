@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+// SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 // SPDX-License-Identifier: BSD-2-Clause
 
 import QtQuick
@@ -7,11 +7,11 @@ import org.kde.plasma.plasmoid
 
 // The applet's own QML module: it exposes the C++ controller singleton, the
 // mode enum, and the QML types defined alongside them.
-import plasma.applet.org.phoenixai.agent as Phoenix
+import plasma.applet.org.phoenixdna.agent as Phoenix
 
 // Components 2 and 3 are separate QML modules, installed independently.
-import org.phoenixai.overlay as PhoenixOverlay
-import org.phoenixai.pane as PhoenixPane
+import org.phoenixdna.overlay as PhoenixOverlay
+import org.phoenixdna.pane as PhoenixPane
 
 /*
  * Component 1 — the panel widget.

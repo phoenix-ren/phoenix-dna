@@ -1,11 +1,11 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """Session store and manager tests."""
 
 from __future__ import annotations
 
-from phoenix_ai.sessions import SessionManager, SessionStore
+from phoenix_dna.sessions import SessionManager, SessionStore
 
 
 def test_store_roundtrip(tmp_path):

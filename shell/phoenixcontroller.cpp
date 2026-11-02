@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+// SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include "phoenixcontroller.h"
@@ -80,8 +80,8 @@ PhoenixController::PhoenixController(QObject *parent)
     m_toggleShortcut->setText(i18n("Toggle Recording"));
     // Without these KGlobalAccel would file the shortcut under plasmashell's
     // component; an own component keeps it discoverable and independent.
-    m_toggleShortcut->setProperty("componentName", QStringLiteral("org.phoenixai.agent"));
-    m_toggleShortcut->setProperty("componentDisplayName", QStringLiteral("Phoenix AI"));
+    m_toggleShortcut->setProperty("componentName", QStringLiteral("org.phoenixdna.agent"));
+    m_toggleShortcut->setProperty("componentDisplayName", QStringLiteral("Phoenix DNA"));
     const QList<QKeySequence> defaultHotkey{QKeySequence(QStringLiteral("Meta+Alt+Space"))};
     KGlobalAccel::self()->setDefaultShortcut(m_toggleShortcut, defaultHotkey);
     KGlobalAccel::self()->setShortcut(m_toggleShortcut, defaultHotkey);

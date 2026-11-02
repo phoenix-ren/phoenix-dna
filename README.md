@@ -1,9 +1,9 @@
 <!--
-SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 SPDX-License-Identifier: BSD-2-Clause
 -->
 
-# Phoenix AI
+# Phoenix DNA
 
 A voice-first desktop AI agent for KDE Plasma 6, packaged as a plasmoid
 (panel widget) plus a Python D-Bus daemon.
@@ -22,7 +22,7 @@ overlay/pane.
 | `pane/`      | Results pane for conversation output                            |
 | `waveform/`  | Offline `.wav` → `.png` waveform renderer                       |
 | `widgettest/`| Developer testbench that hosts the widget in a plain window      |
-| `agent/`     | Python agent daemon (`phoenix-agent`), a D-Bus service          |
+| `agent/`     | Python agent daemon (`phoenix-dna-agent`), a D-Bus service          |
 
 ## Building
 

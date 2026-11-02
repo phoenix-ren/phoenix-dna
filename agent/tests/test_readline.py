@@ -1,11 +1,11 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """Readline support tests: completion, history tracking, persistence."""
 
 from __future__ import annotations
 
-from phoenix_ai.repl import (
+from phoenix_dna.repl import (
     Completer,
     HistoryTracker,
     _complete_path,

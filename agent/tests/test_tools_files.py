@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """Filesystem tool tests (read / write / edit / ls)."""
@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from phoenix_ai.tools.files import EditTool, LsTool, ReadTool, WriteTool, resolve_path
-from phoenix_ai.tools import ToolError
+from phoenix_dna.tools.files import EditTool, LsTool, ReadTool, WriteTool, resolve_path
+from phoenix_dna.tools import ToolError
 
 
 def test_resolve_path(home_dir):

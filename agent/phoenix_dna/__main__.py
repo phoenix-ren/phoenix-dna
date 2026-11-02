@@ -1,7 +1,7 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
-"""Entry point: ``phoenix-agent`` or ``python -m phoenix_ai``."""
+"""Entry point: ``phoenix-dna-agent`` or ``python -m phoenix_dna``."""
 
 from __future__ import annotations
 
@@ -17,8 +17,8 @@ from .provider import build_provider
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="phoenix-agent",
-        description="Phoenix AI desktop agent daemon (D-Bus service)",
+        prog="phoenix-dna-agent",
+        description="Phoenix DNA desktop agent daemon (D-Bus service)",
     )
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument(

@@ -1,11 +1,11 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """The bash tool.
 
 * user/web modes: run ``bash -c <command>`` directly in the mode's working dir.
 * root mode: wrap in ``sudo -S -p '' -- bash -c <command>`` and feed the
-  password (obtained/cached via :mod:`phoenix_ai.privileges`) on stdin.
+  password (obtained/cached via :mod:`phoenix_dna.privileges`) on stdin.
 
 Subprocesses start in their own session so that cancellation and timeouts
 kill the whole process group, not just bash.

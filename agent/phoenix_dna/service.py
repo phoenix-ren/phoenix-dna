@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """D-Bus service: exposes AgentDaemon to the plasmoid.
 
 Bus name / object path / interface:
-    ai.phoenix.Agent  /ai/phoenix/Agent  ai.phoenix.Agent
+    dna.phoenix.Agent  /dna/phoenix/Agent  dna.phoenix.Agent
 
 The daemon runs prompts on a worker thread; events are pushed onto a queue
 and drained on the GLib main loop, so all D-Bus traffic stays on the main
@@ -19,10 +19,10 @@ import queue
 
 log = logging.getLogger("phoenix.service")
 
-BUS_NAME = "ai.phoenix.Agent"
-OBJECT_PATH = "/ai/phoenix/Agent"
-INTERFACE = "ai.phoenix.Agent"
-_ERROR = "ai.phoenix.Agent.Error"
+BUS_NAME = "dna.phoenix.Agent"
+OBJECT_PATH = "/dna/phoenix/Agent"
+INTERFACE = "dna.phoenix.Agent"
+_ERROR = "dna.phoenix.Agent.Error"
 
 try:
     import dbus
@@ -211,9 +211,9 @@ if dbus is not None:
 
         @dbus.service.method(INTERFACE, in_signature="", out_signature="s")
         def Ping(self):
-            import phoenix_ai
+            import phoenix_dna
 
-            return phoenix_ai.__version__
+            return phoenix_dna.__version__
 
 
 def run_service(daemon) -> None:
@@ -228,7 +228,7 @@ def run_service(daemon) -> None:
     if result != dbus.bus.REQUEST_NAME_REPLY_PRIMARY_OWNER:
         raise RuntimeError(
             f"could not acquire bus name {BUS_NAME} "
-            f"(reply={result}); is another phoenix-agent running?"
+            f"(reply={result}); is another phoenix-dna-agent running?"
         )
     PhoenixService(daemon, bus)
     from gi.repository import GLib
@@ -240,7 +240,7 @@ def run_service(daemon) -> None:
 
     _signal.signal(_signal.SIGINT, _quit)
     _signal.signal(_signal.SIGTERM, _quit)
-    log.info("phoenix-agent %s ready on D-Bus as %s", phoenix_version(), BUS_NAME)
+    log.info("phoenix-dna-agent %s ready on D-Bus as %s", phoenix_version(), BUS_NAME)
     try:
         loop.run()
     finally:
@@ -248,6 +248,6 @@ def run_service(daemon) -> None:
 
 
 def phoenix_version() -> str:
-    import phoenix_ai
+    import phoenix_dna
 
-    return phoenix_ai.__version__
+    return phoenix_dna.__version__

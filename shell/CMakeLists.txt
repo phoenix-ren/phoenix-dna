@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 # Component 1 of 3 — the panel widget.
@@ -11,9 +11,9 @@
 # The overlay and pane are separate QML modules installed by their own
 # subprojects; this applet imports them.
 
-add_definitions(-DTRANSLATION_DOMAIN=\"plasma_applet_org.phoenixai.agent\")
+add_definitions(-DTRANSLATION_DOMAIN=\"plasma_applet_org.phoenixdna.agent\")
 
-plasma_add_applet(org.phoenixai.agent
+plasma_add_applet(org.phoenixdna.agent
     QML_SOURCES
         qml/main.qml
         qml/CompactRepresentation.qml
@@ -48,9 +48,9 @@ configure_file(metadata.json metadata.json COPYONLY)
 # C++ classes exposed to QML must be declared in a header: qmltyperegistrar
 # warns "Class X is declared in X.cpp ... registration to QML may fail".
 
-target_include_directories(org.phoenixai.agent PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(org.phoenixdna.agent PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_link_libraries(org.phoenixai.agent PRIVATE
+target_link_libraries(org.phoenixdna.agent PRIVATE
     Qt6::Gui
     Qt6::Quick
     Qt6::DBus
@@ -84,4 +84,4 @@ target_link_libraries(cliptest PRIVATE
 )
 
 # Header-only Boost, e.g. <boost/histogram.hpp>.
-phoenixai_use_boost(org.phoenixai.agent)
+phoenixdna_use_boost(org.phoenixdna.agent)

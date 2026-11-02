@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 [build-system]
@@ -6,21 +6,21 @@ requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "phoenix-agent"
+name = "phoenix-dna"
 version = "0.1.0"
-description = "Phoenix AI desktop agent daemon - a D-Bus service for the Phoenix plasmoid"
+description = "Phoenix DNA desktop agent daemon - a D-Bus service for the Phoenix DNA plasmoid"
 requires-python = ">=3.11"
 license = "BSD-2-Clause"
 license-files = ["LICENSE"]
 
 [project.scripts]
-phoenix-agent = "phoenix_ai.__main__:main"
-phoenix-repl = "phoenix_ai.repl:main"
+phoenix-dna-agent = "phoenix_dna.__main__:main"
+phoenix-dna-repl = "phoenix_dna.repl:main"
 
 # No hard dependencies: dbus-python / PyGObject come from the distribution
 # packages (python3-dbus, python3-gobject). pytest is a dev dependency.
 [tool.setuptools]
-packages = ["phoenix_ai", "phoenix_ai.tools"]
+packages = ["phoenix_dna", "phoenix_dna.tools"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

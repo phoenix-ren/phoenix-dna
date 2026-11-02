@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """Root-mode privileges: KDE password dialog + sudo password caching.
@@ -40,7 +40,7 @@ class KDialogPasswordProvider:
             "--password",
             message,
             "--title",
-            "Phoenix AI",
+            "Phoenix DNA",
         ]
         try:
             result = subprocess.run(
@@ -119,7 +119,7 @@ class SudoCredentialCache:
             for _ in range(self._max_attempts):
                 self.notifier.on_started()
                 candidate = self._provider.ask(
-                    "Phoenix AI needs administrator privileges " "to perform this task."
+                    "Phoenix DNA needs administrator privileges " "to perform this task."
                 )
                 if not candidate:
                     self.notifier.on_finished(False)

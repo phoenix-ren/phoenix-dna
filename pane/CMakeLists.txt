@@ -1,9 +1,9 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 # Component 3 of 3 — the results pane.
 #
-# A standalone QML module installed to ${KDE_INSTALL_QMLDIR}/org/phoenixai/pane.
+# A standalone QML module installed to ${KDE_INSTALL_QMLDIR}/org/phoenixdna/pane.
 #
 # The ConversationPane is the widget's conversation window: it opens when a
 # run produces its first output, streams the answer and the tool log, and
@@ -13,15 +13,15 @@
 
 find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS Core Qml Quick QuickControls2)
 
-ecm_add_qml_module(org.phoenixai.pane
-    URI org.phoenixai.pane
+ecm_add_qml_module(org.phoenixdna.pane
+    URI org.phoenixdna.pane
     VERSION 1.0
     GENERATE_PLUGIN_SOURCE
 )
 
-ecm_target_qml_sources(org.phoenixai.pane
+ecm_target_qml_sources(org.phoenixdna.pane
     SOURCES
         qml/ConversationPane.qml
 )
 
-ecm_finalize_qml_module(org.phoenixai.pane)
+ecm_finalize_qml_module(org.phoenixdna.pane)

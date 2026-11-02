@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+// SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 // SPDX-License-Identifier: BSD-2-Clause
 
 #pragma once
@@ -22,9 +22,9 @@
  * The service interface is:
  *
  * \code
- * service: org.phoenixai.agent
- * path:    /org/phoenixai/Agent
- * iface:   org.phoenixai.agent.Agent
+ * service: org.phoenixdna.agent
+ * path:    /org/phoenixdna/Agent
+ * iface:   org.phoenixdna.agent.Agent
  *
  * methods: startDictation(), stopDictation(), sendPrompt(QString)
  * signals: partialTranscript(QString), finalTranscript(QString),
@@ -41,8 +41,8 @@
  * simply never receives transcripts.
  *
  * Mode selection is the one message that already speaks to the *live* daemon
- * (agent/phoenix_ai/service.py): bus name ai.phoenix.Agent, object path
- * /ai/phoenix/Agent, interface ai.phoenix.Agent. Its SetMode(name) method
+ * (agent/phoenix_dna/service.py): bus name dna.phoenix.Agent, object path
+ * /dna/phoenix/Agent, interface dna.phoenix.Agent. Its SetMode(name) method
  * records the widget's mode and shows the KDE password dialog when root is
  * selected, so the credentials are settled before the first root prompt.
  * SubmitPrompt(prompt, mode, session_id) sends a generated query to it.
@@ -130,7 +130,7 @@ public:
 
     /*! \brief Tells the daemon which privilege mode the widget selected.
      *
-     * Sent to the live agent service (ai.phoenix.Agent). Selecting root
+     * Sent to the live agent service (dna.phoenix.Agent). Selecting root
      * makes the daemon pop the KDE password dialog right away and cache the
      * credential for the root prompts that follow; leaving root drops it. */
     Q_INVOKABLE void setMode(const QString &mode);

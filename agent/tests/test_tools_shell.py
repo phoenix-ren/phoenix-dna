@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """Bash tool tests, including the sudo (root mode) path via a fake sudo."""
@@ -10,9 +10,9 @@ import time
 
 import pytest
 
-from phoenix_ai.privileges import SudoCredentialCache, StaticPasswordProvider
-from phoenix_ai.tools import ToolError
-from phoenix_ai.tools.shell import BashTool, format_output, interactive_hint
+from phoenix_dna.privileges import SudoCredentialCache, StaticPasswordProvider
+from phoenix_dna.tools import ToolError
+from phoenix_dna.tools.shell import BashTool, format_output, interactive_hint
 
 
 def make_tool(cwd, **kw):

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+// SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include "transcriber.h"
@@ -23,7 +23,7 @@ struct ProviderSpec
     const char *name;
     const char *endpoint;
     const char *model;
-    const char *keyField;    // ~/.config/phoenix.ai/keys.json entry
+    const char *keyField;    // ~/.config/phoenix-dna/keys.json entry
     const char *primaryEnv;  // e.g. MINIMAX_API_KEY
     const char *secondaryEnv; // e.g. PHOENIX_MINIMAX_API_KEY; wins, as in config.py
 };
@@ -53,7 +53,7 @@ QString keysJsonValue(const char *field)
 {
     QString configDir = qEnvironmentVariable("PHOENIX_CONFIG_DIR");
     if (configDir.isEmpty()) {
-        configDir = QDir::homePath() + QStringLiteral("/.config/phoenix.ai");
+        configDir = QDir::homePath() + QStringLiteral("/.config/phoenix-dna");
     }
     QFile file(QDir(configDir).filePath(QStringLiteral("keys.json")));
     if (!file.open(QIODevice::ReadOnly)) {
@@ -114,7 +114,7 @@ void Transcriber::transcribe(const QByteArray &wav)
     if (config.apiKey.isEmpty()) {
         qWarning() << "Transcriber: no" << config.provider << "API key found";
         Q_EMIT failed(QStringLiteral("no %1 API key found — add it to "
-                                     "~/.config/phoenix.ai/keys.json or export "
+                                     "~/.config/phoenix-dna/keys.json or export "
                                      "its environment variable")
                           .arg(config.provider));
         return;

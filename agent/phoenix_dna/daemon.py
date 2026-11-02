@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """AgentDaemon: transport-independent core behind the D-Bus service.
@@ -66,7 +66,7 @@ class AgentDaemon:
         self._current_cancel: threading.Event | None = None
         self._stop = False
         self._thread = threading.Thread(
-            target=self._work, name="phoenix-agent-worker", daemon=True
+            target=self._work, name="phoenix-dna-agent-worker", daemon=True
         )
         self._thread.start()
 

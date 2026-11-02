@@ -1,10 +1,10 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
-"""Configuration loading: defaults < ~/.config/phoenix.ai/agent.toml < environment.
+"""Configuration loading: defaults < ~/.config/phoenix-dna/agent.toml < environment.
 
 API keys are never stored in this repository. They are read from
-``~/.config/phoenix.ai/keys.json`` (mode 0600) or from the environment:
+``~/.config/phoenix-dna/keys.json`` (mode 0600) or from the environment:
 
 * MiniMax:  ``MINIMAX_API_KEY`` / ``PHOENIX_MINIMAX_API_KEY``
 * Tavily:   ``TAVILY_API_KEY``  / ``PHOENIX_TAVILY_API_KEY``
@@ -43,10 +43,10 @@ class Config:
 
     # Dirs / state
     config_dir: Path = field(
-        default_factory=lambda: Path("~/.config/phoenix.ai").expanduser()
+        default_factory=lambda: Path("~/.config/phoenix-dna").expanduser()
     )
     data_dir: Path = field(
-        default_factory=lambda: Path("~/.local/state/phoenix.ai").expanduser()
+        default_factory=lambda: Path("~/.local/state/phoenix-dna").expanduser()
     )
 
     # Privileges / shell
@@ -119,12 +119,12 @@ def load_config(
     config_dir = Path(
         config_dir
         or env.get("PHOENIX_CONFIG_DIR")
-        or Path("~/.config/phoenix.ai").expanduser()
+        or Path("~/.config/phoenix-dna").expanduser()
     ).expanduser()
     data_dir = Path(
         data_dir
         or env.get("PHOENIX_DATA_DIR")
-        or Path("~/.local/state/phoenix.ai").expanduser()
+        or Path("~/.local/state/phoenix-dna").expanduser()
     ).expanduser()
 
     keys = _load_keys_file(config_dir)

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """REPL helper tests: event rendering, run waiting, D-Bus signal conversion."""
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import queue
 
-from phoenix_ai.repl import (
+from phoenix_dna.repl import (
     EventPrinter,
     dbus_signal_to_event,
     wait_for_run,

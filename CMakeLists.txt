@@ -1,9 +1,9 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 cmake_minimum_required(VERSION 3.16)
 
-project(plasma-phoenixai LANGUAGES CXX)
+project(plasma-phoenixdna LANGUAGES CXX)
 
 set(KF6_MIN_VERSION "6.0.0")
 set(QT_MIN_VERSION "6.7.0")
@@ -52,7 +52,7 @@ find_package(Boost ${BOOST_MIN_VERSION} REQUIRED COMPONENTS headers CONFIG)
 # boost::throw_exception() that no longer ships with Boost.Exception. Turning
 # exceptions back on for the target keeps Boost's header-only implementation,
 # so the headers alone are enough to compile and link.
-function(phoenixai_use_boost target)
+function(phoenixdna_use_boost target)
     target_link_libraries(${target} PRIVATE Boost::headers)
     KDE_TARGET_ENABLE_EXCEPTIONS(${target} PRIVATE)
 endfunction()

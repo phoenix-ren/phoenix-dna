@@ -1,7 +1,7 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
-"""Shared fixtures and helpers for the phoenix_ai test suite."""
+"""Shared fixtures and helpers for the phoenix_dna test suite."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from phoenix_ai.config import Config  # noqa: E402
+from phoenix_dna.config import Config  # noqa: E402
 
 
 def wait_for(predicate, timeout: float = 5.0, interval: float = 0.02) -> bool:
@@ -56,7 +56,7 @@ def home_dir(tmp_path) -> Path:
 def fake_sudo(tmp_path) -> Path:
     """A fake sudo binary that accepts the password 'hunter2'.
 
-    Understands the two invocation shapes phoenix_ai produces:
+    Understands the two invocation shapes phoenix_dna produces:
       sudo -S -p '' -k -v             (validate only)
       sudo -S -p '' -- <command...>   (execute as root)
     """

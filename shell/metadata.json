@@ -4,7 +4,7 @@
         "Authors": [
             {
                 "Email": "phoenix@example.com",
-                "Name": "Phoenix AI contributors"
+                "Name": "Phoenix DNA contributors"
             }
         ],
         "Category": "Utilities",
@@ -12,9 +12,9 @@
         "EnabledByDefault": true,
         "Icon": "applications-system",
         "License": "BSD-2-Clause",
-        "Name": "Phoenix AI",
+        "Name": "Phoenix DNA",
         "Version": "0.1.0",
-        "Website": "https://example.com/phoenixai"
+        "Website": "https://example.com/phoenixdna"
     },
     "X-Plasma-API-Minimum-Version": "6.0"
 }

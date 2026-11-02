@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 # A standalone testbench for the panel widget.
@@ -33,7 +33,7 @@ add_executable(widgettest
 )
 
 target_compile_definitions(widgettest PRIVATE
-    PHOENIX_APPLET_PLUGIN="${CMAKE_BINARY_DIR}/bin/plasma/applets/$<TARGET_FILE_NAME:org.phoenixai.agent>"
+    PHOENIX_APPLET_PLUGIN="${CMAKE_BINARY_DIR}/bin/plasma/applets/$<TARGET_FILE_NAME:org.phoenixdna.agent>"
 )
 
 target_link_libraries(widgettest PRIVATE
@@ -44,4 +44,4 @@ target_link_libraries(widgettest PRIVATE
 )
 
 # The plugin must exist before the testbench can be linked against its path.
-add_dependencies(widgettest org.phoenixai.agent)
+add_dependencies(widgettest org.phoenixdna.agent)

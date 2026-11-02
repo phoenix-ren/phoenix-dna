@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+// SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 // SPDX-License-Identifier: BSD-2-Clause
 
 import QtQuick
@@ -68,7 +68,7 @@ PlasmaCore.Dialog {
     mainItem: Kirigami.ScrollablePage {
         id: page
 
-        title: i18n("Phoenix AI")
+        title: i18n("Phoenix DNA")
         visible: dictationOverlay.visible
 
         // A stable dialog size: wide enough for a sentence, tall enough for
@@ -100,7 +100,7 @@ PlasmaCore.Dialog {
                     level: 3
                     text: dictationOverlay.listening ? i18n("Listening…")
                         : dictationOverlay.transcribing ? i18n("Transcribing…")
-                        : i18n("Phoenix AI")
+                        : i18n("Phoenix DNA")
                 }
 
                 // Runs while the finished clip is being transcribed.

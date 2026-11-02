@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """Search tool tests with a faked HTTP layer (no network)."""
@@ -10,9 +10,9 @@ import urllib.error
 
 import pytest
 
-import phoenix_ai.tools.search as search
-from phoenix_ai.tools import ToolError
-from phoenix_ai.tools.search import ExaSearchTool, TavilySearchTool
+import phoenix_dna.tools.search as search
+from phoenix_dna.tools import ToolError
+from phoenix_dna.tools.search import ExaSearchTool, TavilySearchTool
 
 
 class FakeResponse:

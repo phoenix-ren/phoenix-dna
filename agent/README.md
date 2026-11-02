@@ -1,11 +1,11 @@
 <!--
-SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 SPDX-License-Identifier: BSD-2-Clause
 -->
 
-# Phoenix AI — agent daemon (`agent/`)
+# Phoenix DNA — agent daemon (`agent/`)
 
-The Python **desktop agent daemon** behind the Phoenix plasmoid. It is a pure
+The Python **desktop agent daemon** behind the Phoenix DNA plasmoid. It is a pure
 D-Bus service: the plasmoid (panel widget, dictation overlay, results pane)
 handles speech and UI, and sends **already-transcribed prompts** here over the
 session bus.
@@ -15,7 +15,7 @@ minimal-agent design validated by pi and friends — see
 `../design_docs/CODING_AGENT_ANALYSIS.md`), wrapped in a daemon with three operating modes.
 
 ```
-plasmoid (C++/QML)  ──D-Bus──▶  phoenix-agent (this daemon)
+plasmoid (C++/QML)  ──D-Bus──▶  phoenix-dna-agent (this daemon)
    speech, UI                       AgentDaemon ──▶ AgentLoop ──▶ MiniMax LLM
                                     (queue, sudo cache)   │
                                                           ▼
@@ -29,7 +29,7 @@ plasmoid (C++/QML)  ──D-Bus──▶  phoenix-agent (this daemon)
 |---|---|---|---|---|
 | `root` | KDE password dialog (`kdialog`), cached 15 min | `/` | bash (via `sudo`), read, write, edit, ls | system administration; one password covers multiple prompts |
 | `user` | none | `~` | bash, read, write, edit, ls | everyday desktop tasks |
-| `web` | none | hidden scratch dir (`~/.local/state/phoenix.ai/scratch/web`) | bash (scratch only), tavily_search, exa_search | general-knowledge questions and web research |
+| `web` | none | hidden scratch dir (`~/.local/state/phoenix-dna/scratch/web`) | bash (scratch only), tavily_search, exa_search | general-knowledge questions and web research |
 
 The mode also selects the system prompt (e.g. root mode instructs the model to
 inspect before changing and never reboot unasked; web mode tells it to compute
@@ -41,8 +41,8 @@ stdin, the bash tool appends a hint so the next attempt fixes itself.
 
 ## D-Bus API
 
-Bus name `ai.phoenix.Agent`, object path `/ai/phoenix/Agent`,
-interface `ai.phoenix.Agent`.
+Bus name `dna.phoenix.Agent`, object path `/dna/phoenix/Agent`,
+interface `dna.phoenix.Agent`.
 
 ### Methods
 
@@ -70,16 +70,16 @@ interface `ai.phoenix.Agent`.
 Quick test from a shell:
 
 ```sh
-gdbus call --session --dest ai.phoenix.Agent --object-path /ai/phoenix/Agent \
-  --method ai.phoenix.Agent.SubmitPrompt "what time is it?" user ""
-gdbus monitor --session --dest ai.phoenix.Agent
+gdbus call --session --dest dna.phoenix.Agent --object-path /dna/phoenix/Agent \
+  --method dna.phoenix.Agent.SubmitPrompt "what time is it?" user ""
+gdbus monitor --session --dest dna.phoenix.Agent
 ```
 
 ## Configuration
 
 No keys live in this repository. The daemon reads, in order of precedence:
-environment → `~/.config/phoenix.ai/keys.json` (mode 0600) for keys, and
-`~/.config/phoenix.ai/agent.toml` for settings (see `config-example.toml`).
+environment → `~/.config/phoenix-dna/keys.json` (mode 0600) for keys, and
+`~/.config/phoenix-dna/agent.toml` for settings (see `config-example.toml`).
 
 | Key / setting | Env var | Purpose |
 |---|---|---|
@@ -88,10 +88,10 @@ environment → `~/.config/phoenix.ai/keys.json` (mode 0600) for keys, and
 | `exa_api_key` | `EXA_API_KEY` | web-mode search (tool omitted if unset) |
 | `model`, `llm_base_url`, `max_turns`, `credential_ttl_seconds`, bash timeouts … | `PHOENIX_MODEL`, `PHOENIX_BASE_URL`, … | see `config-example.toml` |
 
-Optional `~/.config/phoenix.ai/PHOENIX.md` (or `AGENTS.md`) is appended to the
+Optional `~/.config/phoenix-dna/PHOENIX.md` (or `AGENTS.md`) is appended to the
 system prompt as extra user instructions.
 
-State lives under `~/.local/state/phoenix.ai/`: `sessions/<mode>/<id>.jsonl`
+State lives under `~/.local/state/phoenix-dna/`: `sessions/<mode>/<id>.jsonl`
 (append-only transcripts) and `scratch/web/`.
 
 ## Running
@@ -99,25 +99,25 @@ State lives under `~/.local/state/phoenix.ai/`: `sessions/<mode>/<id>.jsonl`
 ```sh
 cd agent
 python3 -m venv --system-site-packages .venv   # once
-./.venv/bin/python -m phoenix_ai               # or: phoenix-agent after pip install -e .
+./.venv/bin/python -m phoenix_dna               # or: phoenix-dna-agent after pip install -e .
 
 # no API key yet? smoke-test the daemon + D-Bus API:
-./.venv/bin/python -m phoenix_ai --provider fake
-./.venv/bin/python -m phoenix_ai --check-config
+./.venv/bin/python -m phoenix_dna --provider fake
+./.venv/bin/python -m phoenix_dna --check-config
 ```
 
 Requires distro packages `python3-dbus`, `python3-gobject` (present on Fedora).
 
 ## Trying it out: the REPL
 
-`phoenix-repl` (or `python -m phoenix_ai.repl`) is an interactive terminal for
+`phoenix-dna-repl` (or `python -m phoenix_dna.repl`) is an interactive terminal for
 exercising the agent without the plasmoid:
 
 ```sh
-./.venv/bin/python -m phoenix_ai.repl                  # embedded daemon, real MiniMax
-./.venv/bin/python -m phoenix_ai.repl --mode web       # start in web mode
-./.venv/bin/python -m phoenix_ai.repl --provider fake  # no API key needed
-./.venv/bin/python -m phoenix_ai.repl --dbus           # drive a running daemon via D-Bus
+./.venv/bin/python -m phoenix_dna.repl                  # embedded daemon, real MiniMax
+./.venv/bin/python -m phoenix_dna.repl --mode web       # start in web mode
+./.venv/bin/python -m phoenix_dna.repl --provider fake  # no API key needed
+./.venv/bin/python -m phoenix_dna.repl --dbus           # drive a running daemon via D-Bus
 ```
 
 Commands: `/mode root|user|web`, `/new` (fresh session), `/session`, `/modes`,
@@ -152,7 +152,7 @@ The 5th of November next year is 4 days away from today.
 PHOENIX_LIVE_TEST=1 ./.venv/bin/python -m pytest tests/test_live_minimax.py -q -s   # real API calls
 ```
 
-Notes for D-Bus tests: they own `ai.phoenix.Agent` on your session bus for the
+Notes for D-Bus tests: they own `dna.phoenix.Agent` on your session bus for the
 duration of the test run, and use `SessionBus(private=True)` for the client
 side because `dbus.SessionBus()` is a process-wide singleton (sharing it
 between server and client deadlocks).

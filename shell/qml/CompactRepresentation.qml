@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+// SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 // SPDX-License-Identifier: BSD-2-Clause
 
 import QtQuick
@@ -7,7 +7,7 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
 
-import plasma.applet.org.phoenixai.agent as Phoenix
+import plasma.applet.org.phoenixdna.agent as Phoenix
 
 /*
  * The panel widget's compact representation.

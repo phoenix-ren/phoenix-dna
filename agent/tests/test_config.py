@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """Configuration loading tests."""
@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 
-from phoenix_ai.config import describe, load_config
+from phoenix_dna.config import describe, load_config
 
 
 def test_defaults_and_dir_creation(tmp_path):

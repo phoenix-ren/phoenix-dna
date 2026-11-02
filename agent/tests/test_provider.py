@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """Provider tests: tool-call argument parsing over the SSE wire format.
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 
-from phoenix_ai.provider import OpenAICompatProvider
+from phoenix_dna.provider import OpenAICompatProvider
 
 
 class _FakeStream:

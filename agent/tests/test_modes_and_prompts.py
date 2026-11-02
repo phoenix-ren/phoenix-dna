@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
 """Mode profiles, toolset construction and system prompts."""
@@ -9,9 +9,9 @@ import dataclasses
 
 import pytest
 
-from phoenix_ai.modes import MODE_PROFILES, Mode, ModeProfile, build_toolset
-from phoenix_ai.privileges import SudoCredentialCache, StaticPasswordProvider
-from phoenix_ai.prompts import build_system_prompt, load_context_file
+from phoenix_dna.modes import MODE_PROFILES, Mode, ModeProfile, build_toolset
+from phoenix_dna.privileges import SudoCredentialCache, StaticPasswordProvider
+from phoenix_dna.prompts import build_system_prompt, load_context_file
 
 
 def test_profiles():

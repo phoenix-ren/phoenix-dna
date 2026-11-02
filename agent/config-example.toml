@@ -1,9 +1,9 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
-# Phoenix AI agent daemon - example configuration.
-# Copy to ~/.config/phoenix.ai/agent.toml and edit.
-# API keys do NOT go here; put them in ~/.config/phoenix.ai/keys.json or env vars.
+# Phoenix DNA agent daemon - example configuration.
+# Copy to ~/.config/phoenix-dna/agent.toml and edit.
+# API keys do NOT go here; put them in ~/.config/phoenix-dna/keys.json or env vars.
 
 [agent]
 # provider = "minimax"            # or "fake" for a canned-response test provider

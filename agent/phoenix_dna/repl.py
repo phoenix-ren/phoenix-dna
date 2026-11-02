@@ -1,18 +1,18 @@
-# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
-"""Interactive REPL for exercising the Phoenix agent daemon.
+"""Interactive REPL for exercising the Phoenix DNA agent daemon.
 
 Two ways to run it:
 
   # embedded (default): the daemon runs in this process, real provider
-  python -m phoenix_ai.repl
-  python -m phoenix_ai.repl --mode web          # start in web mode
-  python -m phoenix_ai.repl --provider fake     # no API key needed
+  python -m phoenix_dna.repl
+  python -m phoenix_dna.repl --mode web          # start in web mode
+  python -m phoenix_dna.repl --provider fake     # no API key needed
 
-  # D-Bus client: drive a running `phoenix-agent` daemon exactly like the
+  # D-Bus client: drive a running `phoenix-dna-agent` daemon exactly like the
   # plasmoid will (same methods and signals)
-  python -m phoenix_ai.repl --dbus
+  python -m phoenix_dna.repl --dbus
 
 Anything you type is submitted as a prompt in the current mode; slash
 commands control the REPL (see /help). While a run is in flight, Ctrl+C
@@ -162,7 +162,7 @@ def load_history(path: Path) -> list[str]:
 
 
 def default_history_path() -> Path:
-    data_dir = os.environ.get("PHOENIX_DATA_DIR") or "~/.local/state/phoenix.ai"
+    data_dir = os.environ.get("PHOENIX_DATA_DIR") or "~/.local/state/phoenix-dna"
     return Path(data_dir).expanduser() / "repl_history"
 
 
@@ -393,7 +393,7 @@ def repl_loop(
     bold = "\x1b[1m" if printer.color else ""
     reset = "\x1b[0m" if printer.color else ""
     printer.line(
-        f"phoenix-agent REPL {__version__} — /help for commands, Ctrl+D to quit"
+        f"phoenix-dna-agent REPL {__version__} — /help for commands, Ctrl+D to quit"
     )
 
     while True:
@@ -582,7 +582,7 @@ def run_dbus(args, history=None) -> int:
     if not bus.name_has_owner(BUS_NAME):
         print(
             f"error: no daemon is running as {BUS_NAME}.\n"
-            "start it first:  python -m phoenix_ai   (in another terminal)",
+            "start it first:  python -m phoenix_dna   (in another terminal)",
             file=sys.stderr,
         )
         return 1
@@ -655,8 +655,8 @@ def _enqueue_signal(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="phoenix-repl",
-        description="Interactive REPL for the Phoenix agent daemon",
+        prog="phoenix-dna-repl",
+        description="Interactive REPL for the Phoenix DNA agent daemon",
     )
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument(
