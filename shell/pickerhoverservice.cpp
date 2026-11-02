@@ -11,7 +11,6 @@ namespace
 //: The bus name and object the KWin script calls.
 const QString kServiceName = QStringLiteral("org.phoenixdna.agent.Picker");
 const QString kObjectPath = QStringLiteral("/org/phoenixdna/Picker");
-const QString kInterface = QStringLiteral("org.phoenixdna.agent.Picker");
 } // namespace
 
 PickerHoverService::PickerHoverService(WindowScreenshotPicker *picker, QObject *parent)
@@ -39,9 +38,9 @@ void PickerHoverService::unregisterFromBus()
     bus.unregisterObject(kObjectPath);
 }
 
-void PickerHoverService::hoveredWindow(const QString &uuid)
+void PickerHoverService::hoveredWindow(const QString &uuid, const QString &title)
 {
     if (m_picker) {
-        m_picker->setHoveredWindow(uuid);
+        m_picker->setHoveredWindow(uuid, title);
     }
 }

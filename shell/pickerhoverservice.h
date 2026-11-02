@@ -14,7 +14,8 @@ class WindowScreenshotPicker;
  * KWin can tell which window the mouse is over, but only from a script:
  * the picker loads a small script (see WindowScreenshotPicker) that polls
  * the pointer and reports the window under it here. The widget answers
- * with the highlight over that window.
+ * with the title of that window, so the user can see what the next click
+ * would capture.
  *
  * The service lives on the session bus under the name
  * \c org.phoenixdna.agent.Picker.
@@ -30,8 +31,8 @@ public:
     /*! \brief Puts the service on the session bus.
      *
      * Returns false when the name is already taken (a second panel with
-     * the widget loaded): the picker then works without the hover
-     * highlight. */
+     * the widget loaded): the picker then works without the title of the
+     * window under the pointer. */
     bool registerOnBus();
 
     /*! \brief Takes the service off the session bus. */
@@ -40,8 +41,9 @@ public:
 public Q_SLOTS:
     /*! \brief The window under the mouse, as the KWin script sees it.
      *
-     * \a uuid is empty when the pointer is not over any window. */
-    Q_SCRIPTABLE void hoveredWindow(const QString &uuid);
+     * \a uuid is empty when the pointer is not over any window; \a title
+     * is the window's caption (empty for a window without one). */
+    Q_SCRIPTABLE void hoveredWindow(const QString &uuid, const QString &title);
 
 private:
     WindowScreenshotPicker *m_picker = nullptr;

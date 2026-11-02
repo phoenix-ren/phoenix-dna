@@ -143,7 +143,13 @@ Item {
 
             PC3.ToolTip {
                 text: {
-                    const shortcut = Phoenix.PhoenixController.screenshotPicker.shortcut;
+                    const picker = Phoenix.PhoenixController.screenshotPicker;
+                    // While the picker is up, the tooltip names the window
+                    // a click would photograph.
+                    if (picker.picking && picker.targetTitle.length > 0) {
+                        return i18n("Screenshot: %1", picker.targetTitle);
+                    }
+                    const shortcut = picker.shortcut;
                     return shortcut.length > 0
                         ? i18n("Screenshot a window (%1)", shortcut)
                         : i18n("Screenshot a window");

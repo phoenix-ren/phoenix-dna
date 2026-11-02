@@ -42,13 +42,15 @@ text of a PDF is extracted for it.
 
 The camera button does the same with a picture of the desktop: it starts
 the window picker, which is also bound to the global shortcut `Meta+Alt`
-(rebindable in *System Settings → Shortcuts → Phoenix DNA*). The picker
-highlights the window under the mouse and photographs the one that is
-clicked — the click never reaches the window itself. The picture is
-attached to the prompt that is being composed, like any other file.
+(rebindable in *System Settings → Shortcuts → Phoenix DNA*). KWin takes
+the pointer over and shows its own hint; the window under the pointer is
+named in the status line of the panel, and the window that is clicked is
+photographed — the click never reaches the window itself. The picture is
+attached to the prompt that is being composed, like any other file, and
+named after the window it shows.
 
-Both need KWin, which is where the pointer is followed, the target window
-is highlighted and the picture is taken.
+Both need KWin, which is where the pointer is followed, the title of the
+target window is looked up and the picture is taken.
 
 ## Building
 
@@ -57,6 +59,18 @@ sudo cmake --install build
 systemctl --user restart plasma-plasmashell   # otherwise the panel keeps the old plugin
 journalctl --user -b --no-pager | grep -i phoenix   # check for QML errors
 ```
+
+The screenshot path can be checked on its own, without the panel:
+
+```bash
+./build/bin/screenshottest /tmp/capture.png   # the picture of the active window
+```
+
+It asks KWin for a picture over D-Bus, reads it out of the pipe the way
+the picker does and writes it to a PNG. It also says whether the picture
+was already complete when KWin answered the call - it never is, and a
+picture that is looked at before it is complete sends the decoder past
+the end of the buffer.
 
 ## Running the agent
 
