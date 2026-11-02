@@ -10,15 +10,15 @@ namespace
 // Real capture devices deliver buffers of a few dozen milliseconds; pw-cat
 // in particular tends to hand over ~25 ms at a time.
 constexpr int kChunkMs = 25;
-}
+} // namespace
 
-WavFeedThread::WavFeedThread(WaveformBuffer *buffer, QByteArray pcm, int sampleRate,
-                             qreal speed, QObject *parent)
-    : QThread(parent)
-    , m_buffer(buffer)
-    , m_pcm(std::move(pcm))
-    , m_sampleRate(sampleRate)
-    , m_speed(speed)
+WavFeedThread::WavFeedThread(
+    WaveformBuffer *buffer, QByteArray pcm, int sampleRate, qreal speed, QObject *parent)
+    : QThread(parent),
+      m_buffer(buffer),
+      m_pcm(std::move(pcm)),
+      m_sampleRate(sampleRate),
+      m_speed(speed)
 {
 }
 

@@ -11,7 +11,7 @@
 class QNetworkReply;
 
 /*! \brief Everything one transcription request needs, resolved on demand. */
-struct SttConfig
+struct TranscriptionConfig
 {
     QString provider; ///< "minimax" (default) or "openai"
     QString endpoint; ///< full URL of the transcriptions endpoint
@@ -57,7 +57,7 @@ public:
     void transcribe(const QByteArray &wav);
 
     /*! \brief Resolves provider, endpoint, model and key, as described above. */
-    static SttConfig resolveConfig();
+    static TranscriptionConfig resolveConfig();
 
 Q_SIGNALS:
     /*! \brief The recognized text; empty when nothing intelligible was said. */

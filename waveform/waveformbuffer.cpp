@@ -21,10 +21,7 @@ constexpr double kDenormalFloor = 1e-12;
 constexpr int kMinimumColumns = 8;
 } // namespace
 
-WaveformBuffer::WaveformBuffer(QObject *parent)
-    : QObject(parent)
-{
-}
+WaveformBuffer::WaveformBuffer(QObject *parent) : QObject(parent) {}
 
 int WaveformBuffer::columns() const
 {
@@ -161,8 +158,7 @@ void WaveformBuffer::append(const QByteArray &pcm, int sampleRate, int channels)
         // A column spans windowSeconds / columns of audio; lock that as a
         // sample quota at the rate the capture negotiated.
         m_sampleRate = sampleRate;
-        m_samplesPerColumn = qMax<qsizetype>(
-            1, qRound64(sampleRate * m_windowSeconds / m_columns));
+        m_samplesPerColumn = qMax<qsizetype>(1, qRound64(sampleRate * m_windowSeconds / m_columns));
         m_accCount = 0; // a partial column at the old rate would be wrong
     }
 

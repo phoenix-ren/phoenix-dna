@@ -29,12 +29,9 @@ constexpr int kRmsBlockFrames = 1024;
 
 // The EWMA smoothing window; \c rmsLevel lags the input by this much.
 constexpr qreal kRmsTimeConstantMs = 750.0;
-}
+} // namespace
 
-AudioRingBuffer::AudioRingBuffer(QObject *parent)
-    : QAbstractListModel(parent)
-{
-}
+AudioRingBuffer::AudioRingBuffer(QObject *parent) : QAbstractListModel(parent) {}
 
 int AudioRingBuffer::rowCount(const QModelIndex &parent) const
 {

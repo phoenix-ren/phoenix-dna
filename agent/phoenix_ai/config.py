@@ -117,10 +117,14 @@ def load_config(
     env = dict(os.environ) if env is None else dict(env)
 
     config_dir = Path(
-        config_dir or env.get("PHOENIX_CONFIG_DIR") or Path("~/.config/phoenix.ai").expanduser()
+        config_dir
+        or env.get("PHOENIX_CONFIG_DIR")
+        or Path("~/.config/phoenix.ai").expanduser()
     ).expanduser()
     data_dir = Path(
-        data_dir or env.get("PHOENIX_DATA_DIR") or Path("~/.local/state/phoenix.ai").expanduser()
+        data_dir
+        or env.get("PHOENIX_DATA_DIR")
+        or Path("~/.local/state/phoenix.ai").expanduser()
     ).expanduser()
 
     keys = _load_keys_file(config_dir)
@@ -168,6 +172,7 @@ def load_config(
 
 def describe(config: Config) -> str:
     """Human-readable summary with masked keys (for --check-config and logs)."""
+
     def mask(value: str) -> str:
         if not value:
             return "<not set>"

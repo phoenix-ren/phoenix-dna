@@ -1,29 +1,29 @@
 // SPDX-FileCopyrightText: 2026 Phoenix AI contributors
-#include <cstdio>
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include "phoenixcontroller.h"
-#include "audiocapture.h"
-#include "audioringbuffer.h"
 #include "agentbridge.h"
 #include "agentmode.h"
+#include "audiocapture.h"
+#include "audioringbuffer.h"
 #include "cliprecorder.h"
 #include "transcriber.h"
 
-#include <QQmlEngine>
 #include <KGlobalAccel>
 #include <KLocalizedString>
+#include <QQmlEngine>
 
 #include <QAction>
 #include <QKeySequence>
+#include <cstdio>
 
 PhoenixController::PhoenixController(QObject *parent)
-    : QObject(parent)
-    , m_waveform(new AudioRingBuffer(this))
-    , m_agent(new AgentBridge(this))
-    , m_capture(new AudioCapture(this))
-    , m_clip(new ClipRecorder(this))
-    , m_transcriber(new Transcriber(this))
+    : QObject(parent),
+      m_waveform(new AudioRingBuffer(this)),
+      m_agent(new AgentBridge(this)),
+      m_capture(new AudioCapture(this)),
+      m_clipRecorder(new ClipRecorder(this)),
+      m_transcriber(new Transcriber(this))
 {
     // The overlay pops up as soon as dictation starts, so the transcript is
     // visible while the user is still speaking.
@@ -39,17 +39,14 @@ PhoenixController::PhoenixController(QObject *parent)
 
     // Captured audio feeds the scrolling waveform. The capture helper is a
     // separate process, so a fault there never reaches plasmashell.
-    connect(m_capture, &AudioCapture::pcmReady,
-            m_waveform, &AudioRingBuffer::append);
+    connect(m_capture, &AudioCapture::pcmReady, m_waveform, &AudioRingBuffer::append);
     // The same stream also fills the dictation clip that is sent to the
     // transcription service once recording stops.
-    connect(m_capture, &AudioCapture::pcmReady,
-            m_clip, &ClipRecorder::append);
-    connect(m_capture, &AudioCapture::captureFailed, this,
-            [this](const QString &message) {
-                qWarning() << "Audio capture failed:" << message;
-                setRecording(false);
-            });
+    connect(m_capture, &AudioCapture::pcmReady, m_clipRecorder, &ClipRecorder::append);
+    connect(m_capture, &AudioCapture::captureFailed, this, [this](const QString &message) {
+        qWarning() << "Audio capture failed:" << message;
+        setRecording(false);
+    });
 
     // The finished clip comes back as text and lands in the overlay via
     // partialTranscript. An empty answer means nothing was intelligible;
@@ -70,8 +67,7 @@ PhoenixController::PhoenixController(QObject *parent)
     // widget rests empty instead of showing a stale envelope until the
     // next recording. (clear() refuses to wipe a live waveform, in case
     // the user is already dictating again when the pane appears.)
-    connect(m_agent, &AgentBridge::activityStarted,
-            m_waveform, &AudioRingBuffer::clear);
+    connect(m_agent, &AgentBridge::activityStarted, m_waveform, &AudioRingBuffer::clear);
 
     // The record button has a system-wide companion so dictation can be
     // toggled from any application, not just while the panel has focus.
@@ -163,10 +159,10 @@ void PhoenixController::setRecording(bool recording)
             m_waveform->stop();
             return;
         }
-        m_clip->start();
+        m_clipRecorder->start();
         m_agent->startDictation();
-        // Dictating implies the transcript overlay should be visible.
-        Q_EMIT overlayRequested();
+        // Dictating implies the dictation overlay should be visible.
+        Q_EMIT dictationOverlayRequested();
     } else {
         m_capture->stop();
         m_waveform->stop();
@@ -174,9 +170,10 @@ void PhoenixController::setRecording(bool recording)
 
         // The finished clip is transcribed in one shot now that the user
         // has stopped speaking; the overlay stays up for the result.
-        const QByteArray clip = m_clip->takeWav();
+        const QByteArray clip = m_clipRecorder->takeWav();
         if (!clip.isEmpty()) {
-            qWarning() << "Dictation clip ready:" << clip.size() << "bytes — posting for transcription";
+            qWarning() << "Dictation clip ready:" << clip.size()
+                       << "bytes — posting for transcription";
             setTranscribing(true);
             m_transcriber->transcribe(clip);
         } else {
@@ -221,14 +218,14 @@ QString PhoenixController::recordShortcut() const
     return QString();
 }
 
-void PhoenixController::openOverlay()
+void PhoenixController::showDictationOverlay()
 {
-    Q_EMIT overlayRequested();
+    Q_EMIT dictationOverlayRequested();
 }
 
-void PhoenixController::togglePane()
+void PhoenixController::toggleConversationPane()
 {
-    Q_EMIT paneRequested();
+    Q_EMIT conversationPaneRequested();
 }
 
 void PhoenixController::submitText(const QString &text)
@@ -241,4 +238,3 @@ void PhoenixController::submitText(const QString &text)
     // AgentBridge::onRunFinished().
     m_agent->sendPrompt(text);
 }
-

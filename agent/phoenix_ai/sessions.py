@@ -94,7 +94,8 @@ class SessionManager:
             messages = [
                 entry["message"]
                 for entry in self.store.read(mode_name, session_id)
-                if entry.get("kind") == "message" and isinstance(entry.get("message"), dict)
+                if entry.get("kind") == "message"
+                and isinstance(entry.get("message"), dict)
             ]
             conversation = Conversation(
                 id=session_id, mode=mode_name, messages=messages
@@ -117,4 +118,6 @@ class SessionManager:
         )
 
     def record(self, conversation: Conversation, kind: str, data: dict) -> None:
-        self.store.append(conversation.mode, conversation.id, {"kind": kind, "data": data})
+        self.store.append(
+            conversation.mode, conversation.id, {"kind": kind, "data": data}
+        )

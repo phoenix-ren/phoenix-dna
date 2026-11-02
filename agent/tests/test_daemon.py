@@ -152,9 +152,7 @@ def test_root_auth_flow_and_multi_prompt_cache(config, home_dir, fake_sudo):
         finished_auth = events_of(events, "auth_finished")
         assert len(finished_auth) == 1 and finished_auth[0]["success"] is True
 
-        tool_outputs = [
-            e["output"] for e in events_of(events, "tool_call_finished")
-        ]
+        tool_outputs = [e["output"] for e in events_of(events, "tool_call_finished")]
         assert any("sudo-1" in out for out in tool_outputs)
 
         # second root prompt in the same session: no new auth, still sudo
@@ -162,10 +160,7 @@ def test_root_auth_flow_and_multi_prompt_cache(config, home_dir, fake_sudo):
         run2 = daemon.submit("check again", "root", session_id=session_id)
         assert wait_for(lambda: len(events_of(events, "run_finished")) >= 2, timeout=10)
         assert len(events_of(events, "auth_requested")) == 1  # cache reused
-        outputs2 = [
-            e["output"]
-            for e in events_of(events, "tool_call_finished")
-        ]
+        outputs2 = [e["output"] for e in events_of(events, "tool_call_finished")]
         assert any("sudo-1" in out for out in outputs2)
         assert daemon._root_cache._password == "hunter2"
     finally:
@@ -187,9 +182,9 @@ def test_set_mode_preauthenticates_root(config, home_dir, fake_sudo):
         assert daemon.mode() is Mode.ROOT
 
         # The pre-auth runs on its own thread; wait for the dialog flow.
-        assert wait_for(lambda: events_of(events, "auth_finished"), timeout=5), (
-            f"no auth_finished; events={events}"
-        )
+        assert wait_for(
+            lambda: events_of(events, "auth_finished"), timeout=5
+        ), f"no auth_finished; events={events}"
         assert len(events_of(events, "auth_requested")) == 1
         requested = events_of(events, "auth_requested")[0]
         assert requested["run_id"] == ""  # no run is in flight

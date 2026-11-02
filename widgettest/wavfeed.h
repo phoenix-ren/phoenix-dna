@@ -28,7 +28,10 @@ public:
     /*!
      * \a pcm is interleaved 16-bit mono PCM ready for WaveformBuffer::append.
      */
-    WavFeedThread(WaveformBuffer *buffer, QByteArray pcm, int sampleRate, qreal speed,
+    WavFeedThread(WaveformBuffer *buffer,
+                  QByteArray pcm,
+                  int sampleRate,
+                  qreal speed,
                   QObject *parent = nullptr);
 
     /*! \brief Stops the feed; call from any thread, then wait(). */

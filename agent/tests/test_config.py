@@ -70,7 +70,9 @@ def test_toml_overrides_and_unknown_settings(tmp_path):
 def test_describe_masks_keys(tmp_path):
     cfg = tmp_path / "cfg"
     cfg.mkdir()
-    (cfg / "keys.json").write_text(json.dumps({"minimax_api_key": "sk-supersecret-value"}))
+    (cfg / "keys.json").write_text(
+        json.dumps({"minimax_api_key": "sk-supersecret-value"})
+    )
     config = load_config(config_dir=cfg, data_dir=tmp_path / "d", env={})
     summary = describe(config)
     assert "sk-supersecret-value" not in summary

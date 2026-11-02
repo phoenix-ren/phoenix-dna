@@ -59,7 +59,9 @@ def test_edit_exact_unique(home_dir):
     path.write_text("alpha=1\nbeta=2\n")
     tool = EditTool(home_dir)
 
-    result = tool.execute({"path": "config.conf", "oldText": "beta=2", "newText": "beta=42"})
+    result = tool.execute(
+        {"path": "config.conf", "oldText": "beta=2", "newText": "beta=42"}
+    )
     assert path.read_text() == "alpha=1\nbeta=42\n"
     assert "1 replacement" in result.output
 

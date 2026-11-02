@@ -17,7 +17,7 @@ ecm_add_qml_module(org.phoenixai.overlay
 
 ecm_target_qml_sources(org.phoenixai.overlay
     SOURCES
-        qml/Overlay.qml
+        qml/DictationOverlay.qml
 )
 
 ecm_finalize_qml_module(org.phoenixai.overlay)

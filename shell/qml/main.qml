@@ -34,21 +34,21 @@ PlasmoidItem {
     Connections {
         target: Phoenix.PhoenixController
 
-        function onOverlayRequested() {
+        function onDictationOverlayRequested() {
             if (resultsPane.visible) {
                 // The pane's bar mirrors listening/transcribing via its
                 // bindings below; nothing else to do here.
                 return;
             }
-            overlay.transcript = Phoenix.PhoenixController.partialTranscript;
-            overlay.listening = Phoenix.PhoenixController.recording;
-            overlay.transcribing = Phoenix.PhoenixController.transcribing;
-            overlay.statusMessage = Phoenix.PhoenixController.statusMessage;
-            overlay.inputAnchor = root;
-            overlay.visible = true;
+            dictationOverlay.transcript = Phoenix.PhoenixController.partialTranscript;
+            dictationOverlay.listening = Phoenix.PhoenixController.recording;
+            dictationOverlay.transcribing = Phoenix.PhoenixController.transcribing;
+            dictationOverlay.statusMessage = Phoenix.PhoenixController.statusMessage;
+            dictationOverlay.inputAnchor = root;
+            dictationOverlay.visible = true;
         }
 
-        function onPaneRequested() {
+        function onConversationPaneRequested() {
             resultsPane.toggle();
         }
     }
@@ -79,33 +79,33 @@ PlasmoidItem {
         target: Phoenix.PhoenixController
 
         function onPartialTranscriptChanged() {
-            overlay.transcript = Phoenix.PhoenixController.partialTranscript;
+            dictationOverlay.transcript = Phoenix.PhoenixController.partialTranscript;
             resultsPane.transcript = Phoenix.PhoenixController.partialTranscript;
         }
 
         function onTranscribingChanged() {
-            overlay.transcribing = Phoenix.PhoenixController.transcribing;
+            dictationOverlay.transcribing = Phoenix.PhoenixController.transcribing;
         }
 
         function onStatusMessageChanged() {
-            overlay.statusMessage = Phoenix.PhoenixController.statusMessage;
+            dictationOverlay.statusMessage = Phoenix.PhoenixController.statusMessage;
         }
     }
 
     // Component 2 — the dictation overlay.
-    PhoenixOverlay.Overlay {
-        id: overlay
+    PhoenixOverlay.DictationOverlay {
+        id: dictationOverlay
 
         // The transcript becomes a prompt only when the user says so; the
         // results pane is not opened here — it appears by itself when the
         // agent's answer comes back.
         onSubmitted: (text) => {
-            overlay.visible = false;
+            dictationOverlay.visible = false;
             Phoenix.PhoenixController.submitText(text);
         }
 
         // Closing abandons the dictation; nothing is sent.
-        onClosed: overlay.visible = false
+        onClosed: dictationOverlay.visible = false
     }
 
     // Component 3 — the results pane.
@@ -120,7 +120,7 @@ PlasmoidItem {
     // the overlay's "Send to agent", so a follow-on rides on the session
     // history the initial voice prompt created (AgentBridge tracks the
     // session id).
-    PhoenixPane.Pane {
+    PhoenixPane.ConversationPane {
         id: resultsPane
 
         anchor: root
@@ -156,12 +156,12 @@ PlasmoidItem {
         // overlay takes over as the transcript surface so the follow-on can
         // still be verified and sent.
         onDismissed: if (resultsPane.listening) {
-            overlay.transcript = Phoenix.PhoenixController.partialTranscript;
-            overlay.listening = Phoenix.PhoenixController.recording;
-            overlay.transcribing = Phoenix.PhoenixController.transcribing;
-            overlay.statusMessage = Phoenix.PhoenixController.statusMessage;
-            overlay.inputAnchor = root;
-            overlay.visible = true;
+            dictationOverlay.transcript = Phoenix.PhoenixController.partialTranscript;
+            dictationOverlay.listening = Phoenix.PhoenixController.recording;
+            dictationOverlay.transcribing = Phoenix.PhoenixController.transcribing;
+            dictationOverlay.statusMessage = Phoenix.PhoenixController.statusMessage;
+            dictationOverlay.inputAnchor = root;
+            dictationOverlay.visible = true;
         }
     }
 

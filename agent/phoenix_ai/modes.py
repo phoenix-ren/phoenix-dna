@@ -41,7 +41,7 @@ class ModeProfile:
         return config.data_dir / "scratch" / "web"  # hidden scratch dir
 
 
-PROFILES: dict[Mode, ModeProfile] = {
+MODE_PROFILES: dict[Mode, ModeProfile] = {
     Mode.ROOT: ModeProfile(
         mode=Mode.ROOT,
         description=(

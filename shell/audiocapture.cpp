@@ -3,12 +3,13 @@
 
 #include "audiocapture.h"
 
-#include <QtEndian>
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QtEndian>
 
-namespace {
+namespace
+{
 
 constexpr int kMaxCarry = 8192;
 
@@ -23,8 +24,8 @@ int bytesPerSample(const QString &format)
     if (format == QLatin1String("s24")) {
         return 3;
     }
-    if (format == QLatin1String("s32") || format == QLatin1String("f32")
-        || format == QLatin1String("s24le32")) {
+    if (format == QLatin1String("s32") || format == QLatin1String("f32") ||
+        format == QLatin1String("s24le32")) {
         return 4;
     }
     if (format == QLatin1String("f64")) {
@@ -73,8 +74,7 @@ qint16 decodeSample(const QString &format, const uchar *&p)
 
 } // namespace
 
-AudioCapture::AudioCapture(QObject *parent)
-    : QObject(parent)
+AudioCapture::AudioCapture(QObject *parent) : QObject(parent)
 {
     connect(&m_process, &QProcess::readyReadStandardOutput, this, &AudioCapture::readStdout);
     connect(&m_process, &QProcess::readyReadStandardError, this, &AudioCapture::readStderr);
@@ -264,8 +264,7 @@ void AudioCapture::onFinished(int exitCode, QProcess::ExitStatus status)
     if (m_active) {
         m_active = false;
         if (status == QProcess::CrashExit) {
-            Q_EMIT captureFailed(
-                QStringLiteral("pw-cat crashed (exit code %1)").arg(exitCode));
+            Q_EMIT captureFailed(QStringLiteral("pw-cat crashed (exit code %1)").arg(exitCode));
         }
     }
 }

@@ -119,8 +119,7 @@ class SudoCredentialCache:
             for _ in range(self._max_attempts):
                 self.notifier.on_started()
                 candidate = self._provider.ask(
-                    "Phoenix AI needs administrator privileges "
-                    "to perform this task."
+                    "Phoenix AI needs administrator privileges " "to perform this task."
                 )
                 if not candidate:
                     self.notifier.on_finished(False)

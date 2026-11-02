@@ -4,9 +4,9 @@
 #pragma once
 
 #include <QObject>
-#include <QTimer>
 #include <QString>
 #include <QStringList>
+#include <QTimer>
 #include <QtQml/qqmlregistration.h>
 
 #include "conversationmodel.h"
@@ -168,7 +168,9 @@ Q_SIGNALS:
 
 private Q_SLOTS:
     /*! \brief Re-probes and re-subscribes when the service appears or vanishes. */
-    void onServiceOwnerChanged(const QString &service, const QString &oldOwner, const QString &newOwner);
+    void onServiceOwnerChanged(const QString &service,
+                               const QString &oldOwner,
+                               const QString &newOwner);
 
     void onPartialTranscript(const QString &text);
     void onFinalTranscript(const QString &text);

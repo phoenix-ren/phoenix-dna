@@ -18,4 +18,4 @@ namespace WaveformPalette
 constexpr QRgb kBackground = qRgb(38, 38, 38);   // #262626
 constexpr QRgb kPeakColor = qRgb(32, 126, 197);  // #207EC5 — min/max envelope
 constexpr QRgb kMeanColor = qRgb(62, 154, 224);  // #3E9AE0 — mean |level| band
-}
+} // namespace WaveformPalette

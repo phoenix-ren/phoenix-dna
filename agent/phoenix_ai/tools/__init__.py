@@ -26,7 +26,7 @@ class ToolSpec:
 
 @dataclass
 class ToolResult:
-    output: str                     # what the LLM sees
+    output: str  # what the LLM sees
     details: dict = field(default_factory=dict)  # extra data for the UI pane
     status: str = "success"
 

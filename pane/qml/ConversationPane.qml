@@ -44,7 +44,7 @@ import org.kde.kirigami as Kirigami
  * route.
  */
 PlasmaCore.Dialog {
-    id: pane
+    id: conversationPane
 
     // The conversation history: one row per prompt/answer pair, with the
     // roles prompt / result / toolLog / running (see ConversationModel).
@@ -123,7 +123,7 @@ PlasmaCore.Dialog {
 
     // Parameter-free on purpose: signal handlers that use the injected
     // "opacity" parameter are deprecated (and warn on every load).
-    onOpacityChanged: pane.visible = pane.opacity > 0
+    onOpacityChanged: conversationPane.visible = conversationPane.opacity > 0
 
     // Engine results are pushed into the editor imperatively (not via a
     // text binding): a binding would be destroyed by the first user edit,
@@ -179,14 +179,14 @@ PlasmaCore.Dialog {
     // capped by the screen.
     function applySize() {
         if (maximized) {
-            pane.width = Screen.width - 2 * Kirigami.Units.gridUnit
-            pane.height = Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit
+            conversationPane.width = Screen.width - 2 * Kirigami.Units.gridUnit
+            conversationPane.height = Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit
             return
         }
-        pane.width = userWidth > 0
+        conversationPane.width = userWidth > 0
             ? Math.max(minPaneWidth, userWidth)
             : Kirigami.Units.gridUnit * 30
-        pane.height = userHeight > 0
+        conversationPane.height = userHeight > 0
             ? Math.max(minPaneHeight, userHeight)
             : Math.max(
                 minHeight,
@@ -201,8 +201,8 @@ PlasmaCore.Dialog {
     // otherwise the automatic content-driven sizing).
     function toggleMaximized() {
         if (!maximized) {
-            normalWidth = pane.width
-            normalHeight = pane.height
+            normalWidth = conversationPane.width
+            normalHeight = conversationPane.height
             normalAuto = userWidth === 0 && userHeight === 0
             maximized = true
         } else {
@@ -228,24 +228,24 @@ PlasmaCore.Dialog {
         id: content
 
         focus: true
-        Keys.onEscapePressed: pane.dismiss()
+        Keys.onEscapePressed: conversationPane.dismiss()
 
-        implicitWidth: pane.maximized
+        implicitWidth: conversationPane.maximized
             ? Screen.width - 2 * Kirigami.Units.gridUnit
-            : (pane.userWidth > 0
-                ? Math.max(pane.minPaneWidth, pane.userWidth)
+            : (conversationPane.userWidth > 0
+                ? Math.max(conversationPane.minPaneWidth, conversationPane.userWidth)
                 : Kirigami.Units.gridUnit * 30)
 
         // Never less than minHeight, so even a one-line answer reads like a
         // proper window — normally up to the screen's available height
         // (taskbar/panels excluded), past which the scroll area scrolls
         // instead; a dragged or maximized height overrides.
-        implicitHeight: pane.maximized
+        implicitHeight: conversationPane.maximized
             ? Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit
-            : (pane.userHeight > 0
-                ? Math.max(pane.minPaneHeight, pane.userHeight)
+            : (conversationPane.userHeight > 0
+                ? Math.max(conversationPane.minPaneHeight, conversationPane.userHeight)
                 : Math.max(
-                    pane.minHeight,
+                    conversationPane.minHeight,
                     Math.min(
                         body.implicitHeight + 2 * Kirigami.Units.gridUnit,
                         Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit
@@ -278,8 +278,8 @@ PlasmaCore.Dialog {
             // Dialog's own implicit-size sync is unreliable (it stops
             // after the first shrink), so applySize() owns the window.
             onImplicitHeightChanged: {
-                if (!pane.maximized && pane.userHeight === 0 && pane.visible) {
-                    pane.applySize()
+                if (!conversationPane.maximized && conversationPane.userHeight === 0 && conversationPane.visible) {
+                    conversationPane.applySize()
                 }
             }
 
@@ -306,14 +306,14 @@ PlasmaCore.Dialog {
                 PC3.ToolButton {
                     objectName: "maximizeButton"
 
-                    icon.name: pane.maximized ? "view-restore" : "view-fullscreen"
+                    icon.name: conversationPane.maximized ? "view-restore" : "view-fullscreen"
                     icon.color: "white"
 
                     PC3.ToolTip {
-                        text: pane.maximized ? i18n("Restore size") : i18n("Maximize")
+                        text: conversationPane.maximized ? i18n("Restore size") : i18n("Maximize")
                     }
 
-                    onClicked: pane.toggleMaximized()
+                    onClicked: conversationPane.toggleMaximized()
                 }
 
                 PC3.ToolButton {
@@ -326,7 +326,7 @@ PlasmaCore.Dialog {
                         text: i18n("Close")
                     }
 
-                    onClicked: pane.dismiss()
+                    onClicked: conversationPane.dismiss()
                 }
             }
 
@@ -384,7 +384,7 @@ PlasmaCore.Dialog {
                     // would shrink to its implicit width, capping the
                     // prompt bubbles at a fraction of the pane).
                     Repeater {
-                        model: pane.conversation
+                        model: conversationPane.conversation
 
                         delegate: ColumnLayout {
                             id: exchange
@@ -647,14 +647,14 @@ PlasmaCore.Dialog {
                             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-                            icon.name: pane.listening ? "media-playback-stop" : "media-record"
+                            icon.name: conversationPane.listening ? "media-playback-stop" : "media-record"
                             icon.width: Kirigami.Units.iconSizes.small
                             icon.height: Kirigami.Units.iconSizes.small
 
-                            onClicked: pane.recordClicked()
+                            onClicked: conversationPane.recordClicked()
 
                             PC3.ToolTip {
-                                text: pane.listening ? i18n("Stop") : i18n("Record a follow-up")
+                                text: conversationPane.listening ? i18n("Stop") : i18n("Record a follow-up")
                             }
                         }
 
@@ -663,8 +663,8 @@ PlasmaCore.Dialog {
                         PC3.BusyIndicator {
                             Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
                             Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
-                            visible: pane.transcribing
-                            running: pane.transcribing
+                            visible: conversationPane.transcribing
+                            running: conversationPane.transcribing
                         }
 
                         // The transcript, editable so a dictated follow-on
@@ -672,7 +672,7 @@ PlasmaCore.Dialog {
                         // from scratch. The editor is the single source of
                         // truth for what "Send to agent" submits: engine
                         // results flow in via onTranscriptChanged above,
-                        // edits flow back into pane.transcript here
+                        // edits flow back into conversationPane.transcript here
                         // (guarded, so the two never ping-pong).
                         PC3.TextArea {
                             id: followUpEdit
@@ -689,13 +689,13 @@ PlasmaCore.Dialog {
                             wrapMode: Text.Wrap
                             // Locked while the engine owns the text;
                             // editable the moment a result has landed.
-                            readOnly: pane.listening || pane.transcribing
-                            placeholderText: pane.transcribing ? i18n("Transcribing…")
-                                            : pane.listening ? i18n("Speak now…")
+                            readOnly: conversationPane.listening || conversationPane.transcribing
+                            placeholderText: conversationPane.transcribing ? i18n("Transcribing…")
+                                            : conversationPane.listening ? i18n("Speak now…")
                                             : i18n("Ask a follow-up…")
 
-                            onTextChanged: if (text !== pane.transcript) {
-                                pane.transcript = text
+                            onTextChanged: if (text !== conversationPane.transcript) {
+                                conversationPane.transcript = text
                             }
                         }
 
@@ -707,9 +707,9 @@ PlasmaCore.Dialog {
                             Layout.alignment: Qt.AlignRight
                             icon.name: "document-send"
                             text: i18n("Send to agent")
-                            enabled: pane.transcript.length > 0
-                                     && !pane.listening && !pane.transcribing
-                            onClicked: pane.submitted(pane.transcript)
+                            enabled: conversationPane.transcript.length > 0
+                                     && !conversationPane.listening && !conversationPane.transcribing
+                            onClicked: conversationPane.submitted(conversationPane.transcript)
                         }
                     }
 
@@ -718,9 +718,9 @@ PlasmaCore.Dialog {
                     // to complain about.
                     Kirigami.SelectableLabel {
                         Layout.fillWidth: true
-                        visible: pane.statusMessage.length > 0
+                        visible: conversationPane.statusMessage.length > 0
                         wrapMode: Text.WordWrap
-                        text: pane.statusMessage
+                        text: conversationPane.statusMessage
                         // Fixed rather than theme-derived: it sits on the
                         // pane's own dark backdrop, which is dark whichever
                         // theme runs.
@@ -737,7 +737,7 @@ PlasmaCore.Dialog {
         MouseArea {
             objectName: "resizeRight"
 
-            visible: !pane.maximized
+            visible: !conversationPane.maximized
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.bottom: parent.bottom
@@ -753,10 +753,10 @@ PlasmaCore.Dialog {
             }
             onPositionChanged: (mouse) => {
                 if (pressed) {
-                    pane.userWidth = Math.max(pane.minPaneWidth,
+                    conversationPane.userWidth = Math.max(conversationPane.minPaneWidth,
                         Math.min(Screen.width - 2 * Kirigami.Units.gridUnit,
                                  startWidth + mouse.x - pressX))
-                    pane.applySize()
+                    conversationPane.applySize()
                 }
             }
         }
@@ -764,7 +764,7 @@ PlasmaCore.Dialog {
         MouseArea {
             objectName: "resizeBottom"
 
-            visible: !pane.maximized
+            visible: !conversationPane.maximized
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom
@@ -780,10 +780,10 @@ PlasmaCore.Dialog {
             }
             onPositionChanged: (mouse) => {
                 if (pressed) {
-                    pane.userHeight = Math.max(pane.minPaneHeight,
+                    conversationPane.userHeight = Math.max(conversationPane.minPaneHeight,
                         Math.min(Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit,
                                  startHeight + mouse.y - pressY))
-                    pane.applySize()
+                    conversationPane.applySize()
                 }
             }
         }
@@ -791,7 +791,7 @@ PlasmaCore.Dialog {
         MouseArea {
             objectName: "resizeCorner"
 
-            visible: !pane.maximized
+            visible: !conversationPane.maximized
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             width: Kirigami.Units.gridUnit
@@ -811,13 +811,13 @@ PlasmaCore.Dialog {
             }
             onPositionChanged: (mouse) => {
                 if (pressed) {
-                    pane.userWidth = Math.max(pane.minPaneWidth,
+                    conversationPane.userWidth = Math.max(conversationPane.minPaneWidth,
                         Math.min(Screen.width - 2 * Kirigami.Units.gridUnit,
                                  startWidth + mouse.x - pressX))
-                    pane.userHeight = Math.max(pane.minPaneHeight,
+                    conversationPane.userHeight = Math.max(conversationPane.minPaneHeight,
                         Math.min(Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit,
                                  startHeight + mouse.y - pressY))
-                    pane.applySize()
+                    conversationPane.applySize()
                 }
             }
         }

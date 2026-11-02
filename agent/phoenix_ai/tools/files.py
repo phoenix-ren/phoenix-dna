@@ -50,8 +50,14 @@ class ReadTool:
         parameters={
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "File path (relative or absolute)"},
-                "offset": {"type": "integer", "description": "Line number to start from (1-indexed)"},
+                "path": {
+                    "type": "string",
+                    "description": "File path (relative or absolute)",
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Line number to start from (1-indexed)",
+                },
                 "limit": {"type": "integer", "description": "Maximum lines to return"},
             },
             "required": ["path"],
@@ -62,7 +68,9 @@ class ReadTool:
         self.root = root
         self.max_lines = max_lines
 
-    def execute(self, args: dict, *, cancel: threading.Event | None = None) -> ToolResult:
+    def execute(
+        self, args: dict, *, cancel: threading.Event | None = None
+    ) -> ToolResult:
         validate_required(self.spec, args)
         path = resolve_path(args["path"], self.root)
         if not path.exists():
@@ -80,7 +88,12 @@ class ReadTool:
         body = "\n".join(selected)
         return ToolResult(
             output=f"{header}\n{body}",
-            details={"path": str(path), "total_lines": total, "offset": offset, "limit": limit},
+            details={
+                "path": str(path),
+                "total_lines": total,
+                "offset": offset,
+                "limit": limit,
+            },
         )
 
 
@@ -91,7 +104,10 @@ class WriteTool:
         parameters={
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "File path (relative or absolute)"},
+                "path": {
+                    "type": "string",
+                    "description": "File path (relative or absolute)",
+                },
                 "content": {"type": "string", "description": "Full file content"},
             },
             "required": ["path", "content"],
@@ -101,7 +117,9 @@ class WriteTool:
     def __init__(self, root: Path):
         self.root = root
 
-    def execute(self, args: dict, *, cancel: threading.Event | None = None) -> ToolResult:
+    def execute(
+        self, args: dict, *, cancel: threading.Event | None = None
+    ) -> ToolResult:
         validate_required(self.spec, args)
         path = resolve_path(args["path"], self.root)
         content = args["content"]
@@ -128,8 +146,14 @@ class EditTool:
         parameters={
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "File path (relative or absolute)"},
-                "oldText": {"type": "string", "description": "Exact text to replace (must be unique)"},
+                "path": {
+                    "type": "string",
+                    "description": "File path (relative or absolute)",
+                },
+                "oldText": {
+                    "type": "string",
+                    "description": "Exact text to replace (must be unique)",
+                },
                 "newText": {"type": "string", "description": "Replacement text"},
             },
             "required": ["path", "oldText", "newText"],
@@ -139,7 +163,9 @@ class EditTool:
     def __init__(self, root: Path):
         self.root = root
 
-    def execute(self, args: dict, *, cancel: threading.Event | None = None) -> ToolResult:
+    def execute(
+        self, args: dict, *, cancel: threading.Event | None = None
+    ) -> ToolResult:
         validate_required(self.spec, args)
         path = resolve_path(args["path"], self.root)
         old, new = args["oldText"], args["newText"]
@@ -174,7 +200,10 @@ class LsTool:
         parameters={
             "type": "object",
             "properties": {
-                "path": {"type": "string", "description": "Directory path (default: working directory)"},
+                "path": {
+                    "type": "string",
+                    "description": "Directory path (default: working directory)",
+                },
             },
             "required": [],
         },
@@ -183,7 +212,9 @@ class LsTool:
     def __init__(self, root: Path):
         self.root = root
 
-    def execute(self, args: dict, *, cancel: threading.Event | None = None) -> ToolResult:
+    def execute(
+        self, args: dict, *, cancel: threading.Event | None = None
+    ) -> ToolResult:
         target = resolve_path(args.get("path", "."), self.root)
         if not target.exists():
             raise ToolError(f"directory not found: {target}")
@@ -195,4 +226,6 @@ class LsTool:
             raise ToolError(f"cannot list {target}: {exc.strerror or exc}") from exc
         names = [p.name + ("/" if p.is_dir() else "") for p in entries]
         output = "\n".join(names) if names else "(empty directory)"
-        return ToolResult(output=output, details={"path": str(target), "count": len(names)})
+        return ToolResult(
+            output=output, details={"path": str(target), "count": len(names)}
+        )

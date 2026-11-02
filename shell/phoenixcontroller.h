@@ -25,8 +25,8 @@ class Transcriber;
  *
  * Registered under the applet's QML module, so QML reaches it as:
  * \code
- * import org.phoenixai.shell
- * PhoenixShell.Controller.recording
+ * import plasma.applet.org.phoenixai.agent as Phoenix
+ * Phoenix.PhoenixController.recording
  * \endcode
  */
 class PhoenixController : public QObject
@@ -78,15 +78,14 @@ public:
     /*! \brief Toggles capture. Bound to the record button. */
     Q_INVOKABLE void toggleRecording();
 
-    /*! \brief Shows the typing overlay. */
-    Q_INVOKABLE void openOverlay();
+    /*! \brief Shows the dictation overlay. */
+    Q_INVOKABLE void showDictationOverlay();
 
-    /*! \brief Shows or hides the docked results pane. */
-    Q_INVOKABLE void togglePane();
+    /*! \brief Shows or hides the conversation pane. */
+    Q_INVOKABLE void toggleConversationPane();
 
     /*! \brief Sends the given text to the agent as if it had been dictated. */
     Q_INVOKABLE void submitText(const QString &text);
-
 
 Q_SIGNALS:
     void modeChanged();
@@ -96,11 +95,11 @@ Q_SIGNALS:
     void statusMessageChanged();
     void recordShortcutChanged();
 
-    /*! \brief Emitted when the overlay should be shown. */
-    void overlayRequested();
+    /*! \brief Emitted when the dictation overlay should be shown. */
+    void dictationOverlayRequested();
 
-    /*! \brief Emitted when the results pane should be toggled. */
-    void paneRequested();
+    /*! \brief Emitted when the conversation pane should be toggled. */
+    void conversationPaneRequested();
 
 private:
     void setRecording(bool recording);
@@ -110,7 +109,7 @@ private:
     AudioRingBuffer *m_waveform = nullptr;
     AgentBridge *m_agent = nullptr;
     AudioCapture *m_capture = nullptr;
-    ClipRecorder *m_clip = nullptr;
+    ClipRecorder *m_clipRecorder = nullptr;
     Transcriber *m_transcriber = nullptr;
     QAction *m_toggleShortcut = nullptr;
     bool m_recording = false;

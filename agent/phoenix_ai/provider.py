@@ -244,7 +244,9 @@ class OpenAICompatProvider:
                 arguments, arguments_error = {}, str(exc)
             calls.append(
                 ToolCall(
-                    id=call_id, name=name, arguments=arguments,
+                    id=call_id,
+                    name=name,
+                    arguments=arguments,
                     arguments_error=arguments_error,
                 )
             )
@@ -291,7 +293,9 @@ class FakeProvider:
         if should_cancel is not None and should_cancel():
             raise CancelledError("cancelled by user")
 
-        item = self.script[min(self._cursor, len(self.script) - 1)] if self.script else ""
+        item = (
+            self.script[min(self._cursor, len(self.script) - 1)] if self.script else ""
+        )
         self._cursor += 1
         if callable(item):
             item = item(messages, tools)

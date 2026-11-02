@@ -73,7 +73,7 @@ def test_notifier_events(fake_sudo):
     cache.notifier.on_finished = lambda ok: finished.append(ok)
 
     assert cache.get_password() == "hunter2"
-    assert len(started) == 2      # asked twice (bad, then good)
+    assert len(started) == 2  # asked twice (bad, then good)
     assert finished == [False, True]
 
 

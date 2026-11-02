@@ -74,8 +74,10 @@ struct ColumnStats
  * α = 1 − exp(−1 / (τ · fs)) the accumulator averages over τ *seconds* of
  * audio, so files sampled at different rates smooth identically.
  */
-QVector<ColumnStats> computeColumns(const QVector<double> &samples, int sampleRate,
-                                    int columns, double tauMs)
+QVector<ColumnStats> computeColumns(const QVector<double> &samples,
+                                    int sampleRate,
+                                    int columns,
+                                    double tauMs)
 {
     const qsizetype total = samples.size();
     QVector<ColumnStats> result(columns);
@@ -120,8 +122,7 @@ QVector<ColumnStats> computeColumns(const QVector<double> &samples, int sampleRa
 }
 
 /*! \brief Paints the three arrays into a .png, darkest layer first. */
-bool renderPng(const QVector<ColumnStats> &columns, int height, const QString &path,
-               QString *error)
+bool renderPng(const QVector<ColumnStats> &columns, int height, const QString &path, QString *error)
 {
     QImage image(int(columns.size()), height, QImage::Format_ARGB32);
     image.fill(kBackground);
@@ -160,9 +161,9 @@ int main(int argc, char **argv)
     QCoreApplication::setApplicationName(QStringLiteral("waveformrender"));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral(
-        "Render .wav files as static waveform .png images (waveform component, "
-        "step 1 — see design_docs/WAVEFORM_COMPONENT_1.md)."));
+    parser.setApplicationDescription(
+        QStringLiteral("Render .wav files as static waveform .png images (waveform component, "
+                       "step 1 — see design_docs/WAVEFORM_COMPONENT_1.md)."));
     parser.addHelpOption();
     parser.addOptions({
         {QStringLiteral("width"),
@@ -190,8 +191,8 @@ int main(int argc, char **argv)
     int height = kDefaultHeight;
     double tauMs = kDefaultTauMs;
     bool optionsValid = true;
-    const auto intOption = [&parser, &optionsValid](const QString &name, int fallback,
-                                                    int minimum, int maximum) {
+    const auto intOption = [&parser, &optionsValid](const QString &name, int fallback, int minimum,
+                                                    int maximum) {
         if (!parser.isSet(name)) {
             return fallback;
         }
@@ -211,7 +212,9 @@ int main(int argc, char **argv)
         bool ok = false;
         tauMs = parser.value(QStringLiteral("tau-ms")).toDouble(&ok);
         if (!ok || tauMs <= 0.0 || tauMs > 10000.0) {
-            std::fprintf(stderr, "waveformrender: --tau-ms must be a number between 0 (exclusive) and 10000\n");
+            std::fprintf(
+                stderr,
+                "waveformrender: --tau-ms must be a number between 0 (exclusive) and 10000\n");
             optionsValid = false;
         }
     }
@@ -242,12 +245,11 @@ int main(int argc, char **argv)
 
         // Every column needs at least one sample; cap so it always gets one.
         const int columns = qMin<qsizetype>(width, wav.mono.size());
-        const QVector<ColumnStats> stats =
-            computeColumns(wav.mono, wav.sampleRate, columns, tauMs);
+        const QVector<ColumnStats> stats = computeColumns(wav.mono, wav.sampleRate, columns, tauMs);
 
         const QFileInfo info(input);
-        const QString output = info.dir().filePath(
-            info.completeBaseName() + QStringLiteral("_waveform.png"));
+        const QString output =
+            info.dir().filePath(info.completeBaseName() + QStringLiteral("_waveform.png"));
         if (!renderPng(stats, height, output, &error)) {
             std::fprintf(stderr, "waveformrender: %s: %s\n", qPrintable(output), qPrintable(error));
             ++failures;
@@ -257,9 +259,9 @@ int main(int argc, char **argv)
         const double seconds = double(wav.mono.size()) / wav.sampleRate;
         // A plain stdout line, not qInfo: this is the tool's result, and the
         // ambient logging rules on some systems swallow Info-level messages.
-        std::printf("%s: %d x %d px, %.2f s, %s, %d Hz, %d ch -> %s\n",
-                    qPrintable(input), columns, height, seconds, qPrintable(wav.format),
-                    wav.sampleRate, wav.channelCount, qPrintable(output));
+        std::printf("%s: %d x %d px, %.2f s, %s, %d Hz, %d ch -> %s\n", qPrintable(input), columns,
+                    height, seconds, qPrintable(wav.format), wav.sampleRate, wav.channelCount,
+                    qPrintable(output));
     }
 
     return failures == 0 ? 0 : 1;

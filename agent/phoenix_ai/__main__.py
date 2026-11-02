@@ -29,7 +29,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config-dir", help="configuration directory")
     parser.add_argument("--data-dir", help="state/data directory")
     parser.add_argument(
-        "--check-config", action="store_true", help="print the effective config and exit"
+        "--check-config",
+        action="store_true",
+        help="print the effective config and exit",
     )
     args = parser.parse_args(argv)
 
@@ -39,9 +41,7 @@ def main(argv: list[str] | None = None) -> int:
         stream=sys.stderr,
     )
 
-    config = load_config(
-        config_dir=args.config_dir, data_dir=args.data_dir
-    )
+    config = load_config(config_dir=args.config_dir, data_dir=args.data_dir)
     if args.provider:
         import dataclasses
 

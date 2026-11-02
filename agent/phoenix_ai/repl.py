@@ -43,9 +43,18 @@ except ImportError:  # pragma: no cover - non-readline platforms
 # ---------------------------------------------------------------------------
 
 SLASH_COMMANDS = (
-    "/help", "/h", "?",
-    "/mode", "/new", "/session", "/modes", "/state", "/cancel",
-    "/quit", "/exit", "/q",
+    "/help",
+    "/h",
+    "?",
+    "/mode",
+    "/new",
+    "/session",
+    "/modes",
+    "/state",
+    "/cancel",
+    "/quit",
+    "/exit",
+    "/q",
 )
 MODE_NAMES = ("root", "user", "web")
 
@@ -134,7 +143,9 @@ class HistoryTracker:
 def save_history(path: Path, entries: list[str]) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text("\n".join(entries) + ("\n" if entries else ""), encoding="utf-8")
+        path.write_text(
+            "\n".join(entries) + ("\n" if entries else ""), encoding="utf-8"
+        )
     except OSError as exc:  # history is best-effort
         print(f"warning: could not save REPL history: {exc}", file=sys.stderr)
 
@@ -234,7 +245,11 @@ class EventPrinter:
             self.line(self._c("36", f"  ⚒ {event.get('tool', '')} {args}"))
         elif kind == "tool_call_finished":
             self.close_line()
-            mark = self._c("32", "  ✓") if event.get("status") == "success" else self._c("31", "  ✗")
+            mark = (
+                self._c("32", "  ✓")
+                if event.get("status") == "success"
+                else self._c("31", "  ✗")
+            )
             output = (event.get("output") or "").strip().splitlines() or [""]
             head = " ⎪ ".join(l[:110] for l in output[:3])
             if len(output) > 3:
@@ -242,16 +257,25 @@ class EventPrinter:
             self.line(f"{mark} {head}")
         elif kind == "auth_requested":
             self.close_line()
-            self.line(self._c("33", "  🔑 administrator password requested (KDE dialog)"))
+            self.line(
+                self._c("33", "  🔑 administrator password requested (KDE dialog)")
+            )
         elif kind == "auth_finished":
             ok = bool(event.get("success"))
             self.line(
-                self._c("32" if ok else "31", f"     password {'accepted' if ok else 'failed or cancelled'}")
+                self._c(
+                    "32" if ok else "31",
+                    f"     password {'accepted' if ok else 'failed or cancelled'}",
+                )
             )
         elif kind == "run_finished":
             self.close_line()
             status = event.get("status", "")
-            colored = self._c("32", status) if status == "completed" else self._c("31", status)
+            colored = (
+                self._c("32", status)
+                if status == "completed"
+                else self._c("31", status)
+            )
             self.line(
                 f"  ● {colored} · {event.get('turns', 0)} turns · "
                 f"{event.get('tokens_in', 0)}+{event.get('tokens_out', 0)} tokens"
@@ -270,17 +294,19 @@ def wait_for_run(events: queue.Queue, run_id: str, *, on_event=None) -> dict:
         event = events.get()
         if on_event is not None:
             on_event(event)
-        if (
-            event.get("kind") == "run_finished"
-            and event.get("run_id") == run_id
-        ):
+        if event.get("kind") == "run_finished" and event.get("run_id") == run_id:
             return event
 
 
 def dbus_signal_to_event(name: str, *args) -> dict | None:
     """Convert a D-Bus signal into the daemon's event-dict shape."""
     if name == "RunStarted":
-        return {"kind": "run_started", "run_id": str(args[0]), "mode": str(args[1]), "session_id": str(args[2])}
+        return {
+            "kind": "run_started",
+            "run_id": str(args[0]),
+            "mode": str(args[1]),
+            "session_id": str(args[2]),
+        }
     if name == "TextDelta":
         return {"kind": "text_delta", "run_id": str(args[0]), "text": str(args[1])}
     if name == "ToolCallStarted":
@@ -288,7 +314,13 @@ def dbus_signal_to_event(name: str, *args) -> dict | None:
             parsed = json.loads(str(args[3]))
         except ValueError:
             parsed = {}
-        return {"kind": "tool_call_started", "run_id": str(args[0]), "call_id": str(args[1]), "tool": str(args[2]), "args": parsed}
+        return {
+            "kind": "tool_call_started",
+            "run_id": str(args[0]),
+            "call_id": str(args[1]),
+            "tool": str(args[2]),
+            "args": parsed,
+        }
     if name == "ToolCallFinished":
         return {
             "kind": "tool_call_finished",
@@ -299,9 +331,17 @@ def dbus_signal_to_event(name: str, *args) -> dict | None:
             "output": str(args[4]),
         }
     if name == "AuthRequested":
-        return {"kind": "auth_requested", "run_id": str(args[0]), "message": str(args[1])}
+        return {
+            "kind": "auth_requested",
+            "run_id": str(args[0]),
+            "message": str(args[1]),
+        }
     if name == "AuthFinished":
-        return {"kind": "auth_finished", "run_id": str(args[0]), "success": bool(args[1])}
+        return {
+            "kind": "auth_finished",
+            "run_id": str(args[0]),
+            "success": bool(args[1]),
+        }
     if name == "RunFinished":
         return {
             "kind": "run_finished",
@@ -336,11 +376,11 @@ History: ↑/↓ recalls earlier prompts and persists between sessions."""
 
 def repl_loop(
     *,
-    submit,                      # (prompt, mode, session_id) -> run_id
-    cancel_run,                  # (run_id) -> bool
-    state_fn=None,               # () -> str description, or None
-    modes_fn=None,               # () -> [(name, description, dir)]
-    events: queue.Queue,         # event source consumed while waiting
+    submit,  # (prompt, mode, session_id) -> run_id
+    cancel_run,  # (run_id) -> bool
+    state_fn=None,  # () -> str description, or None
+    modes_fn=None,  # () -> [(name, description, dir)]
+    events: queue.Queue,  # event source consumed while waiting
     printer: EventPrinter,
     initial_mode: str = "user",
     initial_session: str = "",
@@ -352,7 +392,9 @@ def repl_loop(
     mode = initial_mode
     bold = "\x1b[1m" if printer.color else ""
     reset = "\x1b[0m" if printer.color else ""
-    printer.line(f"phoenix-agent REPL {__version__} — /help for commands, Ctrl+D to quit")
+    printer.line(
+        f"phoenix-agent REPL {__version__} — /help for commands, Ctrl+D to quit"
+    )
 
     while True:
         try:
@@ -426,7 +468,7 @@ def repl_loop(
             except KeyboardInterrupt:
                 if not cancelled_once:
                     cancelled_once = True
-                    printer.line(self_cancelling())
+                    printer.line(cancel_notice())
                     try:
                         cancel_run(run_id)
                     except Exception:
@@ -434,25 +476,25 @@ def repl_loop(
                 else:
                     printer.line("(already cancelling — waiting for the agent to stop)")
         # remember the session for follow-ups in this mode
-        session_id = _last_session_for(run_id)
+        session_id = _session_for_run(run_id)
         if session_id:
             sessions[mode] = session_id
 
 
-def self_cancelling() -> str:
+def cancel_notice() -> str:
     return "  ^C — cancelling current run…"
 
 
-_last_sessions: dict[str, str] = {}
+_sessions_by_run: dict[str, str] = {}
 
 
-def _remember_session(run_id: str, session_id: str) -> None:
+def _remember_run_session(run_id: str, session_id: str) -> None:
     if session_id:
-        _last_sessions[run_id] = session_id
+        _sessions_by_run[run_id] = session_id
 
 
-def _last_session_for(run_id: str) -> str:
-    return _last_sessions.pop(run_id, "")
+def _session_for_run(run_id: str) -> str:
+    return _sessions_by_run.pop(run_id, "")
 
 
 # ---------------------------------------------------------------------------
@@ -480,14 +522,16 @@ def run_embedded(args, history=None) -> int:
     printer = EventPrinter(color=not args.no_color)
 
     submit = daemon.submit
-    printer = EventPrinter(color=not args.no_color)
 
     state = lambda: json.dumps(daemon.state())  # noqa: E731
 
     def modes():
-        from .modes import PROFILES
+        from .modes import MODE_PROFILES
 
-        return [(p.mode.value, p.description, str(p.working_dir(config))) for p in PROFILES.values()]
+        return [
+            (p.mode.value, p.description, str(p.working_dir(config)))
+            for p in MODE_PROFILES.values()
+        ]
 
     _patch_printer_for_sessions(printer)
     try:
@@ -512,7 +556,7 @@ def _patch_printer_for_sessions(printer: EventPrinter) -> None:
 
     def patched(event: dict) -> None:
         if event.get("kind") == "run_started":
-            _remember_session(event.get("run_id", ""), event.get("session_id", ""))
+            _remember_run_session(event.get("run_id", ""), event.get("session_id", ""))
         original(event)
 
     printer.on_event = patched
@@ -551,8 +595,13 @@ def run_dbus(args, history=None) -> int:
     _patch_printer_for_sessions(printer)
 
     signal_names = [
-        "RunStarted", "TextDelta", "ToolCallStarted", "ToolCallFinished",
-        "AuthRequested", "AuthFinished", "RunFinished",
+        "RunStarted",
+        "TextDelta",
+        "ToolCallStarted",
+        "ToolCallFinished",
+        "AuthRequested",
+        "AuthFinished",
+        "RunFinished",
     ]
     for name in signal_names:
         bus.add_signal_receiver(
@@ -593,7 +642,9 @@ def run_dbus(args, history=None) -> int:
     return 0
 
 
-def _enqueue_signal(events: queue.Queue, printer: EventPrinter, name: str, *args) -> None:
+def _enqueue_signal(
+    events: queue.Queue, printer: EventPrinter, name: str, *args
+) -> None:
     event = dbus_signal_to_event(name, *args)
     if event is not None:
         events.put(event)
@@ -609,28 +660,38 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument(
-        "--dbus", action="store_true",
+        "--dbus",
+        action="store_true",
         help="connect to a running daemon over D-Bus (like the plasmoid) "
         "instead of embedding the daemon in this process",
     )
     parser.add_argument("--mode", choices=["root", "user", "web"], default="user")
     parser.add_argument("--session", default="", help="continue a session id")
-    parser.add_argument("--provider", choices=["minimax", "fake"], help="LLM provider (embedded mode)")
+    parser.add_argument(
+        "--provider", choices=["minimax", "fake"], help="LLM provider (embedded mode)"
+    )
     parser.add_argument("--config-dir")
     parser.add_argument("--data-dir")
     parser.add_argument("--no-color", action="store_true")
     parser.add_argument(
-        "--history", default=None, metavar="FILE",
+        "--history",
+        default=None,
+        metavar="FILE",
         help=f"history file (default: {default_history_path()})",
     )
     parser.add_argument(
-        "--no-history", action="store_true",
+        "--no-history",
+        action="store_true",
         help="do not persist history between sessions",
     )
     args = parser.parse_args(argv)
 
-    history_path = None if args.no_history else (
-        Path(args.history).expanduser() if args.history else default_history_path()
+    history_path = (
+        None
+        if args.no_history
+        else (
+            Path(args.history).expanduser() if args.history else default_history_path()
+        )
     )
     history = install_readline(history_path)
 

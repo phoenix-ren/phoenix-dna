@@ -3,9 +3,9 @@
 
 #pragma once
 
+#include <QByteArray>
 #include <QObject>
 #include <QProcess>
-#include <QByteArray>
 #include <QString>
 
 /*!

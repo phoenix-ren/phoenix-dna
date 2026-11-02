@@ -8,15 +8,17 @@ from __future__ import annotations
 import dataclasses
 
 from phoenix_ai.loop import AgentLoop
-from phoenix_ai.modes import PROFILES, Mode, build_toolset
+from phoenix_ai.modes import MODE_PROFILES, Mode, build_toolset
 from phoenix_ai.privileges import SudoCredentialCache, StaticPasswordProvider
 from phoenix_ai.prompts import build_system_prompt
 from phoenix_ai.provider import FakeProvider
 from phoenix_ai.sessions import SessionManager, SessionStore
 
 
-def make_loop(config, home_dir, script, mode=Mode.USER, cache=None, sudo_bin=None, **loop_kw):
-    profile = PROFILES[mode]
+def make_loop(
+    config, home_dir, script, mode=Mode.USER, cache=None, sudo_bin=None, **loop_kw
+):
+    profile = MODE_PROFILES[mode]
     cfg = dataclasses.replace(config, sudo_bin=sudo_bin or config.sudo_bin)
     tools = build_toolset(profile, cfg, credential_cache=cache, home_dir=home_dir)
     manager = SessionManager(SessionStore(config.data_dir / "sessions"))
@@ -188,7 +190,9 @@ def test_cancelled_before_start(config, home_dir):
 
 
 def test_provider_llm_error(config, home_dir):
-    loop, events, _c, _m = make_loop(config, home_dir, [{"raise": "llm", "message": "boom"}])
+    loop, events, _c, _m = make_loop(
+        config, home_dir, [{"raise": "llm", "message": "boom"}]
+    )
     summary = loop.run("break the model")
     assert summary["status"] == "error"
     assert "boom" in summary["final_text"]
@@ -201,9 +205,7 @@ def test_provider_cancelled_midstream(config, home_dir):
 
 
 def test_max_turns_guard(config, home_dir):
-    script = [
-        lambda messages, tools: {"tool": "bash", "args": {"command": "true"}}
-    ]
+    script = [lambda messages, tools: {"tool": "bash", "args": {"command": "true"}}]
     loop, events, _c, _m = make_loop(config, home_dir, script, max_turns=3)
     summary = loop.run("loop forever")
     assert summary["status"] == "max_turns"

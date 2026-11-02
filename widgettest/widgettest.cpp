@@ -3,10 +3,10 @@
 
 #include <QCommandLineParser>
 #include <QGuiApplication>
+#include <QPluginLoader>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickView>
-#include <QPluginLoader>
 #include <QString>
 #include <QTimer>
 #include <cmath>
@@ -23,10 +23,10 @@ int main(int argc, char **argv)
     QCoreApplication::setApplicationName(QStringLiteral("widgettest"));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(QStringLiteral(
-        "Testbench for the Phoenix AI panel widget, hosting the real applet "
-        "plugin from the build tree, plus the buffered waveform component "
-        "(design_docs/WAVEFORM_COMPONENT_2.md)."));
+    parser.setApplicationDescription(
+        QStringLiteral("Testbench for the Phoenix AI panel widget, hosting the real applet "
+                       "plugin from the build tree, plus the buffered waveform component "
+                       "(design_docs/WAVEFORM_COMPONENT_2.md)."));
     parser.addHelpOption();
     QCommandLineOption speedOption(
         QStringLiteral("speed"),
@@ -52,10 +52,9 @@ int main(int argc, char **argv)
         QStringLiteral("s"));
     parser.addOptions({speedOption, secondsOption, grabOption, recordOption, stopAfterOption});
     parser.addPositionalArgument(
-        QStringLiteral("wav"),
-        QStringLiteral("Optional .wav file: fed to the waveform as realtime "
-                       "25 ms buffers on a feed thread, looping. Without it "
-                       "only the applet itself is shown."));
+        QStringLiteral("wav"), QStringLiteral("Optional .wav file: fed to the waveform as realtime "
+                                              "25 ms buffers on a feed thread, looping. Without it "
+                                              "only the applet itself is shown."));
     parser.process(app);
 
     qreal speed = 1.0;
@@ -63,7 +62,8 @@ int main(int argc, char **argv)
         bool ok = false;
         speed = parser.value(speedOption).toDouble(&ok);
         if (!ok || speed <= 0.0 || speed > 100.0) {
-            std::fprintf(stderr, "widgettest: --speed must be a number between 0 (exclusive) and 100\n");
+            std::fprintf(stderr,
+                         "widgettest: --speed must be a number between 0 (exclusive) and 100\n");
             return 2;
         }
     }
@@ -74,8 +74,8 @@ int main(int argc, char **argv)
     // therefore runs its real capture path — record button included.
     QPluginLoader loader(QStringLiteral(PHOENIX_APPLET_PLUGIN));
     if (!loader.load()) {
-        qWarning("cannot load applet plugin %s:\n  %s",
-                 PHOENIX_APPLET_PLUGIN, qPrintable(loader.errorString()));
+        qWarning("cannot load applet plugin %s:\n  %s", PHOENIX_APPLET_PLUGIN,
+                 qPrintable(loader.errorString()));
         return 1;
     }
 
@@ -113,8 +113,8 @@ int main(int argc, char **argv)
     view.engine()->addImportPath(QStringLiteral("/usr/lib64/qt6/qml"));
     view.engine()->rootContext()->setContextProperty(QStringLiteral("waveBuffer"), waveBuffer);
     view.engine()->rootContext()->setContextProperty(QStringLiteral("waveFeedRunning"), feeding);
-    view.engine()->rootContext()->setContextProperty(
-        QStringLiteral("waveAutoRecord"), parser.isSet(recordOption));
+    view.engine()->rootContext()->setContextProperty(QStringLiteral("waveAutoRecord"),
+                                                     parser.isSet(recordOption));
     qreal stopAfter = 0.0;
     if (parser.isSet(stopAfterOption)) {
         bool ok = false;
@@ -124,8 +124,8 @@ int main(int argc, char **argv)
             return 2;
         }
     }
-    view.engine()->rootContext()->setContextProperty(
-        QStringLiteral("waveAutoStopSeconds"), stopAfter);
+    view.engine()->rootContext()->setContextProperty(QStringLiteral("waveAutoStopSeconds"),
+                                                     stopAfter);
     view.setTitle(QStringLiteral("Phoenix AI — widget testbench"));
     // The root Rectangle has no implicit size of its own: make the view size
     // the root object, or the content collapses to zero.

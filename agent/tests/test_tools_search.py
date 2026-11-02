@@ -60,7 +60,11 @@ def test_tavily_success(http):
         {
             "answer": "Fedora 44 shipped in October 2025.",
             "results": [
-                {"title": "Fedora release", "url": "https://fedoraproject.org", "content": "announced"}
+                {
+                    "title": "Fedora release",
+                    "url": "https://fedoraproject.org",
+                    "content": "announced",
+                }
             ],
         }
     )
@@ -90,7 +94,11 @@ def test_exa_success(http):
     replies.append(
         {
             "results": [
-                {"title": "Qt 6.11 docs", "url": "https://doc.qt.io", "text": "release notes"}
+                {
+                    "title": "Qt 6.11 docs",
+                    "url": "https://doc.qt.io",
+                    "text": "release notes",
+                }
             ]
         }
     )

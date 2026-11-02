@@ -75,7 +75,9 @@ class TavilySearchTool:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
 
-    def execute(self, args: dict, *, cancel: threading.Event | None = None) -> ToolResult:
+    def execute(
+        self, args: dict, *, cancel: threading.Event | None = None
+    ) -> ToolResult:
         validate_required(self.spec, args)
         query = args["query"]
         max_results = max(1, min(int(args.get("max_results", 5)), 10))
@@ -129,7 +131,9 @@ class ExaSearchTool:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
 
-    def execute(self, args: dict, *, cancel: threading.Event | None = None) -> ToolResult:
+    def execute(
+        self, args: dict, *, cancel: threading.Event | None = None
+    ) -> ToolResult:
         validate_required(self.spec, args)
         query = args["query"]
         num = max(1, min(int(args.get("num_results", 5)), 10))
@@ -144,8 +148,12 @@ class ExaSearchTool:
         )
         lines = []
         for i, result in enumerate(data.get("results", []), start=1):
-            lines.append(f"{i}. {result.get('title', '(untitled)')} - {result.get('url', '')}")
-            lines.append(f"   {_snippet(result.get('text', '') or result.get('summary', ''), 600)}")
+            lines.append(
+                f"{i}. {result.get('title', '(untitled)')} - {result.get('url', '')}"
+            )
+            lines.append(
+                f"   {_snippet(result.get('text', '') or result.get('summary', ''), 600)}"
+            )
         return ToolResult(
             output="\n".join(lines) or "no results",
             details={"query": query, "raw": data},

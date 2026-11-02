@@ -10,7 +10,8 @@
 
 #include <cstring>
 
-namespace {
+namespace
+{
 
 // pw-cat's first frames after stream start are a full-scale burst (every
 // sample +32767, see DESIGN.md). A frame whose samples are all identical at
@@ -19,10 +20,7 @@ constexpr int kFullScaleThreshold = 32000;
 
 } // namespace
 
-ClipRecorder::ClipRecorder(QObject *parent)
-    : QObject(parent)
-{
-}
+ClipRecorder::ClipRecorder(QObject *parent) : QObject(parent) {}
 
 void ClipRecorder::start()
 {

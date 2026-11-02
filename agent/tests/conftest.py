@@ -60,8 +60,7 @@ def fake_sudo(tmp_path) -> Path:
       sudo -S -p '' -k -v             (validate only)
       sudo -S -p '' -- <command...>   (execute as root)
     """
-    script = textwrap.dedent(
-        """\
+    script = textwrap.dedent("""\
         #!/usr/bin/env bash
         password=""
         if [[ " $* " == *" -v "* ]]; then
@@ -79,8 +78,7 @@ def fake_sudo(tmp_path) -> Path:
         fi
         export FAKE_SUDO_OK=1
         exec "$@"
-        """
-    )
+        """)
     path = tmp_path / "fake-sudo"
     path.write_text(script)
     path.chmod(0o755)

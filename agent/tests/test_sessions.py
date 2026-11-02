@@ -10,9 +10,17 @@ from phoenix_ai.sessions import SessionManager, SessionStore
 
 def test_store_roundtrip(tmp_path):
     store = SessionStore(tmp_path / "sessions")
-    store.append("user", "abc", {"kind": "message", "message": {"role": "user", "content": "hi"}})
-    store.append("user", "abc", {"kind": "run_finished", "data": {"status": "completed"}})
-    store.append("user", "abc", {"kind": "message", "message": {"role": "assistant", "content": "yo"}})
+    store.append(
+        "user", "abc", {"kind": "message", "message": {"role": "user", "content": "hi"}}
+    )
+    store.append(
+        "user", "abc", {"kind": "run_finished", "data": {"status": "completed"}}
+    )
+    store.append(
+        "user",
+        "abc",
+        {"kind": "message", "message": {"role": "assistant", "content": "yo"}},
+    )
 
     entries = store.read("user", "abc")
     assert len(entries) == 3
@@ -25,7 +33,9 @@ def test_store_skips_corrupt_lines(tmp_path):
     store = SessionStore(tmp_path / "sessions")
     path = store.path("user", "x")
     path.parent.mkdir(parents=True)
-    path.write_text('{"kind": "message", "message": {"role": "user", "content": "ok"}}\nnot json\n\n')
+    path.write_text(
+        '{"kind": "message", "message": {"role": "user", "content": "ok"}}\nnot json\n\n'
+    )
     assert len(store.read("user", "x")) == 1
 
 

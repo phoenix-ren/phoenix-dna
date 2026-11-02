@@ -3,10 +3,7 @@
 
 #include "conversationmodel.h"
 
-ConversationModel::ConversationModel(QObject *parent)
-    : QAbstractListModel(parent)
-{
-}
+ConversationModel::ConversationModel(QObject *parent) : QAbstractListModel(parent) {}
 
 int ConversationModel::rowCount(const QModelIndex &parent) const
 {
@@ -38,11 +35,8 @@ QVariant ConversationModel::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> ConversationModel::roleNames() const
 {
     return {
-        {PromptRole, "prompt"},
-        {SenderRole, "sender"},
-        {ResultRole, "result"},
-        {ToolLogRole, "toolLog"},
-        {RunningRole, "running"},
+        {PromptRole, "prompt"},   {SenderRole, "sender"},   {ResultRole, "result"},
+        {ToolLogRole, "toolLog"}, {RunningRole, "running"},
     };
 }
 

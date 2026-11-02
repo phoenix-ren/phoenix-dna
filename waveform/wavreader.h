@@ -21,4 +21,4 @@ namespace WavReader
 {
 /*! \brief Reads a RIFF/WAVE file, mixing all channels down to mono. */
 bool read(const QString &path, WavData *out, QString *error);
-}
+} // namespace WavReader

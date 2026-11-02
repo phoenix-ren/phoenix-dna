@@ -28,7 +28,8 @@
 #include <cstdio>
 #include <cstring>
 
-namespace {
+namespace
+{
 
 struct WavInfo
 {
@@ -92,8 +93,8 @@ int main(int argc, char **argv)
                        "optionally transcribes it for real."));
     parser.addHelpOption();
     parser.addOptions({
-        { { QStringLiteral("s"), QStringLiteral("stt") },
-          QStringLiteral("Send the clip through the transcription API.") },
+        {{QStringLiteral("s"), QStringLiteral("stt")},
+         QStringLiteral("Send the clip through the transcription API.")},
     });
     parser.addPositionalArgument(QStringLiteral("input"),
                                  QStringLiteral("input WAV file (16-bit PCM)"));
@@ -108,9 +109,8 @@ int main(int argc, char **argv)
         parser.showHelp(1);
     }
     const QString inputPath = args.at(0);
-    const QString outputPath = args.size() > 1
-        ? args.at(1)
-        : inputPath + QStringLiteral(".mono16k.wav");
+    const QString outputPath =
+        args.size() > 1 ? args.at(1) : inputPath + QStringLiteral(".mono16k.wav");
 
     WavInfo input;
     QString error;
@@ -137,8 +137,8 @@ int main(int argc, char **argv)
 
     const qsizetype blockFrames = input.sampleRate / 50;
     for (qsizetype offset = 0; offset < input.pcm.size(); offset += blockFrames * frameBytes) {
-        recorder.append(input.pcm.mid(int(offset), int(blockFrames * frameBytes)),
-                        input.sampleRate, input.channels);
+        recorder.append(input.pcm.mid(int(offset), int(blockFrames * frameBytes)), input.sampleRate,
+                        input.channels);
     }
 
     const QByteArray wav = recorder.takeWav();
@@ -160,8 +160,8 @@ int main(int argc, char **argv)
     const auto *header = reinterpret_cast<const uchar *>(wav.constData());
     const int outRate = int(qFromLittleEndian<quint32>(header + 24));
     const quint32 outSize = qFromLittleEndian<quint32>(header + 40);
-    printf("clip  : %d Hz, 1 ch, %.2f s, %lld bytes\n", outRate,
-           double(outSize) / 2 / outRate, (long long)wav.size());
+    printf("clip  : %d Hz, 1 ch, %.2f s, %lld bytes\n", outRate, double(outSize) / 2 / outRate,
+           (long long)wav.size());
 
     if (!parser.isSet(QStringLiteral("stt"))) {
         return 0;
@@ -175,15 +175,16 @@ int main(int argc, char **argv)
     bool done = false;
     int resultCode = 0;
     Transcriber transcriber;
-    QObject::connect(&transcriber, &Transcriber::finished, &app,
-                     [&app, &done, &resultCode](const QString &text) {
-                         printf("text  : %s\n",
-                                qPrintable(text.isEmpty() ? QStringLiteral("<nothing recognized>") : text));
-                         fflush(stdout);
-                         done = true;
-                         resultCode = 0;
-                         app.exit(0);
-                     });
+    QObject::connect(
+        &transcriber, &Transcriber::finished, &app,
+        [&app, &done, &resultCode](const QString &text) {
+            printf("text  : %s\n",
+                   qPrintable(text.isEmpty() ? QStringLiteral("<nothing recognized>") : text));
+            fflush(stdout);
+            done = true;
+            resultCode = 0;
+            app.exit(0);
+        });
     QObject::connect(&transcriber, &Transcriber::failed, &app,
                      [&app, &done, &resultCode](const QString &message) {
                          fprintf(stderr, "error : %s\n", qPrintable(message));

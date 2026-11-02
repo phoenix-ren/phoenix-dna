@@ -65,7 +65,9 @@ class AgentLoop:
             )
         )
         self._sessions.record(
-            self._conversation, "run_started", {"run_id": self.run_id, "mode": self.mode_name}
+            self._conversation,
+            "run_started",
+            {"run_id": self.run_id, "mode": self.mode_name},
         )
         self._sessions.append(self._conversation, {"role": "user", "content": prompt})
 
@@ -83,9 +85,13 @@ class AgentLoop:
                 turns += 1
                 if turns > self.max_turns:
                     status = "max_turns"
-                    final_text = last_text or "Stopped: too many tool turns without an answer."
+                    final_text = (
+                        last_text or "Stopped: too many tool turns without an answer."
+                    )
                     break
-                self._emit(events.make(events.TURN_STARTED, run_id=self.run_id, turn=turns))
+                self._emit(
+                    events.make(events.TURN_STARTED, run_id=self.run_id, turn=turns)
+                )
 
                 stream = self._provider.stream(
                     self._request_messages(),

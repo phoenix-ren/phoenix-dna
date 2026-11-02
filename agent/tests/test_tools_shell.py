@@ -59,9 +59,7 @@ def test_cancel_event_kills(home_dir):
 
 def test_output_truncation(home_dir):
     tool = make_tool(home_dir, max_output_chars=300)
-    result = tool.execute(
-        {"command": "seq 1 500", "timeout": 10}
-    )
+    result = tool.execute({"command": "seq 1 500", "timeout": 10})
     assert "characters truncated" in result.output
     assert len(result.output) < 1000
 
@@ -76,7 +74,9 @@ def test_interactive_failure_gets_hint(home_dir):
     # and aborts; the tool appends a hint so the model retries with -y.
     tool = make_tool(home_dir)
     result = tool.execute(
-        {"command": "echo 'Is this ok [y/N]:'; echo 'Error: Operation aborted.' >&2; exit 1"}
+        {
+            "command": "echo 'Is this ok [y/N]:'; echo 'Error: Operation aborted.' >&2; exit 1"
+        }
     )
     assert "[exit 1]" in result.output
     assert "hint" in result.output

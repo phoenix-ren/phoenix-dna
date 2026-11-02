@@ -33,7 +33,8 @@ namespace AgentMode
 Q_NAMESPACE
 QML_NAMED_ELEMENT(AgentMode)
 
-enum Mode {
+enum Mode
+{
     Root = 0, ///< Elevated via KAuth; working directory "/".
     User = 1, ///< Unprivileged; working directory "~".
     Web = 2, ///< No directory context; general queries.

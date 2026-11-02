@@ -25,7 +25,7 @@ from uuid import uuid4
 from . import events
 from .config import Config
 from .loop import AgentLoop
-from .modes import PROFILES, Mode, ModeProfile, build_toolset
+from .modes import MODE_PROFILES, Mode, ModeProfile, build_toolset
 from .privileges import KDialogPasswordProvider, SudoCredentialCache
 from .prompts import build_system_prompt, load_context_file
 from .provider import LLMProvider, build_provider
@@ -79,7 +79,7 @@ class AgentDaemon:
         self._emitter(event)
 
     def modes(self) -> list[ModeProfile]:
-        return list(PROFILES.values())
+        return list(MODE_PROFILES.values())
 
     def mode(self) -> Mode:
         """The mode the widget currently has selected."""
@@ -214,7 +214,7 @@ class AgentDaemon:
         )
 
     def _execute(self, job: PendingPrompt) -> None:
-        profile = PROFILES[job.mode]
+        profile = MODE_PROFILES[job.mode]
         cancel = self._current_cancel
 
         credential_cache = None
@@ -228,9 +228,7 @@ class AgentDaemon:
                 )
             )
             credential_cache.notifier.on_finished = lambda ok: self._emitter(
-                events.make(
-                    events.AUTH_FINISHED, run_id=job.run_id, success=bool(ok)
-                )
+                events.make(events.AUTH_FINISHED, run_id=job.run_id, success=bool(ok))
             )
 
         tools = build_toolset(profile, self.config, credential_cache=credential_cache)

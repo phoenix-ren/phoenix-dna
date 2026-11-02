@@ -42,8 +42,8 @@ def test_path_completion(tmp_path):
 
     all_matches = _complete_path(str(tmp_path) + "/")
     assert str(tmp_path) + "/alpha.txt" in all_matches
-    assert str(tmp_path) + "/beta/" in all_matches          # dirs get a trailing /
-    assert not any(".hidden" in m for m in all_matches)     # hidden hidden
+    assert str(tmp_path) + "/beta/" in all_matches  # dirs get a trailing /
+    assert not any(".hidden" in m for m in all_matches)  # hidden hidden
 
     assert _complete_path(str(tmp_path) + "/al") == [str(tmp_path) + "/alpha.txt"]
     assert any(".hidden" in m for m in _complete_path(str(tmp_path) + "/."))
@@ -62,8 +62,8 @@ def test_history_tracker_dedupes():
     added = []
     tracker = HistoryTracker(add_fn=added.append)
     tracker.add("first prompt")
-    tracker.add("first prompt")   # consecutive duplicate dropped
-    tracker.add("   ")            # blank dropped
+    tracker.add("first prompt")  # consecutive duplicate dropped
+    tracker.add("   ")  # blank dropped
     tracker.add("second prompt")
     assert tracker.entries == ["first prompt", "second prompt"]
     assert added == tracker.entries

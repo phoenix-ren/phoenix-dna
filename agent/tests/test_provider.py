@@ -95,7 +95,13 @@ def test_arguments_streamed_in_pieces_are_reassembled():
     second = _sse(
         {
             "choices": [
-                {"delta": {"tool_calls": [{"index": 0, "function": {"arguments": 'mand": "ls"}'}}]}}
+                {
+                    "delta": {
+                        "tool_calls": [
+                            {"index": 0, "function": {"arguments": 'mand": "ls"}'}}
+                        ]
+                    }
+                }
             ]
         }
     )

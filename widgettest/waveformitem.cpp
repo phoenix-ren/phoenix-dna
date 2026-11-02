@@ -7,10 +7,7 @@
 
 #include "palette.h"
 
-WaveformItem::WaveformItem(QQuickItem *parent)
-    : QQuickPaintedItem(parent)
-{
-}
+WaveformItem::WaveformItem(QQuickItem *parent) : QQuickPaintedItem(parent) {}
 
 WaveformBuffer *WaveformItem::buffer() const
 {

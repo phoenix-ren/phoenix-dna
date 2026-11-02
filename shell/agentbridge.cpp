@@ -5,12 +5,12 @@
 #include "conversationmodel.h"
 
 #include <QDBusConnection>
+#include <QDBusInterface>
 #include <QDBusMessage>
 #include <QDBusReply>
-#include <QDBusInterface>
 #include <QJsonDocument>
-#include <QJsonParseError>
 #include <QJsonObject>
+#include <QJsonParseError>
 
 #include <pwd.h>
 #include <unistd.h>
@@ -34,23 +34,18 @@ const QString kWatchedInterface = QStringLiteral("org.freedesktop.DBus");
 // Per-tool-call output cap for the pane's activity log: enough to see why a
 // command failed without the log dwarfing the answer it belongs to.
 const int kToolLogOutputLimit = 2400;
-}
+} // namespace
 
-AgentBridge::AgentBridge(QObject *parent)
-    : QObject(parent)
+AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
 {
-    QDBusConnection::sessionBus().connect(kWatchedService,
-                                           kWatchedPath,
-                                           kWatchedInterface,
-                                           QStringLiteral("NameOwnerChanged"),
-                                           this,
-                                           SLOT(onServiceOwnerChanged(QString, QString, QString)));
+    QDBusConnection::sessionBus().connect(kWatchedService, kWatchedPath, kWatchedInterface,
+                                          QStringLiteral("NameOwnerChanged"), this,
+                                          SLOT(onServiceOwnerChanged(QString, QString, QString)));
 
     // Initial availability probe.
-    QDBusMessage probe = QDBusMessage::createMethodCall(kService,
-                                                        kPath,
-                                                        QStringLiteral("org.freedesktop.DBus.Introspectable"),
-                                                        QStringLiteral("Introspect"));
+    QDBusMessage probe = QDBusMessage::createMethodCall(
+        kService, kPath, QStringLiteral("org.freedesktop.DBus.Introspectable"),
+        QStringLiteral("Introspect"));
     const QDBusMessage reply = QDBusConnection::sessionBus().call(probe, QDBus::Block, 1000);
     setAvailable(reply.type() == QDBusMessage::ReplyMessage);
     if (m_available) {
@@ -65,36 +60,21 @@ AgentBridge::AgentBridge(QObject *parent)
     // the activity log as it happens: the pane opens at the run's first
     // output (activityStarted) instead of waiting for the result, and the
     // finished result arms the pane's dismiss countdown.
-    QDBusConnection::sessionBus().connect(kDaemonService,
-                                          kDaemonPath,
-                                          kDaemonInterface,
-                                          QStringLiteral("RunStarted"),
-                                          this,
+    QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
+                                          QStringLiteral("RunStarted"), this,
                                           SLOT(onRunStarted(QString, QString, QString)));
-    QDBusConnection::sessionBus().connect(kDaemonService,
-                                          kDaemonPath,
-                                          kDaemonInterface,
-                                          QStringLiteral("TextDelta"),
-                                          this,
+    QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
+                                          QStringLiteral("TextDelta"), this,
                                           SLOT(onTextDelta(QString, QString)));
-    QDBusConnection::sessionBus().connect(kDaemonService,
-                                          kDaemonPath,
-                                          kDaemonInterface,
-                                          QStringLiteral("RunFinished"),
-                                          this,
-                                          SLOT(onRunFinished(QString, QString, QString, uint, uint, uint)));
-    QDBusConnection::sessionBus().connect(kDaemonService,
-                                          kDaemonPath,
-                                          kDaemonInterface,
-                                          QStringLiteral("ToolCallStarted"),
-                                          this,
-                                          SLOT(onToolCallStarted(QString, QString, QString, QString)));
-    QDBusConnection::sessionBus().connect(kDaemonService,
-                                          kDaemonPath,
-                                          kDaemonInterface,
-                                          QStringLiteral("ToolCallFinished"),
-                                          this,
-                                          SLOT(onToolCallFinished(QString, QString, QString, QString, QString)));
+    QDBusConnection::sessionBus().connect(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("RunFinished"), this,
+        SLOT(onRunFinished(QString, QString, QString, uint, uint, uint)));
+    QDBusConnection::sessionBus().connect(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("ToolCallStarted"), this,
+        SLOT(onToolCallStarted(QString, QString, QString, QString)));
+    QDBusConnection::sessionBus().connect(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("ToolCallFinished"), this,
+        SLOT(onToolCallFinished(QString, QString, QString, QString, QString)));
 
     // Text deltas arrive per token; the pane need not re-layout for each.
     m_deltaTimer.setInterval(100);
@@ -104,29 +84,22 @@ AgentBridge::AgentBridge(QObject *parent)
 
 AgentBridge::~AgentBridge()
 {
-    QDBusConnection::sessionBus().disconnect(kWatchedService,
-                                              kWatchedPath,
-                                              kWatchedInterface,
-                                              QStringLiteral("NameOwnerChanged"),
-                                              this,
-                                              SLOT(onServiceOwnerChanged(QString, QString, QString)));
+    QDBusConnection::sessionBus().disconnect(
+        kWatchedService, kWatchedPath, kWatchedInterface, QStringLiteral("NameOwnerChanged"), this,
+        SLOT(onServiceOwnerChanged(QString, QString, QString)));
 }
 
 void AgentBridge::startDictation()
 {
-    QDBusMessage message = QDBusMessage::createMethodCall(kService,
-                                                           kPath,
-                                                           kInterface,
-                                                           QStringLiteral("startDictation"));
+    QDBusMessage message = QDBusMessage::createMethodCall(kService, kPath, kInterface,
+                                                          QStringLiteral("startDictation"));
     QDBusConnection::sessionBus().asyncCall(message);
 }
 
 void AgentBridge::stopDictation()
 {
-    QDBusMessage message = QDBusMessage::createMethodCall(kService,
-                                                           kPath,
-                                                           kInterface,
-                                                           QStringLiteral("stopDictation"));
+    QDBusMessage message = QDBusMessage::createMethodCall(kService, kPath, kInterface,
+                                                          QStringLiteral("stopDictation"));
     QDBusConnection::sessionBus().asyncCall(message);
 }
 
@@ -137,10 +110,8 @@ void AgentBridge::setWorkingDirectory(const QString &path)
     }
     m_workingDirectory = path;
 
-    QDBusMessage message = QDBusMessage::createMethodCall(kService,
-                                                           kPath,
-                                                           kInterface,
-                                                           QStringLiteral("setWorkingDirectory"));
+    QDBusMessage message = QDBusMessage::createMethodCall(kService, kPath, kInterface,
+                                                          QStringLiteral("setWorkingDirectory"));
     message << path;
     QDBusConnection::sessionBus().asyncCall(message);
 }
@@ -152,10 +123,8 @@ void AgentBridge::setElevated(bool elevated)
     }
     m_elevated = elevated;
 
-    QDBusMessage message = QDBusMessage::createMethodCall(kService,
-                                                           kPath,
-                                                           kInterface,
-                                                           QStringLiteral("setElevated"));
+    QDBusMessage message =
+        QDBusMessage::createMethodCall(kService, kPath, kInterface, QStringLiteral("setElevated"));
     message << elevated;
     QDBusConnection::sessionBus().asyncCall(message);
 }
@@ -168,10 +137,8 @@ void AgentBridge::setMode(const QString &mode)
     // the previous mode's conversation.
     m_sessionId.clear();
 
-    QDBusMessage message = QDBusMessage::createMethodCall(kDaemonService,
-                                                           kDaemonPath,
-                                                           kDaemonInterface,
-                                                           QStringLiteral("SetMode"));
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("SetMode"));
     message << mode;
     QDBusConnection::sessionBus().asyncCall(message);
 }
@@ -185,10 +152,8 @@ void AgentBridge::sendPrompt(const QString &prompt)
     // the run they begin (queued prompts begin in submission order) — the
     // mode is what names the exchange's sender in the pane's history.
     m_pendingPrompts.append({prompt, m_modeName});
-    QDBusMessage message = QDBusMessage::createMethodCall(kDaemonService,
-                                                           kDaemonPath,
-                                                           kDaemonInterface,
-                                                           QStringLiteral("SubmitPrompt"));
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("SubmitPrompt"));
     message << prompt << m_modeName << m_sessionId;
     QDBusConnection::sessionBus().asyncCall(message);
 }
@@ -202,7 +167,9 @@ void AgentBridge::setAvailable(bool available)
     Q_EMIT availabilityChanged();
 }
 
-void AgentBridge::onServiceOwnerChanged(const QString &service, const QString &oldOwner, const QString &newOwner)
+void AgentBridge::onServiceOwnerChanged(const QString &service,
+                                        const QString &oldOwner,
+                                        const QString &newOwner)
 {
     Q_UNUSED(oldOwner)
     if (service != kService) {
@@ -217,10 +184,9 @@ void AgentBridge::onServiceOwnerChanged(const QString &service, const QString &o
     }
 
     // The service (re)appeared: re-probe and (re)subscribe.
-    QDBusMessage probe = QDBusMessage::createMethodCall(kService,
-                                                        kPath,
-                                                        QStringLiteral("org.freedesktop.DBus.Introspectable"),
-                                                        QStringLiteral("Introspect"));
+    QDBusMessage probe = QDBusMessage::createMethodCall(
+        kService, kPath, QStringLiteral("org.freedesktop.DBus.Introspectable"),
+        QStringLiteral("Introspect"));
     const QDBusMessage reply = QDBusConnection::sessionBus().call(probe, QDBus::Block, 1000);
     setAvailable(reply.type() == QDBusMessage::ReplyMessage);
     if (m_available) {
@@ -231,58 +197,26 @@ void AgentBridge::onServiceOwnerChanged(const QString &service, const QString &o
 void AgentBridge::subscribeToServiceSignals()
 {
     QDBusConnection bus = QDBusConnection::sessionBus();
-    bus.connect(kService,
-                kPath,
-                kInterface,
-                QStringLiteral("partialTranscript"),
-                this,
+    bus.connect(kService, kPath, kInterface, QStringLiteral("partialTranscript"), this,
                 SLOT(onPartialTranscript(QString)));
-    bus.connect(kService,
-                kPath,
-                kInterface,
-                QStringLiteral("finalTranscript"),
-                this,
+    bus.connect(kService, kPath, kInterface, QStringLiteral("finalTranscript"), this,
                 SLOT(onFinalTranscript(QString)));
-    bus.connect(kService,
-                kPath,
-                kInterface,
-                QStringLiteral("agentMessage"),
-                this,
+    bus.connect(kService, kPath, kInterface, QStringLiteral("agentMessage"), this,
                 SLOT(onAgentMessage(QString)));
-                bus.connect(kService,
-                            kPath,
-                            kInterface,
-                            QStringLiteral("actionProposed"),
-                            this,
-                            SLOT(onActionProposed(QString)));
-                bus.connect(kService,
-                            kPath,
-                            kInterface,
-                            QStringLiteral("actionResult"),
-                            this,
-                            SLOT(onActionResult(QString, bool)));
+    bus.connect(kService, kPath, kInterface, QStringLiteral("actionProposed"), this,
+                SLOT(onActionProposed(QString)));
+    bus.connect(kService, kPath, kInterface, QStringLiteral("actionResult"), this,
+                SLOT(onActionResult(QString, bool)));
 }
 
 void AgentBridge::unsubscribeFromServiceSignals()
 {
     QDBusConnection bus = QDBusConnection::sessionBus();
-    bus.disconnect(kService,
-                   kPath,
-                   kInterface,
-                   QStringLiteral("partialTranscript"),
-                   this,
+    bus.disconnect(kService, kPath, kInterface, QStringLiteral("partialTranscript"), this,
                    SLOT(onPartialTranscript(QString)));
-    bus.disconnect(kService,
-                   kPath,
-                   kInterface,
-                   QStringLiteral("finalTranscript"),
-                   this,
+    bus.disconnect(kService, kPath, kInterface, QStringLiteral("finalTranscript"), this,
                    SLOT(onFinalTranscript(QString)));
-    bus.disconnect(kService,
-                   kPath,
-                   kInterface,
-                   QStringLiteral("agentMessage"),
-                   this,
+    bus.disconnect(kService, kPath, kInterface, QStringLiteral("agentMessage"), this,
                    SLOT(onAgentMessage(QString)));
 }
 
@@ -418,11 +352,11 @@ void AgentBridge::onToolCallFinished(const QString &runId,
 
     // Tail of the entry: outcome plus the command's output, fenced so the
     // pane's Markdown renderer shows it verbatim.
-    const QString mark = status == QLatin1String("success")
-        ? QStringLiteral("✓")
-        : QStringLiteral("✗ error");
-    m_conversation.appendToolLog(QStringLiteral("%1\n\n%2\n")
-                                     .arg(mark, fencedBlock(elideOutput(output, kToolLogOutputLimit), QString())));
+    const QString mark =
+        status == QLatin1String("success") ? QStringLiteral("✓") : QStringLiteral("✗ error");
+    m_conversation.appendToolLog(
+        QStringLiteral("%1\n\n%2\n")
+            .arg(mark, fencedBlock(elideOutput(output, kToolLogOutputLimit), QString())));
 }
 
 QString AgentBridge::senderNameForMode(const QString &mode)

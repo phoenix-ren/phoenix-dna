@@ -15,7 +15,8 @@
 
 #include <chrono>
 
-namespace {
+namespace
+{
 
 struct ProviderSpec
 {
@@ -30,18 +31,10 @@ struct ProviderSpec
 // MiniMax asr-1.0 ≈ $0.006/min; OpenAI whisper-1 $0.006/min and
 // gpt-4o-mini-transcribe $0.003/min. Both accept WAV up to 500 s / 50 MB.
 const ProviderSpec kProviders[] = {
-    { "minimax",
-      "https://api.minimax.io/v1/speech_to_text",
-      "asr-1.0",
-      "minimax_api_key",
-      "MINIMAX_API_KEY",
-      "PHOENIX_MINIMAX_API_KEY" },
-    { "openai",
-      "https://api.openai.com/v1/audio/transcriptions",
-      "gpt-4o-mini-transcribe",
-      "openai_api_key",
-      "OPENAI_API_KEY",
-      "PHOENIX_OPENAI_API_KEY" },
+    {"minimax", "https://api.minimax.io/v1/speech_to_text", "asr-1.0", "minimax_api_key",
+     "MINIMAX_API_KEY", "PHOENIX_MINIMAX_API_KEY"},
+    {"openai", "https://api.openai.com/v1/audio/transcriptions", "gpt-4o-mini-transcribe",
+     "openai_api_key", "OPENAI_API_KEY", "PHOENIX_OPENAI_API_KEY"},
 };
 
 const ProviderSpec &providerSpec(const QString &name)
@@ -51,8 +44,8 @@ const ProviderSpec &providerSpec(const QString &name)
             return spec;
         }
     }
-    qWarning() << "Transcriber: unknown provider" << name
-               << ", falling back to" << kProviders[0].name;
+    qWarning() << "Transcriber: unknown provider" << name << ", falling back to"
+               << kProviders[0].name;
     return kProviders[0];
 }
 
@@ -77,14 +70,11 @@ QString environmentOrEmpty(const char *name)
 
 } // namespace
 
-Transcriber::Transcriber(QObject *parent)
-    : QObject(parent)
-{
-}
+Transcriber::Transcriber(QObject *parent) : QObject(parent) {}
 
-SttConfig Transcriber::resolveConfig()
+TranscriptionConfig Transcriber::resolveConfig()
 {
-    SttConfig config;
+    TranscriptionConfig config;
 
     QString provider = qEnvironmentVariable("PHOENIX_STT_PROVIDER");
     if (provider.isEmpty()) {
@@ -120,7 +110,7 @@ SttConfig Transcriber::resolveConfig()
 
 void Transcriber::transcribe(const QByteArray &wav)
 {
-    const SttConfig config = resolveConfig();
+    const TranscriptionConfig config = resolveConfig();
     if (config.apiKey.isEmpty()) {
         qWarning() << "Transcriber: no" << config.provider << "API key found";
         Q_EMIT failed(QStringLiteral("no %1 API key found — add it to "
@@ -132,8 +122,8 @@ void Transcriber::transcribe(const QByteArray &wav)
 
     // Journal evidence: the request itself is the first observable step of
     // the dictation → transcript chain.
-    qWarning() << "Transcriber: posting" << wav.size() << "bytes to"
-               << config.endpoint << "as model" << config.model;
+    qWarning() << "Transcriber: posting" << wav.size() << "bytes to" << config.endpoint
+               << "as model" << config.model;
 
     // Starting a new request invalidates any in-flight one; its finished()
     // handler observes a stale generation and stays silent.
@@ -160,7 +150,7 @@ void Transcriber::transcribe(const QByteArray &wav)
 
     QHttpPart filePart;
     filePart.setRawHeader(QByteArrayLiteral("Content-Disposition"),
-                           QByteArrayLiteral("form-data; name=\"file\"; filename=\"clip.wav\""));
+                          QByteArrayLiteral("form-data; name=\"file\"; filename=\"clip.wav\""));
     filePart.setHeader(QNetworkRequest::ContentTypeHeader, QVariant(QStringLiteral("audio/wav")));
     filePart.setBody(wav);
     multiPart->append(filePart);

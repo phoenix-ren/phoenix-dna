@@ -3,8 +3,8 @@
 
 #pragma once
 
-#include <QObject>
 #include <QAbstractListModel>
+#include <QObject>
 #include <QtQml/qqmlregistration.h>
 
 /*!
@@ -109,7 +109,8 @@ Q_SIGNALS:
     void rmsLevelChanged();
 
 private:
-    struct Bucket {
+    struct Bucket
+    {
         qint16 minimum = 0;
         qint16 maximum = 0;
         qreal meanLevel = 0.0; // EWMA of |x| over the bucket, raw units

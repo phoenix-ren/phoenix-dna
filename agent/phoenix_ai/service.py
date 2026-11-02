@@ -168,7 +168,9 @@ if dbus is not None:
         def StateChanged(self, state, current_run_id, queue_length): ...
 
         @dbus.service.signal(INTERFACE, signature="sssuuu")
-        def RunFinished(self, run_id, status, final_text, turns, tokens_in, tokens_out): ...
+        def RunFinished(
+            self, run_id, status, final_text, turns, tokens_in, tokens_out
+        ): ...
 
         # -- methods -----------------------------------------------------------
 

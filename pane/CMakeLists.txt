@@ -5,11 +5,11 @@
 #
 # A standalone QML module installed to ${KDE_INSTALL_QMLDIR}/org/phoenixai/pane.
 #
-# The pane is a transient, semi-transparent dark overlay: when the agent's
-# result arrives it fades in above every other view, shows the result, and
-# dismisses itself again. It is still a Plasma Dialog — the compositor-managed
-# window type — because on Wayland an ordinary window cannot put itself above
-# the shell's surfaces.
+# The ConversationPane is the widget's conversation window: it opens when a
+# run produces its first output, streams the answer and the tool log, and
+# stays until the user closes it. It is a Plasma Dialog — the compositor-
+# managed window type — because on Wayland an ordinary window cannot put
+# itself above the shell's surfaces.
 
 find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS Core Qml Quick QuickControls2)
 
@@ -21,7 +21,7 @@ ecm_add_qml_module(org.phoenixai.pane
 
 ecm_target_qml_sources(org.phoenixai.pane
     SOURCES
-        qml/Pane.qml
+        qml/ConversationPane.qml
 )
 
 ecm_finalize_qml_module(org.phoenixai.pane)

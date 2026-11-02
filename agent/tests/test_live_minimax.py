@@ -53,13 +53,13 @@ def test_minimax_streaming_completion():
 def test_web_mode_example_question():
     """The canonical web-mode question, run through the full agent loop."""
     from phoenix_ai.loop import AgentLoop
-    from phoenix_ai.modes import PROFILES, Mode, build_toolset
+    from phoenix_ai.modes import MODE_PROFILES, Mode, build_toolset
     from phoenix_ai.prompts import build_system_prompt
     from phoenix_ai.provider import build_provider
     from phoenix_ai.sessions import SessionManager, SessionStore
 
     config = _config()
-    profile = PROFILES[Mode.WEB]
+    profile = MODE_PROFILES[Mode.WEB]
     events = []
     loop = AgentLoop(
         run_id="run_live_web",
@@ -67,7 +67,9 @@ def test_web_mode_example_question():
         provider=build_provider(config),
         tools=build_toolset(profile, config),
         system_prompt=build_system_prompt(profile),
-        conversation=SessionManager(SessionStore(config.data_dir / "sessions")).get("web"),
+        conversation=SessionManager(SessionStore(config.data_dir / "sessions")).get(
+            "web"
+        ),
         session_manager=SessionManager(SessionStore(config.data_dir / "sessions")),
         event_sink=lambda e: events.append(e),
     )

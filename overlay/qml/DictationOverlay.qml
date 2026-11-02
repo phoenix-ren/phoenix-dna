@@ -20,7 +20,7 @@ import org.kde.kirigami as Kirigami
  * Wayland, where an app cannot position its own windows.
  */
 PlasmaCore.Dialog {
-    id: overlay
+    id: dictationOverlay
 
     // Positioned by the shell; the horizontal alignment with the panel widget
     // comes from `visualParent` being the widget's item.
@@ -69,7 +69,7 @@ PlasmaCore.Dialog {
         id: page
 
         title: i18n("Phoenix AI")
-        visible: overlay.visible
+        visible: dictationOverlay.visible
 
         // A stable dialog size: wide enough for a sentence, tall enough for
         // a paragraph. Longer transcripts scroll in place — without a fixed
@@ -91,15 +91,15 @@ PlasmaCore.Dialog {
                     id: statusIcon
                     Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                     Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-                    source: overlay.listening ? "audio-input-microphone" : "dialog-information"
+                    source: dictationOverlay.listening ? "audio-input-microphone" : "dialog-information"
                 }
 
                 Kirigami.Heading {
                     Layout.fillWidth: true
                     // KF6 6.31 has no Kirigami.Heading.Level enum; levels are plain ints.
                     level: 3
-                    text: overlay.listening ? i18n("Listening…")
-                        : overlay.transcribing ? i18n("Transcribing…")
+                    text: dictationOverlay.listening ? i18n("Listening…")
+                        : dictationOverlay.transcribing ? i18n("Transcribing…")
                         : i18n("Phoenix AI")
                 }
 
@@ -107,14 +107,14 @@ PlasmaCore.Dialog {
                 PC3.BusyIndicator {
                     Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
                     Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
-                    visible: overlay.transcribing
-                    running: overlay.transcribing
+                    visible: dictationOverlay.transcribing
+                    running: dictationOverlay.transcribing
                 }
 
                 // A dictation can be abandoned: close without sending.
                 PC3.ToolButton {
                     icon.name: "window-close"
-                    visible: !overlay.listening
+                    visible: !dictationOverlay.listening
                     opacity: visible ? 1 : 0
                     enabled: visible
 
@@ -122,7 +122,7 @@ PlasmaCore.Dialog {
                         text: i18n("Close")
                     }
 
-                    onClicked: overlay.closed()
+                    onClicked: dictationOverlay.closed()
                 }
             }
 
@@ -134,7 +134,7 @@ PlasmaCore.Dialog {
             // recognition before sending. The editor is the single source
             // of truth for what "Send to agent" submits: engine results
             // flow in via onTranscriptChanged above, edits flow back into
-            // overlay.transcript here (guarded, so the two never ping-pong).
+            // dictationOverlay.transcript here (guarded, so the two never ping-pong).
             PC3.TextArea {
                 id: transcriptEdit
 
@@ -146,23 +146,23 @@ PlasmaCore.Dialog {
                 wrapMode: Text.Wrap
                 // Locked while the engine owns the text; editable the
                 // moment a result has landed.
-                readOnly: overlay.listening || overlay.transcribing
-                placeholderText: overlay.transcribing ? i18n("Transcribing…")
-                                : overlay.listening ? i18n("Speak now…")
+                readOnly: dictationOverlay.listening || dictationOverlay.transcribing
+                placeholderText: dictationOverlay.transcribing ? i18n("Transcribing…")
+                                : dictationOverlay.listening ? i18n("Speak now…")
                                 : i18n("No speech was recognized.")
 
-                onTextChanged: if (text !== overlay.transcript) {
-                    overlay.transcript = text
+                onTextChanged: if (text !== dictationOverlay.transcript) {
+                    dictationOverlay.transcript = text
                 }
             }
 
             // Why a clip could not be transcribed (missing key, network,
             // quota); shown only when there is nothing to show for it.
             Kirigami.SelectableLabel {
-                visible: overlay.statusMessage.length > 0
+                visible: dictationOverlay.statusMessage.length > 0
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: overlay.statusMessage
+                text: dictationOverlay.statusMessage
                 color: Kirigami.Theme.negativeTextColor
             }
 
@@ -176,9 +176,9 @@ PlasmaCore.Dialog {
                     Layout.alignment: Qt.AlignRight
                     icon.name: "document-send"
                     text: i18n("Send to agent")
-                    enabled: overlay.transcript.length > 0
-                             && !overlay.listening && !overlay.transcribing
-                    onClicked: overlay.submitted(overlay.transcript)
+                    enabled: dictationOverlay.transcript.length > 0
+                             && !dictationOverlay.listening && !dictationOverlay.transcribing
+                    onClicked: dictationOverlay.submitted(dictationOverlay.transcript)
                 }
             }
         }

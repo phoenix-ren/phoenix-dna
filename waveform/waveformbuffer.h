@@ -41,7 +41,8 @@ class WaveformBuffer : public QObject
     Q_PROPERTY(int columns READ columns WRITE setColumns NOTIFY columnsChanged)
 
     /*! \brief Audio span covered by the whole column array, in seconds. */
-    Q_PROPERTY(qreal windowSeconds READ windowSeconds WRITE setWindowSeconds NOTIFY windowSecondsChanged)
+    Q_PROPERTY(
+        qreal windowSeconds READ windowSeconds WRITE setWindowSeconds NOTIFY windowSecondsChanged)
 
     /*! \brief EWMA time constant of the mean band, in milliseconds. */
     Q_PROPERTY(qreal tauMs READ tauMs WRITE setTauMs NOTIFY tauMsChanged)

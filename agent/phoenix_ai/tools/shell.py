@@ -72,9 +72,7 @@ def format_output(stdout: str, stderr: str, rc: int, max_chars: int) -> str:
         tail = int(max_chars * 0.35)
         omitted = len(text) - head - tail
         text = (
-            text[:head]
-            + f"\n... [{omitted} characters truncated] ...\n"
-            + text[-tail:]
+            text[:head] + f"\n... [{omitted} characters truncated] ...\n" + text[-tail:]
         )
     return text
 
@@ -99,7 +97,10 @@ class BashTool:
         parameters={
             "type": "object",
             "properties": {
-                "command": {"type": "string", "description": "The bash command to execute"},
+                "command": {
+                    "type": "string",
+                    "description": "The bash command to execute",
+                },
                 "timeout": {
                     "type": "integer",
                     "description": "Timeout in seconds (optional)",
@@ -132,7 +133,9 @@ class BashTool:
 
     # -- public API ---------------------------------------------------------
 
-    def execute(self, args: dict, *, cancel: threading.Event | None = None) -> ToolResult:
+    def execute(
+        self, args: dict, *, cancel: threading.Event | None = None
+    ) -> ToolResult:
         validate_required(self.spec, args)
         command = args["command"]
         if not isinstance(command, str) or not command.strip():
@@ -196,12 +199,16 @@ class BashTool:
         env.update(self.extra_env)
         return env
 
-    def _run(self, argv: list[str], *, input_bytes: bytes | None, timeout: float, cancel):
+    def _run(
+        self, argv: list[str], *, input_bytes: bytes | None, timeout: float, cancel
+    ):
         try:
             proc = subprocess.Popen(
                 argv,
                 cwd=str(self.cwd),
-                stdin=subprocess.PIPE if input_bytes is not None else subprocess.DEVNULL,
+                stdin=(
+                    subprocess.PIPE if input_bytes is not None else subprocess.DEVNULL
+                ),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 start_new_session=True,
