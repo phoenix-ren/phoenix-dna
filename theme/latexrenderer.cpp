@@ -4,6 +4,7 @@
 #include "latexrenderer.h"
 
 #include <QCryptographicHash>
+#include <QDebug>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -281,7 +282,14 @@ const char *documentPreamble()
 {
     return R"TEX(\documentclass[11pt]{article}
 \IfFileExists{geometry.sty}{\usepackage[a4paper,margin=1.8cm]{geometry}}{}
-\IfFileExists{amsmath.sty}{\usepackage{amsmath}}{}
+\IfFileExists{amsmath.sty}{\usepackage{amsmath}}{
+% Without amsmath, the amsmath-only commands the models write have
+% plain LaTeX equivalents good enough for these answers.
+\providecommand{\tfrac}[2]{\frac{#1}{#2}}
+\providecommand{\dfrac}[2]{\frac{#1}{#2}}
+\providecommand{\text}[1]{\textrm{#1}}
+\providecommand{\boldsymbol}[1]{\mathbf{#1}}
+}
 \IfFileExists{amssymb.sty}{\usepackage{amssymb}}{}
 \IfFileExists{newunicodechar.sty}{\usepackage{newunicodechar}}{}
 \providecommand{\newunicodechar}[2]{}
@@ -386,12 +394,30 @@ QString LatexRenderer::engine() const
     if (!m_engineResolved) {
         // Xe/LuaLaTeX first: the models' Unicode goes in natively.
         for (const char *candidate : {"xelatex", "lualatex", "pdflatex"}) {
-            const QString path = QStandardPaths::findExecutable(
-                QString::fromLatin1(candidate));
+            const QString name = QString::fromLatin1(candidate);
+            QString path = QStandardPaths::findExecutable(name);
+            if (path.isEmpty()) {
+                // plasmashell can run with a trimmed PATH: probe the
+                // ordinary install locations before giving up.
+                for (const char *dir :
+                     {"/usr/bin", "/usr/local/bin", "/opt/bin"}) {
+                    const QString candidatePath =
+                        QDir(QString::fromLatin1(dir)).filePath(name);
+                    if (QFileInfo::exists(candidatePath)) {
+                        path = candidatePath;
+                        break;
+                    }
+                }
+            }
             if (!path.isEmpty()) {
                 m_engine = path;
                 break;
             }
+        }
+        if (m_engine.isEmpty()) {
+            qWarning() << "LatexRenderer: no TeX engine (xelatex/lualatex/"
+                          "pdflatex) found — answers keep LaTeX verbatim;"
+                          "install one, e.g. dnf install texlive-scheme-basic";
         }
         m_engineResolved = true;
     }
@@ -581,6 +607,8 @@ void LatexRenderer::compile(int requestId, const QString &engineBin,
                         }
                     }
                 }
+                qWarning() << "LatexRenderer: compile failed for" << texPath
+                           << "-" << reason;
                 Q_EMIT failed(requestId, reason);
             });
     connect(process, &QProcess::errorOccurred, this,
