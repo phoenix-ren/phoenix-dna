@@ -564,12 +564,11 @@ void LatexRenderer::render(int requestId, const QString &markdown)
     }
     texFile.close();
 
-    compile(requestId, engineBin, dir, texPath, pdfPath);
+    compile(requestId, engineBin, texPath, pdfPath);
 }
 
 void LatexRenderer::compile(int requestId, const QString &engineBin,
-                            const QString &dir, const QString &texPath,
-                            const QString &pdfPath)
+                            const QString &texPath, const QString &pdfPath)
 {
     auto *process = new QProcess(this);
     // One failure report per run, whichever of the three signals brings
