@@ -61,7 +61,7 @@ endfunction()
 # together against one install prefix.
 add_subdirectory(shell)
 add_subdirectory(overlay)
-add_subdirectory(pane)
+add_subdirectory(resultswindow)
 add_subdirectory(search)
 
 # Developer testbench: hosts the widget in a plain window without installing.

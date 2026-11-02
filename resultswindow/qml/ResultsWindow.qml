@@ -6,19 +6,30 @@ import QtQuick.Window
 import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtCore
-import Qt.labs.settings as LabsSettings
-import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
 
 /*
- * The results pane — the widget's conversation window.
+ * The results window — the widget's conversation window.
  *
- * The pane opens as soon as a run produces its first output (showLive())
- * and then streams the answer and the tool log as they happen — pinned to
- * the bottom, like a terminal. It is persistent: it stays on screen until
- * the user closes it explicitly (the close button or Esc), however many
- * results come and go in between.
+ * A fully-fledged, decorated toplevel: the compositor owns its geometry,
+ * so it is moved, resized, maximized and closed with the ordinary window
+ * decorations, like any other window on the desktop. That is deliberate:
+ * the previous incarnation was a frameless Plasma Dialog, a window class
+ * the compositor refuses to move or resize interactively (startSystemMove
+ * and startSystemResize are accepted and then ignored for it), so three
+ * rounds of custom geometry code fought the shell and lost.
+ *
+ * The window opens as soon as a run produces its first output
+ * (showLive()) and then streams the answer and the tool log as they
+ * happen — pinned to the bottom, like a terminal. It is persistent: it
+ * stays on screen until the user closes it (title bar or Esc), however
+ * many results come and go in between; closing only hides it, so it
+ * reappears where the compositor last had it — on Wayland the one
+ * reliable way to "remember" a position, since a client can neither set
+ * nor learn a toplevel's position there. The window *size* the client
+ * does know, so it is persisted across restarts in the XDG state
+ * directory and restored on creation.
  *
  * Its history comes from the conversation model (one row per prompt/
  * answer pair, fed by the agent bridge): follow-on questions append a new
@@ -33,26 +44,12 @@ import org.kde.kirigami as Kirigami
  * routes through the controller, so a follow-on rides on the same session
  * history as the initial voice prompt.
  *
- * The pane is user-sizable: the right and bottom edges (and the bottom-
- * right corner) drag-resize it, and the header has a maximize/restore
- * button next to the close button. The header itself drags the window:
- * once moved, the pane pops up at that position from then on — persisted
- * (with the dragged size) across plasmashell restarts in the XDG state
- * directory, so the user arranges it once and finds it where they left it.
- * While never moved, the pane keeps floating next to the widget that
- * triggered it.
- *
  * The shell binds the conversation model and the dictation state
- * (transcript/listening/transcribing/statusMessage); the pane itself is
+ * (transcript/listening/transcribing/statusMessage); the window itself is
  * purely presentational.
- *
- * It is still a Plasma Dialog, for the same reason as the dictation
- * overlay: on Wayland an ordinary application window cannot put itself
- * above the shell's surfaces, and the Dialog is the compositor-managed
- * route.
  */
-PlasmaCore.Dialog {
-    id: conversationPane
+Window {
+    id: resultsWindow
 
     // The conversation history: one row per prompt/answer pair, with the
     // roles prompt / result / toolLog / running (see ConversationModel).
@@ -60,7 +57,7 @@ PlasmaCore.Dialog {
     property var conversation: null
 
     // ---- Follow-on input, mirroring the dictation overlay ---------------
-    // The transcript of a follow-on being dictated into the pane, and the
+    // The transcript of a follow-on being dictated into the window, and the
     // dictation state. Bound by the shell exactly like the overlay's; the
     // transcript is pushed imperatively (not bound), because the editor
     // below is editable — a binding would be broken by the first edit.
@@ -92,7 +89,7 @@ PlasmaCore.Dialog {
     // Emitted when the user wants to photograph a window of the desktop.
     signal screenshotRequested()
 
-    // Emitted when the pane goes away (close button, Esc, toggle()).
+    // Emitted when the window goes away (title bar close, Esc, toggle()).
     signal dismissed()
 
     // Emitted when the input bar's record button is clicked — the same
@@ -110,150 +107,57 @@ PlasmaCore.Dialog {
         && !listening && !transcribing
 
     // The current session's LLM-generated title, as announced by the
-    // daemon (and re-generated on every follow-on). Empty until the first
-    // title arrives: the header then shows the generic heading.
+    // daemon (and re-generated on every follow-on). It rides the window
+    // title, so the taskbar entry names the conversation too.
     property string sessionTitle: ""
 
-    // The item the pane floats next to — the shell passes its own item so
-    // the result appears where the user triggered the query.
-    property Item anchor: null
+    title: sessionTitle.length > 0
+        ? i18n("%1 — Phoenix DNA", sessionTitle)
+        : i18n("Conversation — Phoenix DNA")
 
-    // Short answers still get a pane of substance; taller content grows
-    // the pane up to the screen's available height (see the content item).
-    property int minHeight: 600
+    // A dialog-style toplevel: no minimise/maximise noise in the taskbar
+    // entry beyond the title, still fully decorated, movable and
+    // resizable by the compositor. Keep-above preserves the pane's old
+    // "the result announces itself" behaviour: nothing may stack on it.
+    flags: Qt.Dialog | Qt.WindowStaysOnTopHint
 
-    // ---- User sizing -----------------------------------------------------
-    // A size the user dragged the pane to (0 = automatic: width follows the
-    // default, height grows with the content up to the screen's cap).
-    property real userWidth: 0
-    property real userHeight: 0
+    // The compositor resizes the window; these are the floors it may not
+    // resize past.
+    minimumWidth: Math.round(Kirigami.Units.gridUnit * 12)
+    minimumHeight: Math.round(Kirigami.Units.gridUnit * 8)
 
-    // ---- User position ---------------------------------------------------
-    // Where the user dragged the pane to (-1 = never moved: the Dialog
-    // floats next to the anchor item). Once set, this position wins for
-    // every future show and is persisted across restarts (see the
-    // geometry store inside the content item).
-    property real userX: -1
-    property real userY: -1
-
-    // Whether the pane currently fills the screen (the header's maximize
-    // button toggles this; the pre-maximize size is kept for restore).
-    property bool maximized: false
-    property real normalWidth: 0
-    property real normalHeight: 0
-    property bool normalAuto: true
-
-    readonly property real minPaneWidth: Kirigami.Units.gridUnit * 12
-    readonly property real minPaneHeight: Kirigami.Units.gridUnit * 8
-
-    // Restores the remembered geometry once, when the pane is created; the
-    // dragged size feeds the same userWidth/userHeight the resize handles
-    // use, the dragged position the same userX/userY the header drag does.
-    Component.onCompleted: {
-        userX = geometryStore.paneX
-        userY = geometryStore.paneY
-        if (geometryStore.paneWidth > 0) {
-            userWidth = geometryStore.paneWidth
-        }
-        if (geometryStore.paneHeight > 0) {
-            userHeight = geometryStore.paneHeight
-        }
-    }
-
-    // Keeps part of the pane on screen however far the user drags it.
-    function clampX(x) {
-        return Math.max(
-            -(conversationPane.width - Kirigami.Units.gridUnit * 4),
-            Math.min(Screen.width - Kirigami.Units.gridUnit * 4, x))
-    }
-
-    function clampY(y) {
-        return Math.max(
-            0,
-            Math.min(Screen.desktopAvailableHeight - minPaneHeight, y))
-    }
-
-    // True while a compositor-driven resize is in flight (see the resize
-    // handles): window geometry changes arriving then are the user's drag
-    // — not applySize()'s own — and must be recorded as the dragged size,
-    // or the automatic sizing would snap the pane back on the next
-    // content change.
-    property bool systemResizing: false
-
-    // True while a compositor-driven move is in flight (see the header's
-    // move handle): x/y changes arriving then are the user dragging the
-    // real window — clients cannot position their own toplevels on
-    // Wayland — and they update the remembered position, which the settle
-    // timer persists when the drag comes to rest.
-    property bool systemMoving: false
-
-    // Tracks a compositor-driven move.
-    onXChanged: if (systemMoving) {
-        userX = conversationPane.x
-        moveSettleTimer.restart()
-    }
-
-    onYChanged: if (systemMoving) {
-        userY = conversationPane.y
-        moveSettleTimer.restart()
-    }
-
-    // Puts the window at the user's remembered position; a no-op while the
-    // pane has never been moved (the Dialog then keeps its own placement
-    // next to the anchor item). Called right after the window becomes
-    // visible — also via callLater, so it wins over the Dialog's own
-    // placement pass, which may run a frame later.
-    function applyPosition() {
-        if (userX < 0 || userY < 0) {
-            return
-        }
-        conversationPane.x = clampX(userX)
-        conversationPane.y = clampY(userY)
-    }
-
-    // Remembers the current position for this and every future show.
-    function savePosition() {
-        userX = conversationPane.x
-        userY = conversationPane.y
-        geometryStore.paneX = Math.round(userX)
-        geometryStore.paneY = Math.round(userY)
-    }
-
-    // Remembers the current size for future sessions (sizes persist within
-    // a session anyway, through userWidth/userHeight).
-    function saveSize() {
-        geometryStore.paneWidth = Math.round(conversationPane.width)
-        geometryStore.paneHeight = Math.round(conversationPane.height)
-    }
-
-    location: PlasmaCore.Types.Floating
-    type: PlasmaCore.Dialog.WindowType.DialogWindow
-
-    // The theme's background would be opaque; the pane paints its own dark,
-    // semi-transparent one, so the dialog surface itself must be bare.
-    backgroundHints: PlasmaCore.Dialog.NoBackground
-
-    // Renders above any view: the pane is how a finished run announces
-    // itself, so nothing may be stacked on top of it.
-    flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
-    hideOnWindowDeactivate: false
+    // The remembered size, or a sensible default: wide enough for a
+    // paragraph, about two thirds of the available height. After the
+    // first drag this is whatever the user left the window at.
+    width: geometryStore.windowWidth > 0
+        ? geometryStore.windowWidth
+        : Math.round(Kirigami.Units.gridUnit * 30)
+    height: geometryStore.windowHeight > 0
+        ? geometryStore.windowHeight
+        : Math.round(Math.max(
+            Kirigami.Units.gridUnit * 12,
+            Math.min(Screen.desktopAvailableHeight * 0.66,
+                     Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit)))
 
     visible: false
 
-    // Fades in when a result appears, out again when it is dismissed; the
-    // window itself only goes away once the fade has completed.
-    opacity: 0
-
-    Behavior on opacity {
-        NumberAnimation {
-            duration: Kirigami.Units.shortDuration
-            easing.type: Easing.InOutQuad
-        }
+    // The window size is the one piece of geometry the client reliably
+    // knows on Wayland; persist it when the window goes away, so restarts
+    // find it at the user's size. Position needs no bookkeeping: the
+    // compositor keeps a hidden-again window where the user had it.
+    onVisibleChanged: if (!visible && width > 0 && height > 0) {
+        geometryStore.windowWidth = Math.round(width)
+        geometryStore.windowHeight = Math.round(height)
     }
 
-    // Parameter-free on purpose: signal handlers that use the injected
-    // "opacity" parameter are deprecated (and warn on every load).
-    onOpacityChanged: conversationPane.visible = conversationPane.opacity > 0
+    // Closing from the title bar hides instead of destroying: the shell
+    // owns the window's lifetime, and the next result reopens it right
+    // where it was.
+    onClosing: (close) => {
+        close.accepted = false
+        hide()
+        dismissed()
+    }
 
     // Engine results are pushed into the editor imperatively (not via a
     // text binding): a binding would be destroyed by the first user edit,
@@ -261,64 +165,39 @@ PlasmaCore.Dialog {
     // dictation overlay, whose editor this bar replicates.
     onTranscriptChanged: followUpEdit.text = transcript
 
-    // During a compositor-driven resize the window geometry is the truth:
-    // record it as the user's dragged size. The settle timer ends the
-    // drag — the compositor owns the pointer during a system resize, so
-    // the drag handle never sees a release event.
-    onWidthChanged: if (systemResizing) {
-        userWidth = conversationPane.width
-        resizeSettleTimer.restart()
-    }
-
-    onHeightChanged: if (systemResizing) {
-        userHeight = conversationPane.height
-        resizeSettleTimer.restart()
-    }
-
-    onAnchorChanged: {
-        if (anchor) {
-            visualParent = anchor;
-        }
-    }
-
-    // Puts the keyboard in the follow-up editor: the pane's reason to be
-    // open is a conversation, so a shown pane is ready to be typed into
-    // (and Shift+Enter submitted) without a click into the field first.
+    // Puts the keyboard in the follow-up editor: the window's reason to
+    // be open is a conversation, so a shown window is ready to be typed
+    // into (and Shift+Enter submitted) without a click into the field
+    // first.
     function focusInput() {
         if (!followUpEdit.readOnly) {
             followUpEdit.forceActiveFocus()
         }
     }
 
-    // Shows a result: fades the pane in (or keeps it up) and pins the
-    // scroll to the newest exchange — answers flow downwards, ChatGPT
-    // style, so the newest content is what the user wants to see.
+    // Shows a result: brings the window up and pins the scroll to the
+    // newest exchange — answers flow downwards, ChatGPT style, so the
+    // newest content is what the user wants to see.
     function showResult() {
-        applySize()
         scroller.pinnedToBottom = true
-        visible = true
-        opacity = 1
-        // The user's remembered position (if any) wins over the Dialog's
-        // own placement next to the anchor item.
-        applyPosition()
-        Qt.callLater(applyPosition)
+        show()
+        raise()
+        requestActivate()
         Qt.callLater(focusInput)
     }
 
-    // Opens the pane for a streaming run: the run's text and tool log
+    // Opens the window for a streaming run: the run's text and tool log
     // arrive as they happen, following the newest content.
     function showLive() {
-        applySize()
         scroller.pinnedToBottom = true
-        visible = true
-        opacity = 1
-        applyPosition()
-        Qt.callLater(applyPosition)
+        show()
+        raise()
+        requestActivate()
         Qt.callLater(focusInput)
     }
 
     // Manual toggle, e.g. from the applet: bring the conversation back up,
-    // or hide the pane if it is already showing.
+    // or hide the window if it is already showing.
     function toggle() {
         if (visible) {
             dismiss()
@@ -328,145 +207,43 @@ PlasmaCore.Dialog {
     }
 
     function dismiss() {
-        opacity = 0
+        hide()
         dismissed()
     }
 
-    // The single source of truth for the window's geometry. Plasma's Dialog
-    // only half-heartedly follows the main item's implicit size (it grows
-    // but stops syncing after the first shrink), so the window is sized
-    // here, explicitly: the user's dragged size if any, the screen if
-    // maximized, otherwise the default width and a content-driven height
-    // capped by the screen.
-    function applySize() {
-        if (maximized) {
-            conversationPane.width = Screen.width - 2 * Kirigami.Units.gridUnit
-            conversationPane.height = Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit
-            return
-        }
-        conversationPane.width = userWidth > 0
-            ? Math.max(minPaneWidth, userWidth)
-            : Kirigami.Units.gridUnit * 30
-        conversationPane.height = userHeight > 0
-            ? Math.max(minPaneHeight, userHeight)
-            : Math.max(
-                minHeight,
-                Math.min(
-                    body.implicitHeight + 2 * Kirigami.Units.gridUnit,
-                    Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit
-                ))
-    }
+    // The remembered window size, persisted across plasmashell restarts in
+    // an INI file under the XDG state directory.
+    Settings {
+        id: geometryStore
 
-    // Maximize fills the screen's available area; restore returns to the
-    // size the pane had before (the dragged size if the user had set one,
-    // otherwise the automatic content-driven sizing) — and, if the pane had
-    // been moved, back to the remembered position.
-    function toggleMaximized() {
-        if (!maximized) {
-            normalWidth = conversationPane.width
-            normalHeight = conversationPane.height
-            normalAuto = userWidth === 0 && userHeight === 0
-            maximized = true
-        } else {
-            maximized = false
-            if (normalAuto) {
-                userWidth = 0
-                userHeight = 0
-            } else {
-                userWidth = normalWidth
-                userHeight = normalHeight
-            }
-            applySize()
-            applyPosition()
-            return
-        }
-        applySize()
+        category: "Geometry"
+        location: StandardPaths.writableLocation(StandardPaths.GenericStateLocation)
+            + "/phoenix-dna/results-window.ini"
+        property real windowWidth: 0
+        property real windowHeight: 0
     }
 
     // Wide enough for a paragraph, like the dictation overlay; the user's
-    // dragged size (or maximize) overrides the defaults.
-    //
-    // Note: everything that is not the content must live *inside* this item
-    // — a Dialog's default property is mainItem, so a bare child object
-    // (e.g. a Timer) would clobber this binding.
-    mainItem: Item {
+    // dragged size (persisted above) overrides the defaults.
+    Item {
         id: content
 
+        anchors.fill: parent
         focus: true
-        Keys.onEscapePressed: conversationPane.dismiss()
-
-        // The dragged geometry, persisted across plasmashell restarts in an
-        // INI file under the XDG state directory. Property writes sync to
-        // disk lazily, so the writes on drag release are cheap. Declared
-        // inside the content item on purpose: the Dialog's default property
-        // is mainItem, so a bare child object would clobber it.
-        LabsSettings.Settings {
-            id: geometryStore
-
-            category: "Geometry"
-            fileName: StandardPaths.writableLocation(StandardPaths.GenericStateLocation)
-                + "/phoenix-dna/pane-geometry.ini"
-            property int paneX: -1
-            property int paneY: -1
-            property real paneWidth: 0
-            property real paneHeight: 0
-        }
+        Keys.onEscapePressed: resultsWindow.dismiss()
 
         // Shift+Enter submits a follow-on from anywhere in the window: the
         // shortcut lives on the window rather than on the editor, because
-        // keyboard focus often rests elsewhere (a just-shown pane, the
+        // keyboard focus often rests elsewhere (a just-shown window, the
         // send button) and a key handler on the editor would simply never
         // fire. "Return" covers the main Enter key, "Enter" the numpad's.
         // Plain Enter keeps inserting the line break — no shortcut for it.
         Shortcut {
             sequences: ["Shift+Return", "Shift+Enter"]
             context: Qt.WindowShortcut
-            enabled: conversationPane.canSubmit
-            onActivated: conversationPane.submitted(conversationPane.transcript)
+            enabled: resultsWindow.canSubmit
+            onActivated: resultsWindow.submitted(resultsWindow.transcript)
         }
-
-        // Ends a compositor-driven resize once the geometry stops moving
-        // for a moment (there is no release event to react to).
-        Timer {
-            id: resizeSettleTimer
-
-            interval: 250
-            onTriggered: conversationPane.systemResizing = false
-        }
-
-        // Ends a compositor-driven move the same way, persisting the
-        // position the drag ended at.
-        Timer {
-            id: moveSettleTimer
-
-            interval: 250
-            onTriggered: {
-                conversationPane.systemMoving = false
-                conversationPane.savePosition()
-            }
-        }
-
-        implicitWidth: conversationPane.maximized
-            ? Screen.width - 2 * Kirigami.Units.gridUnit
-            : (conversationPane.userWidth > 0
-                ? Math.max(conversationPane.minPaneWidth, conversationPane.userWidth)
-                : Kirigami.Units.gridUnit * 30)
-
-        // Never less than minHeight, so even a one-line answer reads like a
-        // proper window — normally up to the screen's available height
-        // (taskbar/panels excluded), past which the scroll area scrolls
-        // instead; a dragged or maximized height overrides.
-        implicitHeight: conversationPane.maximized
-            ? Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit
-            : (conversationPane.userHeight > 0
-                ? Math.max(conversationPane.minPaneHeight, conversationPane.userHeight)
-                : Math.max(
-                    conversationPane.minHeight,
-                    Math.min(
-                        body.implicitHeight + 2 * Kirigami.Units.gridUnit,
-                        Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit
-                    )
-                ))
 
         // The dark, semi-transparent backdrop. Deliberately fixed rather
         // than theme-derived: it must be dark whichever theme runs, and so
@@ -474,158 +251,23 @@ PlasmaCore.Dialog {
         // busy desktops, with just a hint of the desktop through it.
         Rectangle {
             anchors.fill: parent
-            radius: Kirigami.Units.smallSpacing
             color: Qt.rgba(0.07, 0.07, 0.09, 0.93)
-            border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.18)
         }
 
         ColumnLayout {
             id: body
+
             anchors.fill: parent
             // A full gridUnit of padding on every side: largeSpacing (~half
-            // that) made the text hug the pane's edges and read cramped.
+            // that) made the text hug the window's edges and read cramped.
             anchors.margins: Kirigami.Units.gridUnit
             spacing: Kirigami.Units.smallSpacing
-
-            // In automatic sizing the pane grows with its content (new
-            // results, a taller editor) up to the screen's cap: re-apply
-            // the size whenever the content's ideal height changes. The
-            // Dialog's own implicit-size sync is unreliable (it stops
-            // after the first shrink), so applySize() owns the window.
-            onImplicitHeightChanged: {
-                if (!conversationPane.maximized && conversationPane.userHeight === 0 && conversationPane.visible) {
-                    conversationPane.applySize()
-                }
-            }
-
-            RowLayout {
-                id: headerRow
-                Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-
-                Kirigami.Icon {
-                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
-                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-                    source: "dialog-information"
-                }
-
-                // The title area is the move handle: dragging it moves the
-                // whole window. The delta is computed in global screen
-                // coordinates from the press-time anchor — the same scheme
-                // as the resize handles — because the window's own origin
-                // moves under the cursor as the Dialog applies the move
-                // asynchronously on Wayland.
-                Item {
-                    Layout.fillWidth: true
-                    implicitHeight: paneHeading.implicitHeight
-
-                    Kirigami.Heading {
-                        id: paneHeading
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        // KF6 6.31 has no Kirigami.Heading.Level enum; levels are plain ints.
-                        level: 3
-                        // Once the daemon has named the session, the
-                        // header carries that name; it follows the
-                        // conversation as follow-ons reshape it.
-                        text: conversationPane.sessionTitle.length > 0
-                            ? conversationPane.sessionTitle : i18n("Conversation")
-                        elide: Text.ElideRight
-                        color: "#f2f2f2"
-                    }
-
-                    MouseArea {
-                        objectName: "moveHeader"
-
-                        anchors.fill: parent
-                        enabled: !conversationPane.maximized
-                        cursorShape: Qt.SizeAllCursor
-
-                        property point pressGlobal: Qt.point(0, 0)
-                        property point startPos: Qt.point(0, 0)
-                        property bool moved: false
-
-                        onPressed: (mouse) => {
-                            pressGlobal = mapToGlobal(mouse.x, mouse.y)
-                            startPos = Qt.point(conversationPane.x, conversationPane.y)
-                            moved = false
-                            // Compositor-driven move first: on Wayland a
-                            // client cannot position its own toplevel, so
-                            // plain x/y assignments were silently ignored
-                            // and the window never followed the mouse. The
-                            // compositor's interactive move moves the real
-                            // window; the pane's x/y handlers record where
-                            // it lands. Without system move, fall back to
-                            // manual math in global coordinates from the
-                            // press-time anchor (same reasoning as the
-                            // resize handles).
-                            conversationPane.systemMoving =
-                                conversationPane.startSystemMove()
-                        }
-                        onPositionChanged: (mouse) => {
-                            if (!pressed || moved || conversationPane.systemMoving) {
-                                return
-                            }
-                            const global = mapToGlobal(mouse.x, mouse.y)
-                            conversationPane.x = conversationPane.clampX(startPos.x + global.x - pressGlobal.x)
-                            conversationPane.y = conversationPane.clampY(startPos.y + global.y - pressGlobal.y)
-                            moved = true
-                        }
-                        onReleased: if (moved) {
-                            conversationPane.savePosition()
-                        }
-                    }
-                }
-
-                // The pane persists until closed by hand; maximize makes
-                // room for long answers and histories.
-                PC3.ToolButton {
-                    objectName: "maximizeButton"
-
-                    icon.name: conversationPane.maximized ? "view-restore" : "view-fullscreen"
-                    icon.color: "white"
-
-                    PC3.ToolTip {
-                        text: conversationPane.maximized ? i18n("Restore size") : i18n("Maximize")
-                    }
-
-                    onClicked: conversationPane.toggleMaximized()
-                }
-
-                PC3.ToolButton {
-                    objectName: "closeButton"
-
-                    icon.name: "window-close"
-                    icon.color: "white"
-
-                    PC3.ToolTip {
-                        text: i18n("Close")
-                    }
-
-                    onClicked: conversationPane.dismiss()
-                }
-            }
-
-            Kirigami.Separator {
-                Layout.fillWidth: true
-            }
 
             Flickable {
                 id: scroller
 
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                // A touch of air between the header separator and the text.
-                Layout.topMargin: Kirigami.Units.smallSpacing
-
-                // A Flickable has no content-driven implicit size: without
-                // this it collapses to zero height and the pane shrinks to
-                // a bare header. With it, the pane grows with the content
-                // until the cap on the content item, then this area is
-                // squeezed and scrolls instead.
-                implicitHeight: column.implicitHeight
 
                 contentWidth: width
                 contentHeight: column.implicitHeight
@@ -660,9 +302,9 @@ PlasmaCore.Dialog {
                     // NOTE: preferredWidth, not fillWidth — Qt ignores
                     // fillWidth on layout-typed Repeater delegates (the row
                     // would shrink to its implicit width, capping the
-                    // prompt bubbles at a fraction of the pane).
+                    // prompt bubbles at a fraction of the window).
                     Repeater {
-                        model: conversationPane.conversation
+                        model: resultsWindow.conversation
 
                         delegate: ColumnLayout {
                             id: exchange
@@ -679,7 +321,7 @@ PlasmaCore.Dialog {
 
                             // The user's prompt, as a chat bubble: pinned
                             // to the right, hugging its content up to four
-                            // fifths of the pane, with a tail pointing
+                            // fifths of the window, with a tail pointing
                             // down-right and the sender's name underneath
                             // it — the bubble points at whoever issued it
                             // ("root", the login name, or "anon", per the
@@ -889,7 +531,7 @@ PlasmaCore.Dialog {
             // the compact representation's record button (dictate a
             // follow-on; it becomes a stop button while recording) and the
             // dictation overlay's editable transcript plus "Send" button
-            // (correct a recognition, or simply type). The pane stays
+            // (correct a recognition, or simply type). The window stays
             // presentational: recordClicked and submitted go to the shell,
             // which routes both through the controller and thus the same
             // session history the initial voice prompt created.
@@ -917,14 +559,14 @@ PlasmaCore.Dialog {
                         id: attachmentFlow
 
                         Layout.fillWidth: true
-                        visible: conversationPane.attachments.length > 0
+                        visible: resultsWindow.attachments.length > 0
                         spacing: Kirigami.Units.smallSpacing
 
                         Repeater {
                             id: attachmentRepeater
                             objectName: "attachmentRepeater"
 
-                            model: conversationPane.attachments
+                            model: resultsWindow.attachments
 
                             delegate: Rectangle {
                                 id: attachmentChip
@@ -965,7 +607,7 @@ PlasmaCore.Dialog {
                                         icon.width: 12
                                         icon.height: 12
 
-                                        onClicked: conversationPane.attachmentRemoved(attachmentChip.index)
+                                        onClicked: resultsWindow.attachmentRemoved(attachmentChip.index)
                                     }
                                 }
                             }
@@ -987,14 +629,14 @@ PlasmaCore.Dialog {
                             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-                            icon.name: conversationPane.listening ? "media-playback-stop" : "media-record"
+                            icon.name: resultsWindow.listening ? "media-playback-stop" : "media-record"
                             icon.width: Kirigami.Units.iconSizes.small
                             icon.height: Kirigami.Units.iconSizes.small
 
-                            onClicked: conversationPane.recordClicked()
+                            onClicked: resultsWindow.recordClicked()
 
                             PC3.ToolTip {
-                                text: conversationPane.listening ? i18n("Stop") : i18n("Record a follow-up")
+                                text: resultsWindow.listening ? i18n("Stop") : i18n("Record a follow-up")
                             }
                         }
 
@@ -1003,8 +645,8 @@ PlasmaCore.Dialog {
                         PC3.BusyIndicator {
                             Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
                             Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
-                            visible: conversationPane.transcribing
-                            running: conversationPane.transcribing
+                            visible: resultsWindow.transcribing
+                            running: resultsWindow.transcribing
                         }
 
                         // The button that attaches files to the follow-up,
@@ -1041,15 +683,15 @@ PlasmaCore.Dialog {
                             icon.height: Kirigami.Units.iconSizes.small
                             // While the picker waits for a click, the
                             // button says so.
-                            icon.color: conversationPane.screenshotPicking
+                            icon.color: resultsWindow.screenshotPicking
                                 ? "#fcfcfc"
                                 : Kirigami.Theme.textColor
 
-                            onClicked: conversationPane.screenshotRequested()
+                            onClicked: resultsWindow.screenshotRequested()
 
                             PC3.ToolTip {
                                 text: {
-                                    const shortcut = conversationPane.screenshotShortcut;
+                                    const shortcut = resultsWindow.screenshotShortcut;
                                     return shortcut.length > 0
                                         ? i18n("Screenshot a window (%1)", shortcut)
                                         : i18n("Screenshot a window");
@@ -1062,7 +704,7 @@ PlasmaCore.Dialog {
                         // from scratch. The editor is the single source of
                         // truth for what "Send to agent" submits: engine
                         // results flow in via onTranscriptChanged above,
-                        // edits flow back into conversationPane.transcript here
+                        // edits flow back into resultsWindow.transcript here
                         // (guarded, so the two never ping-pong).
                         PC3.TextArea {
                             id: followUpEdit
@@ -1088,13 +730,13 @@ PlasmaCore.Dialog {
                             wrapMode: Text.Wrap
                             // Locked while the engine owns the text;
                             // editable the moment a result has landed.
-                            readOnly: conversationPane.listening || conversationPane.transcribing
-                            placeholderText: conversationPane.transcribing ? i18n("Transcribing…")
-                                            : conversationPane.listening ? i18n("Speak now…")
+                            readOnly: resultsWindow.listening || resultsWindow.transcribing
+                            placeholderText: resultsWindow.transcribing ? i18n("Transcribing…")
+                                            : resultsWindow.listening ? i18n("Speak now…")
                                             : i18n("Ask a follow-up…")
 
-                            onTextChanged: if (text !== conversationPane.transcript) {
-                                conversationPane.transcript = text
+                            onTextChanged: if (text !== resultsWindow.transcript) {
+                                resultsWindow.transcript = text
                             }
                         }
 
@@ -1106,8 +748,8 @@ PlasmaCore.Dialog {
                             Layout.alignment: Qt.AlignRight
                             icon.name: "document-send"
                             text: i18n("Send to agent")
-                            enabled: conversationPane.canSubmit
-                            onClicked: conversationPane.submitted(conversationPane.transcript)
+                            enabled: resultsWindow.canSubmit
+                            onClicked: resultsWindow.submitted(resultsWindow.transcript)
 
                             PC3.ToolTip {
                                 text: i18n("Send to agent (Shift+Enter)")
@@ -1120,155 +762,37 @@ PlasmaCore.Dialog {
                     // to complain about.
                     Kirigami.SelectableLabel {
                         Layout.fillWidth: true
-                        visible: conversationPane.statusMessage.length > 0
+                        visible: resultsWindow.statusMessage.length > 0
                         wrapMode: Text.WordWrap
-                        text: conversationPane.statusMessage
+                        text: resultsWindow.statusMessage
                         // Fixed rather than theme-derived: it sits on the
-                        // pane's own dark backdrop, which is dark whichever
-                        // theme runs.
+                        // window's own dark backdrop, which is dark
+                        // whichever theme runs.
                         color: "#f66151"
                     }
-                }
 
-                // The file picker for the "+" button. Every picked file is
-                // handed to the shell, which owns the attachment list.
-                FileDialog {
-                    id: attachmentDialog
+                    // The file picker for the "+" button. Every picked file is
+                    // handed to the shell, which owns the attachment list.
+                    FileDialog {
+                        id: attachmentDialog
 
-                    title: i18n("Attach files to the prompt")
-                    fileMode: FileDialog.OpenFiles
-                    nameFilters: [
-                        i18n("Images and documents"),
-                        "*.png *.jpg *.jpeg *.gif *.webp *.bmp *.tif *.tiff *.pdf *.txt *.md *.csv *.log *.json *.xml *.yaml *.yml",
-                        i18n("All files"),
-                        "*"
-                    ]
+                        title: i18n("Attach files to the prompt")
+                        fileMode: FileDialog.OpenFiles
+                        nameFilters: [
+                            i18n("Images and documents"),
+                            "*.png *.jpg *.jpeg *.gif *.webp *.bmp *.tif *.tiff *.pdf *.txt *.md *.csv *.log *.json *.xml *.yaml *.yml",
+                            i18n("All files"),
+                            "*"
+                        ]
 
-                    onAccepted: {
-                        for (let i = 0; i < selectedFiles.length; ++i) {
-                            conversationPane.attachmentAdded(selectedFiles[i])
+                        onAccepted: {
+                            for (let i = 0; i < selectedFiles.length; ++i) {
+                                resultsWindow.attachmentAdded(selectedFiles[i])
+                            }
                         }
                     }
                 }
             }
-        }
-
-        // ---- Resize handles -------------------------------------------------
-        // Frameless window, so the edges carry invisible drag strips: right
-        // and bottom resize, the corner does both. They are only needed in
-        // the normal state (maximized fills the screen already).
-        //
-        // On press each handle asks the compositor to run an interactive
-        // resize (startSystemResize) — the right way to resize a frameless
-        // window on Wayland, where the compositor owns geometry and applies
-        // every edge smoothly. A client-side height assignment cannot do
-        // that: the Dialog's own position sync re-clamps the window into
-        // the screen on each height change, which is what made vertical
-        // resizing snap back (horizontal growth, unclamped, happened to
-        // survive). If the system resize is unavailable, the handle falls
-        // back to manual math, computed in *global* screen coordinates
-        // captured at press time — item-relative deltas cannot work here,
-        // because the handle moves with the window between the pointer
-        // event and the Dialog applying the resize.
-        MouseArea {
-            objectName: "resizeRight"
-
-            visible: !conversationPane.maximized
-            anchors.right: parent.right
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            width: Kirigami.Units.largeSpacing
-            cursorShape: Qt.SizeHorCursor
-
-            property point pressGlobal: Qt.point(0, 0)
-            property real startWidth: 0
-
-            onPressed: (mouse) => {
-                pressGlobal = mapToGlobal(mouse.x, mouse.y)
-                startWidth = conversationPane.width
-                conversationPane.systemResizing =
-                    conversationPane.startSystemResize(Qt.RightEdge)
-            }
-            onPositionChanged: (mouse) => {
-                if (!pressed || conversationPane.systemResizing) {
-                    return
-                }
-                const global = mapToGlobal(mouse.x, mouse.y)
-                conversationPane.userWidth = Math.max(conversationPane.minPaneWidth,
-                    Math.min(Screen.width - 2 * Kirigami.Units.gridUnit,
-                             startWidth + global.x - pressGlobal.x))
-                conversationPane.applySize()
-            }
-            onReleased: conversationPane.saveSize()
-        }
-
-        MouseArea {
-            objectName: "resizeBottom"
-
-            visible: !conversationPane.maximized
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            height: Kirigami.Units.largeSpacing
-            cursorShape: Qt.SizeVerCursor
-
-            property point pressGlobal: Qt.point(0, 0)
-            property real startHeight: 0
-
-            onPressed: (mouse) => {
-                pressGlobal = mapToGlobal(mouse.x, mouse.y)
-                startHeight = conversationPane.height
-                conversationPane.systemResizing =
-                    conversationPane.startSystemResize(Qt.BottomEdge)
-            }
-            onPositionChanged: (mouse) => {
-                if (!pressed || conversationPane.systemResizing) {
-                    return
-                }
-                const global = mapToGlobal(mouse.x, mouse.y)
-                conversationPane.userHeight = Math.max(conversationPane.minPaneHeight,
-                    Math.min(Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit,
-                             startHeight + global.y - pressGlobal.y))
-                conversationPane.applySize()
-            }
-            onReleased: conversationPane.saveSize()
-        }
-
-        MouseArea {
-            objectName: "resizeCorner"
-
-            visible: !conversationPane.maximized
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            width: Kirigami.Units.gridUnit
-            height: Kirigami.Units.gridUnit
-            cursorShape: Qt.SizeFDiagCursor
-
-            property point pressGlobal: Qt.point(0, 0)
-            property real startWidth: 0
-            property real startHeight: 0
-
-            onPressed: (mouse) => {
-                pressGlobal = mapToGlobal(mouse.x, mouse.y)
-                startWidth = conversationPane.width
-                startHeight = conversationPane.height
-                conversationPane.systemResizing = conversationPane.startSystemResize(
-                    Qt.RightEdge | Qt.BottomEdge)
-            }
-            onPositionChanged: (mouse) => {
-                if (!pressed || conversationPane.systemResizing) {
-                    return
-                }
-                const global = mapToGlobal(mouse.x, mouse.y)
-                conversationPane.userWidth = Math.max(conversationPane.minPaneWidth,
-                    Math.min(Screen.width - 2 * Kirigami.Units.gridUnit,
-                             startWidth + global.x - pressGlobal.x))
-                conversationPane.userHeight = Math.max(conversationPane.minPaneHeight,
-                    Math.min(Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit,
-                             startHeight + global.y - pressGlobal.y))
-                conversationPane.applySize()
-            }
-            onReleased: conversationPane.saveSize()
         }
     }
 }

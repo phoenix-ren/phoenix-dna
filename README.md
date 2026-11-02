@@ -10,13 +10,12 @@ A voice-first desktop AI agent for KDE Plasma 6, packaged as a plasmoid
 
 The plasmoid captures speech, transcribes it, and forwards the text to the
 agent daemon over D-Bus. The daemon runs an LLM tool loop in one of three
-modes, streams progress back, and renders the result in the panel or in the
-overlay/pane.
+modes, streams progress back, and renders the result in a fully-fledged results window.
 
 The panel's search button (or Meta+Alt+`) opens the session search: the
 user's previous sessions on the left, under the name the daemon gave them,
 and the selected session's queries and responses on the right. Clicking a
-query opens it in the results pane, where the conversation can be continued.
+query opens it in the results window, where the conversation can be continued.
 
 ## Layout
 
@@ -24,7 +23,7 @@ query opens it in the results pane, where the conversation can be continued.
 |--------------|-----------------------------------------------------------------|
 | `shell/`     | Panel widget: the main plasmoid, audio capture, transcription   |
 | `overlay/`   | Dictation overlay shown while recording                         |
-| `pane/`      | Results pane for conversation output                            |
+| `resultswindow/` | Fully-fledged results window for conversation output        |
 | `search/`    | Session search: the previous sessions, listed by name           |
 | `waveform/`  | Offline `.wav` → `.png` waveform renderer                       |
 | `widgettest/`| Developer testbench that hosts the widget in a plain window      |
