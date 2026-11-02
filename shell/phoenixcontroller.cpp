@@ -8,6 +8,7 @@
 #include "audioringbuffer.h"
 #include "cliprecorder.h"
 #include "settingsstore.h"
+#include "shuttersound.h"
 #include "transcriber.h"
 
 #include <KGlobalAccel>
@@ -27,12 +28,15 @@ PhoenixController::PhoenixController(QObject *parent)
       m_clipRecorder(new ClipRecorder(this)),
       m_transcriber(new Transcriber(this)),
       m_attachments(new PromptAttachments(this)),
-      m_screenshotPicker(new WindowScreenshotPicker(this))
+      m_screenshotPicker(new WindowScreenshotPicker(this)),
+      m_shutterSound(new ShutterSound(this))
 {
     // A photographed window becomes an attachment of the prompt that is
-    // being composed - the next one the user sends.
+    // being composed - the next one the user sends. The shutter clicks at
+    // the same moment, the way Spectacle's does when the shot is taken.
     connect(m_screenshotPicker, &WindowScreenshotPicker::captured, this,
             [this](const QString &path, const QString &title) {
+                m_shutterSound->play();
                 addAttachment(QUrl::fromLocalFile(path));
                 if (title.isEmpty()) {
                     setStatusMessage(i18n("Attached the screenshot."));

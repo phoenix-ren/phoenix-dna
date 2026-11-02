@@ -41,6 +41,8 @@ plasma_add_applet(org.phoenixdna.agent
         windowpicture.h
         windowscreenshotpicker.cpp
         windowscreenshotpicker.h
+        shuttersound.cpp
+        shuttersound.h
         settingsstore.cpp
         settingsstore.h
         transcriber.cpp
