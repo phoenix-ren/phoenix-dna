@@ -33,12 +33,37 @@ PhoenixController::PhoenixController(QObject *parent)
     connect(m_screenshotPicker, &WindowScreenshotPicker::captured, this,
             [this](const QString &path, const QString &title) {
                 addAttachment(QUrl::fromLocalFile(path));
-                if (!title.isEmpty()) {
+                if (title.isEmpty()) {
+                    setStatusMessage(i18n("Attached the screenshot."));
+                } else {
                     setStatusMessage(i18n("Attached the window “%1”.").arg(title));
                 }
             });
     connect(m_screenshotPicker, &WindowScreenshotPicker::failed, this,
             [this](const QString &message) { setStatusMessage(message); });
+
+    // While the picker waits for a click, the status line names the
+    // window the click would photograph - the desktop itself is left
+    // alone, so the title is the only thing that says what is going to
+    // happen.
+    connect(m_screenshotPicker, &WindowScreenshotPicker::targetTitleChanged, this, [this] {
+        if (!m_screenshotPicker->isPicking()) {
+            return;
+        }
+        const QString title = m_screenshotPicker->targetTitle();
+        setStatusMessage(title.isEmpty() ? i18n("Screenshot: pick a window")
+                                         : i18n("Screenshot: %1").arg(title));
+    });
+    connect(m_screenshotPicker, &WindowScreenshotPicker::pickingChanged, this, [this] {
+        if (m_screenshotPicker->isPicking()) {
+            // The pick just started: the status line names the target from
+            // now on.
+            return;
+        }
+        // The pick is over: the status line goes back to whatever it said
+        // before (a capture sets its own message afterwards).
+        setStatusMessage(QString());
+    });
 
     // The overlay pops up as soon as dictation starts, so the transcript is
     // visible while the user is still speaking.

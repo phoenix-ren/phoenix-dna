@@ -35,6 +35,8 @@ plasma_add_applet(org.phoenixdna.agent
         promptattachments.h
         pickerhoverservice.cpp
         pickerhoverservice.h
+        windowpicture.cpp
+        windowpicture.h
         windowscreenshotpicker.cpp
         windowscreenshotpicker.h
         transcriber.cpp
@@ -91,3 +93,20 @@ target_link_libraries(cliptest PRIVATE
 
 # Header-only Boost, e.g. <boost/histogram.hpp>.
 phoenixdna_use_boost(org.phoenixdna.agent)
+
+# Check of the screenshot path: it asks KWin for the picture of the
+# active window over D-Bus, reads it out of the pipe the way the picker
+# does and writes it to a PNG.
+#
+#   screenshottest [output.png]
+add_executable(screenshottest
+    screenshottest.cpp
+    windowpicture.cpp
+    windowpicture.h
+)
+target_include_directories(screenshottest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(screenshottest PRIVATE
+    Qt6::Core
+    Qt6::DBus
+    Qt6::Gui
+)
