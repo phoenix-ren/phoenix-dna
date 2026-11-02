@@ -205,7 +205,7 @@ def test_set_mode_preauthenticates_root(config, home_dir, fake_sudo):
 def test_set_mode_validates_and_normalizes(config):
     daemon = make_daemon(config, [])
     try:
-        assert daemon.set_mode(" WEB ") == "web"
+        assert daemon.set_mode(" USER ") == "user"
         try:
             daemon.set_mode("bogus")
         except ValueError as exc:

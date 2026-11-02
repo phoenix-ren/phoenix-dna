@@ -29,7 +29,7 @@ def test_slash_command_completion():
 
 def test_mode_argument_completion():
     completer = Completer()
-    assert completer.matches("", buf="/mode ") == ["root", "user", "web"]
+    assert completer.matches("", buf="/mode ") == ["root", "user"]
     assert completer.matches("us", buf="/mode us") == ["user"]
     assert completer.matches("ro", buf="/mode ro") == ["root"]
     assert completer.matches("zz", buf="/mode zz") == []

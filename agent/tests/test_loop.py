@@ -30,7 +30,8 @@ def make_loop(
         mode_name=mode.value,
         provider=provider,
         tools=tools,
-        system_prompt=build_system_prompt(profile),
+        # like the daemon: the prompt advertises the registered tools
+        system_prompt=build_system_prompt(profile, tool_names=tuple(tools)),
         conversation=conversation,
         session_manager=manager,
         event_sink=sink,
@@ -243,4 +244,16 @@ def test_system_prompt_included_in_request(config, home_dir):
     assert "You are Phoenix" in messages[0]["content"]
     assert messages[-1]["content"] == "hi"
     tool_names = {t.name for t in loop._provider.last_tools}
-    assert tool_names == {"bash", "read", "write", "edit", "ls"}
+    # the fixture configures both search keys, so both modes carry them
+    assert tool_names == {
+        "bash",
+        "read",
+        "write",
+        "edit",
+        "ls",
+        "tavily_search",
+        "exa_search",
+    }
+    # and the system prompt advertises exactly what is registered
+    assert "tavily_search" in messages[0]["content"]
+    assert "exa_search" in messages[0]["content"]

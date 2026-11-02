@@ -7,7 +7,6 @@ Two ways to run it:
 
   # embedded (default): the daemon runs in this process, real provider
   python -m phoenix_dna.repl
-  python -m phoenix_dna.repl --mode web          # start in web mode
   python -m phoenix_dna.repl --provider fake     # no API key needed
 
   # D-Bus client: drive a running `phoenix-dna-agent` daemon exactly like the
@@ -56,7 +55,7 @@ SLASH_COMMANDS = (
     "/exit",
     "/q",
 )
-MODE_NAMES = ("root", "user", "web")
+MODE_NAMES = ("root", "user")
 
 
 def _complete_path(text: str) -> list[str]:
@@ -357,7 +356,7 @@ def dbus_signal_to_event(name: str, *args) -> dict | None:
 
 HELP = """\
 Commands (Tab completes commands, /mode arguments and file paths):
-  /mode <root|user|web>  switch operating mode
+  /mode <root|user>      switch operating mode
   /new                   start a fresh session in the current mode
   /session               show the current session id
   /modes                 list operating modes
@@ -432,7 +431,7 @@ def repl_loop(
                     mark = "*" if name == mode else " "
                     printer.line(f"{mark} {name:5} {workdir:12} {description}")
             else:
-                printer.line("root / user / web (built-in)")
+                printer.line("root / user (built-in)")
             continue
         if line == "/state":
             printer.line(state_fn() if state_fn else "state not available")
@@ -443,8 +442,8 @@ def repl_loop(
             continue
         if line.startswith("/mode"):
             parts = line.split()
-            if len(parts) != 2 or parts[1] not in ("root", "user", "web"):
-                printer.line("usage: /mode <root|user|web>")
+            if len(parts) != 2 or parts[1] not in MODE_NAMES:
+                printer.line(f"usage: /mode <{'|'.join(MODE_NAMES)}>")
                 continue
             mode = parts[1]
             printer.line(f"mode → {mode} (session: {sessions.get(mode, 'new')})")
@@ -665,7 +664,7 @@ def main(argv: list[str] | None = None) -> int:
         help="connect to a running daemon over D-Bus (like the plasmoid) "
         "instead of embedding the daemon in this process",
     )
-    parser.add_argument("--mode", choices=["root", "user", "web"], default="user")
+    parser.add_argument("--mode", choices=list(MODE_NAMES), default="user")
     parser.add_argument("--session", default="", help="continue a session id")
     parser.add_argument(
         "--provider", choices=["minimax", "fake"], help="LLM provider (embedded mode)"

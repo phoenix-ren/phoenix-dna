@@ -52,14 +52,14 @@ def test_session_titled_after_first_run(config):
         emitter=events.append,
     )
     try:
-        daemon.submit("who was the first US president", "web")
+        daemon.submit("who was the first US president", "user")
         assert wait_for(lambda: events_of(events, SESSION_TITLE_CHANGED), timeout=5)
         event = events_of(events, SESSION_TITLE_CHANGED)[0]
         assert event["title"] == "US Presidents"
         assert event["session_id"]  # a real session was named
 
         # The title is persisted in the session row.
-        conversation = daemon._sessions.get("web", event["session_id"])
+        conversation = daemon._sessions.get("user", event["session_id"])
         assert title_of(daemon, conversation) == "US Presidents"
     finally:
         daemon.shutdown()

@@ -9,8 +9,9 @@ Layout::
     <data_dir>/sessions/<mode>/<id>.jsonl    # legacy store, imported once
 
 The user dimension follows the widget's modes: root-mode sessions belong to
-``root``, everything else (user mode and the anonymous web mode) belongs to
-the local login name — an anonymous browse is still this human's history.
+``root``, everything else (user mode, plus any legacy ``web`` sessions from
+an older daemon) belongs to the local login name — an anonymous browse was
+still this human's history.
 
 Schema (per DB)::
 
@@ -144,9 +145,10 @@ class SessionStore:
     def user_for_mode(self, mode: str) -> str:
         """Which user's history a mode's sessions belong to.
 
-        Root-mode sessions are filed under "root"; user- and web-mode
-        sessions belong to the local login name — the anonymous web mode is
-        still this human, so its history lands in their database.
+        Root-mode sessions are filed under "root"; user-mode sessions
+        belong to the local login name. Any other mode string can only
+        come from history rows of an older daemon (the removed web
+        mode) — they stay in the local login name's database.
         """
         return "root" if mode == "root" else self.local_user
 

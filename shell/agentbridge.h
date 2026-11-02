@@ -251,7 +251,7 @@ public:
      * opened. The session id is adopted as well: a follow-on typed in
      * the pane continues that very session.
      *
-     * \a mode is the session's mode ("root", "user" or "web"): it names
+     * \a mode is the session's mode ("root" or "user"): it names
      * the sender of the session's queries. \a title is the name the
      * pane's header shows.
      */
@@ -376,13 +376,12 @@ private:
      * content): every user message opens an exchange, the assistant
      * messages that follow are its answer.
      *
-     * \a mode names the sender of the queries ("root", the login name
-     * or "anon"). */
+     * \a mode names the sender of the queries ("root" or the login
+     * name). */
     void loadStoredSession(const QVariantList &messages, const QString &mode);
 
     /*! \brief The sender attribution for a prompt submitted in \a mode:
-     *  "root" in root mode, "anon" in web mode, the local user's login
-     *  name otherwise. */
+     *  "root" in root mode, the local user's login name otherwise. */
     static QString senderNameForMode(const QString &mode);
 
 private Q_SLOTS:
@@ -393,7 +392,7 @@ private:
     bool m_available = false;
     QString m_workingDirectory;
     bool m_elevated = false;
-    // The daemon mode name ("root"/"user"/"web") last sent via setMode();
+    // The daemon mode name ("root"/"user") last sent via setMode();
     // submitPrompt() needs it to route the prompt.
     QString m_modeName = QStringLiteral("user");
     QString m_partialTranscript;

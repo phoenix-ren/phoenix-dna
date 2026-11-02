@@ -191,7 +191,7 @@ public:
      * then on, so a follow-on typed in the pane continues that very
      * conversation.
      *
-     * \a mode is the session's mode ("root", "user" or "web"), which
+     * \a mode is the session's mode ("root" or "user"), which
      * names the sender of its queries, and \a title the name the pane's
      * header shows. */
     Q_INVOKABLE void openSessionResults(const QString &sessionId,

@@ -50,8 +50,8 @@ def test_minimax_streaming_completion():
     assert response.usage is None or response.usage.output_tokens > 0
 
 
-def test_web_mode_example_question():
-    """The canonical web-mode question, run through the full agent loop."""
+def test_user_mode_example_question():
+    """The canonical date-arithmetic question, run through the full loop."""
     from phoenix_dna.loop import AgentLoop
     from phoenix_dna.modes import MODE_PROFILES, Mode, build_toolset
     from phoenix_dna.prompts import build_system_prompt
@@ -59,16 +59,16 @@ def test_web_mode_example_question():
     from phoenix_dna.sessions import SessionManager, SessionStore
 
     config = _config()
-    profile = MODE_PROFILES[Mode.WEB]
+    profile = MODE_PROFILES[Mode.USER]
     events = []
     loop = AgentLoop(
-        run_id="run_live_web",
-        mode_name="web",
+        run_id="run_live_user",
+        mode_name="user",
         provider=build_provider(config),
         tools=build_toolset(profile, config),
         system_prompt=build_system_prompt(profile),
         conversation=SessionManager(SessionStore(config.data_dir / "sessions")).get(
-            "web"
+            "user"
         ),
         session_manager=SessionManager(SessionStore(config.data_dir / "sessions")),
         event_sink=lambda e: events.append(e),

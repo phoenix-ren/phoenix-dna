@@ -56,8 +56,6 @@ def test_one_database_per_user(tmp_path):
 
     assert store.user_for_mode("root") == "root"
     assert store.user_for_mode("user") == user
-    # The anonymous web mode files into the local user's database.
-    assert store.user_for_mode("web") == user
 
     store.append_message(user, "user", "s1", {"role": "user", "content": "mine"})
     store.append_message("root", "root", "s2", {"role": "user", "content": "root's"})
@@ -110,16 +108,16 @@ def test_manager_persistence_and_reload(tmp_path):
 
 def test_manager_cache_is_per_user(tmp_path):
     manager = SessionManager(SessionStore(tmp_path / "users"))
-    web = manager.get("web", "shared-id")
+    user_conv = manager.get("user", "shared-id")
     root = manager.get("root", "shared-id")
     # Same id, different user databases: two distinct conversations.
-    assert web.user == manager.store.local_user
+    assert user_conv.user == manager.store.local_user
     assert root.user == "root"
-    assert web is not root
+    assert user_conv is not root
 
-    web.messages.append({"role": "user", "content": "anon q"})
-    cached = manager.get("web", "shared-id")
-    assert cached is web
+    user_conv.messages.append({"role": "user", "content": "my q"})
+    cached = manager.get("user", "shared-id")
+    assert cached is user_conv
 
 
 def test_tool_call_message_roundtrip(tmp_path):

@@ -13,7 +13,7 @@ import plasma.applet.org.phoenixdna.agent as Phoenix
  * The panel widget's compact representation.
  *
  * Layout, left to right:
- *   * the three mode buttons      (root / user / web, active one checked on)
+ *   * the two mode buttons       (root / user, active one checked on)
  *   * the ring-buffered waveform  (the last five seconds of audio)
  *   * the record button, which becomes a stop button while recording
  *   * the search button, which opens the session search
@@ -63,7 +63,7 @@ Item {
         anchors.fill: parent
         spacing: Kirigami.Units.smallSpacing
 
-        // ---- Left: the three mode buttons ----------------------------------
+        // ---- Left: the two mode buttons -----------------------------------
         // One button per mode, the active one shown checked, so every mode is
         // reachable with a single click — no cycling, no popup. Selecting the
         // system (root) mode makes the daemon pop the KDE password dialog.
@@ -75,8 +75,7 @@ Item {
             Repeater {
                 model: [
                     { mode: Phoenix.AgentMode.Root, label: i18n("Root") },
-                    { mode: Phoenix.AgentMode.User, label: i18n("User") },
-                    { mode: Phoenix.AgentMode.Web,  label: i18n("Web") }
+                    { mode: Phoenix.AgentMode.User, label: i18n("User") }
                 ]
 
                 delegate: PC3.ToolButton {

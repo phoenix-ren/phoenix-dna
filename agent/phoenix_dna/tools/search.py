@@ -1,11 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
-"""Web search tools (web mode): Tavily and Exa.
+"""Web search tools: Tavily and Exa.
 
 Both are simple JSON-over-HTTPS POST APIs, so they are implemented with
-urllib - no SDK dependency. If a key is missing, the corresponding tool is
-simply not registered for web mode.
+urllib - no SDK dependency. Every mode registers them; if a key is
+missing, the corresponding tool is simply not registered (and the system
+prompt does not mention it).
 """
 
 from __future__ import annotations

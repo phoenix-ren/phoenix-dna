@@ -324,7 +324,7 @@ Window {
                             // fifths of the window, with a tail pointing
                             // down-right and the sender's name underneath
                             // it — the bubble points at whoever issued it
-                            // ("root", the login name, or "anon", per the
+                            // ("root" or the login name, per the
                             // mode the prompt was submitted in). Plain
                             // text — it is dictated, not authored
                             // Markdown. Hidden for runs not started from
@@ -495,8 +495,8 @@ Window {
 
                             // What the agent actually did in this run:
                             // every tool call with its command and output.
-                            // Only present when something ran (web answers
-                            // often have no tool calls beyond a search).
+                            // Only present when something ran (plain
+                            // answers often have no tool calls at all).
                             Kirigami.Separator {
                                 Layout.fillWidth: true
                                 visible: exchange.toolLog.length > 0
