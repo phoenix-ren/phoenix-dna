@@ -21,6 +21,9 @@ class FakeService:
     def TranscriptCleaned(self, *args):
         self.calls.append(("TranscriptCleaned", args))
 
+    def SessionTitleChanged(self, *args):
+        self.calls.append(("SessionTitleChanged", args))
+
 
 def test_cleanup_event_maps_to_transcript_cleaned():
     service = FakeService()
@@ -59,3 +62,19 @@ def test_unknown_event_kind_is_ignored():
     bridge = SignalBridge({"transcript_cleaned": service.TranscriptCleaned})
     bridge.dispatch({"kind": "mystery"})
     assert service.calls == []
+
+
+def test_title_event_maps_to_session_title_changed():
+    service = FakeService()
+    bridge = SignalBridge({"session_title_changed": service.SessionTitleChanged})
+    bridge.dispatch(
+        events.make(
+            events.SESSION_TITLE_CHANGED,
+            session_id="abc123",
+            mode="user",
+            title="First US President",
+        )
+    )
+    assert service.calls == [
+        ("SessionTitleChanged", ("abc123", "user", "First US President"))
+    ]

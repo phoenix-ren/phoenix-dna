@@ -157,6 +157,11 @@ PlasmoidItem {
         transcribing: Phoenix.PhoenixController.transcribing
         statusMessage: Phoenix.PhoenixController.statusMessage
 
+        // The daemon names the session after every completed run (and
+        // renames it when follow-ons reshape the conversation); the
+        // header carries that title.
+        sessionTitle: Phoenix.PhoenixController.agent.sessionTitle
+
         // The same toggle the panel widget's record button performs.
         onRecordClicked: Phoenix.PhoenixController.toggleRecording()
 

@@ -59,15 +59,23 @@ def main(argv: list[str] | None = None) -> int:
 
     from .service import run_service
 
-    # The transcript cleaner is its own provider instance: its single-shot
-    # calls are independent of the run loop's provider usage (and of the
-    # scripted call sequence a FakeProvider replays).
+    # The transcript cleaner and the session namer are their own provider
+    # instances: their single-shot calls are independent of the run loop's
+    # provider usage (and of the scripted call sequence a FakeProvider
+    # replays).
     try:
         cleanup_provider = build_provider(config)
+        title_provider = build_provider(config)
     except RuntimeError:
         cleanup_provider = None
+        title_provider = None
 
-    daemon = AgentDaemon(config, provider=provider, cleanup_provider=cleanup_provider)
+    daemon = AgentDaemon(
+        config,
+        provider=provider,
+        cleanup_provider=cleanup_provider,
+        title_provider=title_provider,
+    )
     try:
         run_service(daemon)
     except RuntimeError as exc:

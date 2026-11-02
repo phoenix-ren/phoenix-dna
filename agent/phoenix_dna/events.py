@@ -22,6 +22,8 @@ RUN_FINISHED = "run_finished"
 STATE_CHANGED = "state_changed"
 #: A submitted transcript cleanup completed (successfully or not).
 CLEANUP_FINISHED = "cleanup_finished"
+#: A session's LLM-generated title was (re)generated.
+SESSION_TITLE_CHANGED = "session_title_changed"
 
 #: Terminal statuses for a run.
 RUN_STATUSES = ("completed", "cancelled", "error", "max_turns")

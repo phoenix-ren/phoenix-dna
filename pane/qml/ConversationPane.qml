@@ -85,6 +85,11 @@ PlasmaCore.Dialog {
     readonly property bool canSubmit: transcript.length > 0
         && !listening && !transcribing
 
+    // The current session's LLM-generated title, as announced by the
+    // daemon (and re-generated on every follow-on). Empty until the first
+    // title arrives: the header then shows the generic heading.
+    property string sessionTitle: ""
+
     // The item the pane floats next to — the shell passes its own item so
     // the result appears where the user triggered the query.
     property Item anchor: null
@@ -414,7 +419,12 @@ PlasmaCore.Dialog {
                         anchors.verticalCenter: parent.verticalCenter
                         // KF6 6.31 has no Kirigami.Heading.Level enum; levels are plain ints.
                         level: 3
-                        text: i18n("Conversation")
+                        // Once the daemon has named the session, the
+                        // header carries that name; it follows the
+                        // conversation as follow-ons reshape it.
+                        text: conversationPane.sessionTitle.length > 0
+                            ? conversationPane.sessionTitle : i18n("Conversation")
+                        elide: Text.ElideRight
                         color: "#f2f2f2"
                     }
 

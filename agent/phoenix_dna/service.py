@@ -59,6 +59,10 @@ _SIGNAL_MAP = {
         "transcript_cleaned",
         ("cleanup_id", "source", "cleaned", "status"),
     ),
+    "session_title_changed": (
+        "session_title_changed",
+        ("session_id", "mode", "title"),
+    ),
 }
 
 
@@ -82,6 +86,7 @@ _DEFAULTS = {
     "cleanup_id": "",
     "source": "",
     "cleaned": "",
+    "title": "",
 }
 
 
@@ -124,6 +129,7 @@ def build_bridge(service) -> SignalBridge:
             "state_changed": service.StateChanged,
             "run_finished": service.RunFinished,
             "cleanup_finished": service.TranscriptCleaned,
+            "session_title_changed": service.SessionTitleChanged,
         }
     )
 
@@ -182,6 +188,9 @@ if dbus is not None:
 
         @dbus.service.signal(INTERFACE, signature="ssss")
         def TranscriptCleaned(self, cleanup_id, source, cleaned, status): ...
+
+        @dbus.service.signal(INTERFACE, signature="sss")
+        def SessionTitleChanged(self, session_id, mode, title): ...
 
         # -- methods -----------------------------------------------------------
 
