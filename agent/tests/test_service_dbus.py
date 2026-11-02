@@ -3,19 +3,18 @@
 
 """D-Bus service integration test.
 
-Requires a session bus. Run either inside your desktop session:
-
-    pytest tests/test_service_dbus.py
-
-or hermetically:
-
-    dbus-run-session -- python -m pytest tests/test_service_dbus.py -q
+The test runs on its own private D-Bus daemon, not on the session bus: the
+production daemon (phoenix.service) owns ``dna.phoenix.Agent`` on the
+session bus for as long as the desktop session runs, and the test must not
+fight it for the name - nor receive its signals.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import signal
+import subprocess
 import threading
 import time
 
@@ -23,18 +22,36 @@ import pytest
 
 pytest.importorskip("dbus", reason="python3-dbus not installed")
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("DBUS_SESSION_BUS_ADDRESS"),
-    reason="no session bus; run tests under: dbus-run-session -- python -m pytest",
-)
+
+@pytest.fixture(scope="module")
+def bus_address():
+    """The address of a private D-Bus daemon, private to this test run."""
+    try:
+        result = subprocess.run(
+            ["dbus-daemon", "--session", "--print-address", "--print-pid", "--fork"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        pytest.skip(f"cannot start a private dbus-daemon: {exc}")
+    if result.returncode != 0:
+        pytest.skip(f"cannot start a private dbus-daemon: {result.stderr.strip()}")
+    address, _, pid = result.stdout.strip().partition("\n")
+    yield address.strip()
+    try:
+        os.kill(int(pid.strip()), signal.SIGTERM)
+    except (OSError, ValueError):
+        pass
 
 
 @pytest.fixture(scope="module")
-def service(tmp_path_factory):
+def service(bus_address, tmp_path_factory):
     from dbus.mainloop.glib import DBusGMainLoop
 
     DBusGMainLoop(set_as_default=True)
     import dbus
+    import dbus.bus
     from gi.repository import GLib
 
     from phoenix_dna.config import Config
@@ -56,8 +73,8 @@ def service(tmp_path_factory):
         # kdialog during the test run.
         password_provider=StaticPasswordProvider([]),
     )
-    bus = dbus.SessionBus()
-    bus.request_name(BUS_NAME)
+    bus = dbus.bus.BusConnection(bus_address)
+    assert bus.request_name(BUS_NAME) == dbus.bus.REQUEST_NAME_REPLY_PRIMARY_OWNER
     svc = PhoenixService(daemon, bus)
     loop = GLib.MainLoop()
     thread = threading.Thread(target=loop.run, daemon=True)
@@ -69,16 +86,16 @@ def service(tmp_path_factory):
 
 
 @pytest.fixture()
-def client(service):
+def client(service, bus_address):
     import dbus
+    import dbus.bus
 
     from phoenix_dna.service import BUS_NAME, INTERFACE, OBJECT_PATH
 
-    # private=True: dbus.SessionBus() is a process-wide singleton; reusing
-    # the server's connection for the client deadlocks (call_blocking vs.
-    # dispatch on the same connection). The plasmoid is a separate process,
-    # so this quirk is test-only.
-    bus = dbus.SessionBus(private=True)
+    # A second connection to the private bus: the plasmoid is a separate
+    # process, and sharing one connection between server and client would
+    # deadlock (call_blocking vs. dispatch on the same connection).
+    bus = dbus.bus.BusConnection(bus_address)
     proxy = bus.get_object(BUS_NAME, OBJECT_PATH)
     return bus, dbus.Interface(proxy, INTERFACE)
 

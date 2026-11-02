@@ -1,0 +1,56 @@
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# Phoenix DNA agent daemon - systemd *user* service.
+#
+# This is a template: the ExecStart and WorkingDirectory placeholders are
+# substituted by agent/systemd/install-user-service.sh, which writes the
+# finished unit to ~/.config/systemd/user/phoenix.service.
+#
+# Why a user service and not a system unit:
+#
+#   * the daemon owns the session-bus name dna.phoenix.Agent, which the
+#     plasmoid reaches over QDBusConnection::sessionBus() - a system unit
+#     has no session bus to join;
+#   * root mode elevates on demand: the daemon asks for the password with
+#     kdialog (needs the GUI session: DISPLAY/WAYLAND_DISPLAY) and runs the
+#     command through sudo. Running the daemon as root would make sudo a
+#     no-op and turn the password prompt into theatre;
+#   * config (~/.config/phoenix-dna) and state (~/.local/state/phoenix-dna)
+#     belong to the desktop user, and keys.json is expected to be 0600.
+#
+# A service inherits the user manager's environment, which carries DISPLAY,
+# WAYLAND_DISPLAY and XAUTHORITY from the login session - that is what the
+# kdialog password prompt needs.
+#
+# Install:   agent/systemd/install-user-service.sh
+# Status:    systemctl --user status phoenix.service
+# Logs:      journalctl --user -u phoenix.service -f
+
+[Unit]
+Description=Phoenix DNA agent daemon (D-Bus service)
+Documentation=file:@AGENT_DIR@/README.md
+After=graphical-session.target
+# A daemon that cannot start (missing API key, see agent/README.md) must not
+# spin forever: five attempts per minute, then the unit stays "failed" until
+# someone starts it again by hand.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=@AGENT_EXEC@
+WorkingDirectory=@AGENT_DIR@
+# The daemon logs to stderr; unbuffered output makes journalctl -f show the
+# stream as it happens.
+Environment=PYTHONUNBUFFERED=1
+StandardOutput=journal
+StandardError=journal
+Restart=on-failure
+RestartSec=5
+# SIGTERM makes the daemon quit the GLib main loop and shut down cleanly.
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=default.target

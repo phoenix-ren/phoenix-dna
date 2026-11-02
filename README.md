@@ -52,6 +52,21 @@ systemctl --user restart plasma-plasmashell   # otherwise the panel keeps the ol
 journalctl --user -b --no-pager | grep -i phoenix   # check for QML errors
 ```
 
+## Running the agent
+
+The Python agent daemon runs as a systemd **user** service, so it comes up
+with the session — nothing has to be started by hand:
+
+```bash
+agent/systemd/install-user-service.sh      # once
+systemctl --user status phoenix.service
+journalctl --user -u phoenix.service -f
+```
+
+It runs as the desktop user, not as root: it lives on the session bus that
+the plasmoid connects to, and it elevates to root on demand through `sudo`
+when a prompt asks for it. See `agent/README.md` for the details.
+
 ## License
 
 BSD-2-Clause — see [LICENSE](LICENSE).
