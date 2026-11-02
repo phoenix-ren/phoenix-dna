@@ -104,6 +104,10 @@ def test_system_prompts(config):
         assert "dnf -y" in prompt
         assert "apt-get -y" in prompt
         assert "stdin is closed" in prompt
+        # math must be asked for in LaTeX delimiters, the spellings the
+        # interface's renderer understands
+        assert "$...$" in prompt
+        assert "$$...$$" in prompt
         # without registered search tools the prompt must not advertise any
         assert "tavily_search" not in prompt
         assert "exa_search" not in prompt

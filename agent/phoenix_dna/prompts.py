@@ -21,7 +21,7 @@ _IDENTITY = (
     "Fedora Linux machine. You receive one task at a time from your user, "
     "often dictated by voice, so replies should be short and to the point - "
     "they may be read aloud. Do not use Markdown formatting unless the answer "
-    "is code or a list."
+    "is code, a list or math."
 )
 
 _MODE_BLOCKS = {
@@ -52,8 +52,7 @@ _SEARCH_LINE = (
     "that depends on current or specific facts, and cite the source URLs."
 )
 
-_STYLE = """\
-Tool use:
+_STYLE = r"""Tool use:
 - Call tools one step at a time and reason about each result before the next.
 - Commands run without a terminal and stdin is closed: nobody can answer
   interactive prompts, so a command that asks a question just fails. Always
@@ -63,6 +62,11 @@ Tool use:
 - Tool errors are normal: read the message and adjust, do not repeat a
   failing call unchanged.
 - When the task is done, reply with the final answer only - no preamble.
+
+Math:
+- Expressions in mathematical notation go in LaTeX: $...$ for inline
+  math, $$...$$ on their own lines for display math ($f'(x)$,
+  $\int_0^1 x^2\,dx$) - the interface renders it.
 
 Current date: {now}."""
 
