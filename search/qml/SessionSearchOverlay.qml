@@ -70,9 +70,10 @@ PlasmaCore.Dialog {
     property int currentIndex: -1
 
     // The gap between two paragraphs of the agent's Markdown, which Qt
-    // renders with none at all (see MarkdownDocument.spaceParagraphs).
+    // renders with none at all (see MarkdownDocument.spaceParagraphs);
+    // about four fifths of a line, so paragraphs read as paragraphs.
     readonly property real paragraphSpacing:
-        Math.round(Qt.application.font.pixelSize * 0.45)
+        Math.round(Qt.application.font.pixelSize * 0.8)
 
     // While the query field is cleared on opening, its text change must
     // not trigger a second search.

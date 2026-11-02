@@ -121,9 +121,10 @@ Window {
     property string sessionTitle: ""
 
     // The gap between two paragraphs of the agent's Markdown, which Qt
-    // renders with none at all (see MarkdownDocument.spaceParagraphs).
+    // renders with none at all (see MarkdownDocument.spaceParagraphs);
+    // about four fifths of a line, so paragraphs read as paragraphs.
     readonly property real paragraphSpacing:
-        Math.round(Qt.application.font.pixelSize * 0.45)
+        Math.round(Qt.application.font.pixelSize * 0.8)
 
     // The header of a folded-away section: the thinking notes and the
     // tool log are context, not the answer, and they start folded —
