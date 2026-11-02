@@ -119,6 +119,37 @@ Item {
             active: root.recording
         }
 
+        // ---- Right: the camera and the record button -----------------------
+        // The camera photographs a window of the desktop and attaches the
+        // picture to the prompt that is being composed; the global
+        // shortcut does the same from anywhere.
+        PC3.ToolButton {
+            id: screenshotButton
+            objectName: "screenshotButton"
+
+            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+            icon.name: "camera-photo"
+            icon.width: Kirigami.Units.iconSizes.small
+            icon.height: Kirigami.Units.iconSizes.small
+            // While the picker waits for a click, the button says so.
+            icon.color: Phoenix.PhoenixController.screenshotPicker.picking
+                ? Kirigami.Theme.highlightColor
+                : "white"
+
+            onClicked: Phoenix.PhoenixController.startScreenshot()
+
+            PC3.ToolTip {
+                text: {
+                    const shortcut = Phoenix.PhoenixController.screenshotPicker.shortcut;
+                    return shortcut.length > 0
+                        ? i18n("Screenshot a window (%1)", shortcut)
+                        : i18n("Screenshot a window");
+                }
+            }
+        }
+
         // ---- Right: the record button --------------------------------------
         PC3.ToolButton {
             id: recordButton

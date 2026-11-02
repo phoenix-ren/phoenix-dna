@@ -53,6 +53,17 @@ PlasmaCore.Dialog {
     // Emitted when the user takes an attached file off the prompt.
     signal attachmentRemoved(int index)
 
+    // Whether the window picker is waiting for the user to click a window
+    // of the desktop; bound by the shell.
+    property bool screenshotPicking: false
+
+    // The global shortcut that starts the window picker; bound by the
+    // shell (empty when nothing is bound).
+    property string screenshotShortcut: ""
+
+    // Emitted when the user wants to photograph a window of the desktop.
+    signal screenshotRequested()
+
     // Emitted when the user accepts the transcript and wants it sent to the
     // agent as a prompt. The shell wires this to the controller.
     signal submitted(string text)
@@ -235,6 +246,37 @@ PlasmaCore.Dialog {
 
                     PC3.ToolTip {
                         text: i18n("Attach a file to the prompt")
+                    }
+                }
+
+                // The camera: photograph a window of the desktop and
+                // attach the picture to this prompt.
+                PC3.ToolButton {
+                    id: screenshotButton
+                    objectName: "screenshotButton"
+
+                    Layout.alignment: Qt.AlignTop
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+                    icon.name: "camera-photo"
+                    icon.width: Kirigami.Units.iconSizes.small
+                    icon.height: Kirigami.Units.iconSizes.small
+                    // While the picker waits for a click, the button says
+                    // so.
+                    icon.color: dictationOverlay.screenshotPicking
+                        ? Kirigami.Theme.highlightColor
+                        : Kirigami.Theme.textColor
+
+                    onClicked: dictationOverlay.screenshotRequested()
+
+                    PC3.ToolTip {
+                        text: {
+                            const shortcut = dictationOverlay.screenshotShortcut;
+                            return shortcut.length > 0
+                                ? i18n("Screenshot a window (%1)", shortcut)
+                                : i18n("Screenshot a window");
+                        }
                     }
                 }
 

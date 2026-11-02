@@ -24,6 +24,26 @@ overlay/pane.
 | `widgettest/`| Developer testbench that hosts the widget in a plain window      |
 | `agent/`     | Python agent daemon (`phoenix-dna-agent`), a D-Bus service          |
 
+## Prompts with files
+
+A prompt is not only text: the user can attach files to it. The "+" button
+on the left of the prompt (in the dictation overlay and in the results
+pane's follow-up field) opens a file picker, and every picked file shows
+up as a chip next to the prompt. The files travel to the agent daemon with
+the prompt and are copied into its own attachment directory, where the
+agent can read them; images are also shown to the model directly, and the
+text of a PDF is extracted for it.
+
+The camera button does the same with a picture of the desktop: it starts
+the window picker, which is also bound to the global shortcut `Meta+Alt`
+(rebindable in *System Settings → Shortcuts → Phoenix DNA*). The picker
+highlights the window under the mouse and photographs the one that is
+clicked — the click never reaches the window itself. The picture is
+attached to the prompt that is being composed, like any other file.
+
+Both need KWin, which is where the pointer is followed, the target window
+is highlighted and the picture is taken.
+
 ## Building
 
 ```bash

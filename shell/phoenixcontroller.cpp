@@ -25,8 +25,21 @@ PhoenixController::PhoenixController(QObject *parent)
       m_capture(new AudioCapture(this)),
       m_clipRecorder(new ClipRecorder(this)),
       m_transcriber(new Transcriber(this)),
-      m_attachments(new PromptAttachments(this))
+      m_attachments(new PromptAttachments(this)),
+      m_screenshotPicker(new WindowScreenshotPicker(this))
 {
+    // A photographed window becomes an attachment of the prompt that is
+    // being composed - the next one the user sends.
+    connect(m_screenshotPicker, &WindowScreenshotPicker::captured, this,
+            [this](const QString &path, const QString &title) {
+                addAttachment(QUrl::fromLocalFile(path));
+                if (!title.isEmpty()) {
+                    setStatusMessage(i18n("Attached the window “%1”.").arg(title));
+                }
+            });
+    connect(m_screenshotPicker, &WindowScreenshotPicker::failed, this,
+            [this](const QString &message) { setStatusMessage(message); });
+
     // The overlay pops up as soon as dictation starts, so the transcript is
     // visible while the user is still speaking.
     connect(m_agent, &AgentBridge::partialTranscriptChanged, this, [this] {
@@ -303,4 +316,9 @@ bool PhoenixController::addAttachment(const QUrl &url)
 void PhoenixController::removeAttachment(int index)
 {
     m_attachments->remove(index);
+}
+
+void PhoenixController::startScreenshot()
+{
+    m_screenshotPicker->start();
 }
