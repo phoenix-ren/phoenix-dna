@@ -28,12 +28,21 @@ void MarkdownDocument::spaceParagraphs(QQuickTextDocument *document,
         }
         const bool first = block == doc->begin();
         const bool last = !block.next().isValid();
-        QTextBlockFormat format = block.blockFormat();
         // Qt does not collapse margins: the wanted gap is split across
         // the two blocks that meet, and the outermost edges stay at the
         // container's own padding.
-        format.setTopMargin(first ? 0 : spacing / 2);
-        format.setBottomMargin(last ? 0 : spacing / 2);
+        const qreal top = first ? 0 : spacing / 2;
+        const qreal bottom = last ? 0 : spacing / 2;
+        QTextBlockFormat format = block.blockFormat();
+        // Idempotence: rewriting an unchanged format would still emit
+        // contentsChange, and through the layout cascade that reaches
+        // this handler again — the storm the journal filled with
+        // stack overflows. A second polish must touch nothing.
+        if (format.topMargin() == top && format.bottomMargin() == bottom) {
+            continue;
+        }
+        format.setTopMargin(top);
+        format.setBottomMargin(bottom);
         cursor.setPosition(block.position());
         cursor.setBlockFormat(format);
     }

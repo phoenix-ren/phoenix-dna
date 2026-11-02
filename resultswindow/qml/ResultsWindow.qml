@@ -470,6 +470,22 @@ Window {
                                 }
                             }
 
+                            // Safety net for the change-triggered paths:
+                            // they can die mid-flight (they did, in the
+                            // field — a streaming delta's stack overflow
+                            // took the finished-flag handler with it),
+                            // so while the exchange runs, or a wanted PDF
+                            // has not been requested yet, re-check every
+                            // second. Once the PDF is requested the net
+                            // stops: wantsPdf turns false on its own.
+                            Timer {
+                                interval: 1000
+                                repeat: true
+                                running: exchange.running
+                                         || exchange.wantsPdf
+                                onTriggered: exchange.maybeRenderPdf()
+                            }
+
                             Layout.preferredWidth: column.width
                             spacing: Kirigami.Units.smallSpacing
 
@@ -528,7 +544,8 @@ Window {
                                         color: PhoenixTheme.textColor
                                         // Breathing room between the
                                         // paragraphs of a long dictation.
-                                        onTextChanged: MarkdownDocument.spaceParagraphs(
+                                        onTextChanged: Qt.callLater(
+                                            MarkdownDocument.spaceParagraphs,
                                             textDocument,
                                             resultsWindow.paragraphSpacing)
                                     }
@@ -626,7 +643,8 @@ Window {
                                     // not the result.
                                     font.pixelSize: Math.round(
                                         Qt.application.font.pixelSize * 0.85)
-                                    onTextChanged: MarkdownDocument.spaceParagraphs(
+                                    onTextChanged: Qt.callLater(
+                                        MarkdownDocument.spaceParagraphs,
                                         textDocument, resultsWindow.paragraphSpacing)
                                 }
                             }
@@ -674,7 +692,8 @@ Window {
                                     // wanted, not text to read past.
                                     font.pixelSize: Math.round(
                                         Qt.application.font.pixelSize * 0.85)
-                                    onTextChanged: MarkdownDocument.spaceParagraphs(
+                                    onTextChanged: Qt.callLater(
+                                        MarkdownDocument.spaceParagraphs,
                                         textDocument, resultsWindow.paragraphSpacing)
                                 }
                             }
@@ -764,11 +783,16 @@ Window {
                                         // user came for.
                                         font.pixelSize: Math.round(
                                             Qt.application.font.pixelSize * 1.12)
-                                        // Re-space on every change: the
+                                        // Re-space after every change: the
                                         // answer streams in as deltas,
-                                        // each rebuilding the document
-                                        // and resetting the margins.
-                                        onTextChanged: MarkdownDocument.spaceParagraphs(
+                                        // each rebuilding the document.
+                                        // Deferred out of the change
+                                        // cascade (and coalesced): the
+                                        // document edits of one polish
+                                        // must not synchronously begin
+                                        // the next.
+                                        onTextChanged: Qt.callLater(
+                                            MarkdownDocument.spaceParagraphs,
                                             textDocument,
                                             resultsWindow.paragraphSpacing)
                                     }
