@@ -79,8 +79,7 @@ private:
 
     /*! \brief Runs the engine on \a texPath, asynchronously. */
     void compile(int requestId, const QString &engineBin,
-                 const QString &dir, const QString &texPath,
-                 const QString &pdfPath);
+                 const QString &texPath, const QString &pdfPath);
 
     mutable QString m_engine;
     mutable bool m_engineResolved = false;
