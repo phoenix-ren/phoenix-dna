@@ -17,6 +17,7 @@ import plasma.applet.org.phoenixdna.agent as Phoenix
  *   * the ring-buffered waveform  (the last five seconds of audio)
  *   * the record button, which becomes a stop button while recording
  *   * the keyboard button, which opens the prompt editor for a typed query
+ *   * the camera button, which photographs a window of the desktop
  *   * the search button, which opens the session search
  *   * the settings button, which opens the settings window
  */
@@ -131,43 +132,6 @@ Item {
             active: root.recording
         }
 
-        // ---- Right: the camera and the record button -----------------------
-        // The camera photographs a window of the desktop and attaches the
-        // picture to the prompt that is being composed; the global
-        // shortcut does the same from anywhere.
-        PC3.ToolButton {
-            id: screenshotButton
-            objectName: "screenshotButton"
-
-            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
-            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-
-            icon.name: "camera-photo"
-            icon.width: Kirigami.Units.iconSizes.small
-            icon.height: Kirigami.Units.iconSizes.small
-            // While the picker waits for a click, the button says so.
-            icon.color: Phoenix.PhoenixController.screenshotPicker.picking
-                ? Kirigami.Theme.highlightColor
-                : Kirigami.Theme.textColor
-
-            onClicked: Phoenix.PhoenixController.startScreenshot()
-
-            PC3.ToolTip {
-                text: {
-                    const picker = Phoenix.PhoenixController.screenshotPicker;
-                    // While the picker is up, the tooltip names the window
-                    // a click would photograph.
-                    if (picker.picking && picker.targetTitle.length > 0) {
-                        return i18n("Screenshot: %1", picker.targetTitle);
-                    }
-                    const shortcut = picker.shortcut;
-                    return shortcut.length > 0
-                        ? i18n("Screenshot a window (%1)", shortcut)
-                        : i18n("Screenshot a window");
-                }
-            }
-        }
-
         // ---- Right: the record button --------------------------------------
         PC3.ToolButton {
             id: recordButton
@@ -232,6 +196,43 @@ Item {
                     const action = i18n("Type a query");
                     const hotkey = Phoenix.PhoenixController.promptShortcut;
                     return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
+                }
+            }
+        }
+
+        // ---- Right: the camera ----------------------------------------------
+        // The camera photographs a window of the desktop and attaches the
+        // picture to the prompt that is being composed; the global
+        // shortcut does the same from anywhere.
+        PC3.ToolButton {
+            id: screenshotButton
+            objectName: "screenshotButton"
+
+            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+            icon.name: "camera-photo"
+            icon.width: Kirigami.Units.iconSizes.small
+            icon.height: Kirigami.Units.iconSizes.small
+            // While the picker waits for a click, the button says so.
+            icon.color: Phoenix.PhoenixController.screenshotPicker.picking
+                ? Kirigami.Theme.highlightColor
+                : Kirigami.Theme.textColor
+
+            onClicked: Phoenix.PhoenixController.startScreenshot()
+
+            PC3.ToolTip {
+                text: {
+                    const picker = Phoenix.PhoenixController.screenshotPicker;
+                    // While the picker is up, the tooltip names the window
+                    // a click would photograph.
+                    if (picker.picking && picker.targetTitle.length > 0) {
+                        return i18n("Screenshot: %1", picker.targetTitle);
+                    }
+                    const shortcut = picker.shortcut;
+                    return shortcut.length > 0
+                        ? i18n("Screenshot a window (%1)", shortcut)
+                        : i18n("Screenshot a window");
                 }
             }
         }
