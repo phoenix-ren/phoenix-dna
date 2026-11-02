@@ -16,6 +16,7 @@ import plasma.applet.org.phoenixdna.agent as Phoenix
  *   * the two mode buttons       (root / user, active one checked on)
  *   * the ring-buffered waveform  (the last five seconds of audio)
  *   * the record button, which becomes a stop button while recording
+ *   * the keyboard button, which opens the prompt editor for a typed query
  *   * the search button, which opens the session search
  *   * the settings button, which opens the settings window
  */
@@ -27,6 +28,9 @@ Item {
 
     // While recording, the record button turns into a stop button.
     property bool recording: Phoenix.PhoenixController.recording
+
+    // While the finished clip is with the transcription service.
+    property bool transcribing: Phoenix.PhoenixController.transcribing
 
     // The waveform model: one row per bucket, each with a minimum and maximum.
     property var waveformModel: Phoenix.PhoenixController.waveform
@@ -187,6 +191,39 @@ Item {
                 text: {
                     const action = root.recording ? i18n("Stop") : i18n("Record");
                     const hotkey = Phoenix.PhoenixController.recordShortcut;
+                    return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
+                }
+            }
+        }
+
+        // ---- Right: the keyboard button -----------------------------------
+        // Opens the prompt editor: the query is typed rather than spoken,
+        // and nothing is recorded at all. The global hotkey does the same
+        // from any application.
+        PC3.ToolButton {
+            id: keyboardButton
+            objectName: "keyboardButton"
+
+            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+            icon.name: "input-keyboard"
+            icon.width: Kirigami.Units.iconSizes.small
+            icon.height: Kirigami.Units.iconSizes.small
+
+            // While the microphone is open the dictation owns the
+            // prompt: the button waits for it to end rather than
+            // fighting it for the overlay.
+            enabled: !root.recording && !root.transcribing
+
+            onClicked: Phoenix.PhoenixController.showPromptEditor()
+
+            PC3.ToolTip {
+                // Mentions the global hotkey when one is bound, like the
+                // record button's tooltip does.
+                text: {
+                    const action = i18n("Type a query");
+                    const hotkey = Phoenix.PhoenixController.promptShortcut;
                     return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
                 }
             }

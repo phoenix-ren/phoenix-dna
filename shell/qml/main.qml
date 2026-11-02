@@ -53,12 +53,20 @@ PlasmoidItem {
             // only while a pane-started clip is handing over (below), whose
             // submission must remain a follow-on. It resets on submit or
             // close.
+            dictationOverlay.typing = false;
             dictationOverlay.transcript = Phoenix.PhoenixController.partialTranscript;
             dictationOverlay.listening = Phoenix.PhoenixController.recording;
             dictationOverlay.transcribing = Phoenix.PhoenixController.transcribing;
             dictationOverlay.statusMessage = Phoenix.PhoenixController.statusMessage;
             dictationOverlay.inputAnchor = root;
             dictationOverlay.visible = true;
+        }
+
+        // The keyboard button (or its global hotkey) asks for the prompt
+        // editor: the query is typed rather than dictated, and nothing is
+        // recorded.
+        function onPromptEditorRequested() {
+            root.openTypedPrompt();
         }
 
         function onConversationPaneRequested() {
@@ -151,6 +159,29 @@ PlasmoidItem {
         }
     }
 
+    // Opens the prompt editor for a query the user types rather than
+    // dictates: the same overlay the microphone opens, but empty, with
+    // the keyboard in it and nothing being recorded.
+    function openTypedPrompt() {
+        if (resultsWindow.visible) {
+            // The conversation window is on screen: its own follow-up
+            // field is the prompt surface there (the same rule the
+            // dictation overlay follows), so the typed query goes there
+            // and continues the session on screen.
+            resultsWindow.focusPrompt();
+            return;
+        }
+        dictationOverlay.typing = true;
+        dictationOverlay.transcript = "";
+        dictationOverlay.listening = false;
+        dictationOverlay.transcribing = false;
+        dictationOverlay.statusMessage = "";
+        dictationOverlay.inputAnchor = root;
+        dictationOverlay.visible = true;
+        // The window has to be up before the editor can take the focus.
+        Qt.callLater(dictationOverlay.focusEditor);
+    }
+
     // Component 2 — the dictation overlay.
     PhoenixOverlay.DictationOverlay {
         id: dictationOverlay
@@ -169,6 +200,7 @@ PlasmoidItem {
         // agent's answer comes back.
         onSubmitted: (text) => {
             dictationOverlay.visible = false;
+            dictationOverlay.typing = false;
             Phoenix.PhoenixController.submitText(text, !dictationOverlay.followUp);
             dictationOverlay.followUp = false;
         }
@@ -189,6 +221,7 @@ PlasmoidItem {
         // Closing abandons the dictation; nothing is sent.
         onClosed: {
             dictationOverlay.visible = false;
+            dictationOverlay.typing = false;
             dictationOverlay.followUp = false;
         }
     }
@@ -341,6 +374,7 @@ PlasmoidItem {
         recordShortcut: Phoenix.PhoenixController.recordShortcut
         searchShortcut: Phoenix.PhoenixController.searchShortcut
         screenshotShortcut: Phoenix.PhoenixController.screenshotPicker.shortcut
+        promptShortcut: Phoenix.PhoenixController.promptShortcut
 
         // The stored keys and everything about them the fields explain.
         llmApiKey: Phoenix.PhoenixController.settings.llmApiKey
@@ -363,8 +397,8 @@ PlasmoidItem {
         onThemeChangeRequested: (theme) =>
             Phoenix.PhoenixController.settings.saveTheme(theme)
 
-        // role is "record", "screenshot" or "search"; the store dispatches
-        // to the matching KGlobalAccel action.
+        // role is "record", "screenshot", "search" or "prompt"; the store
+        // dispatches to the matching KGlobalAccel action.
         onShortcutCaptureRequested: (role, key, modifiers) =>
             Phoenix.PhoenixController.settings.applyShortcut(role, key, modifiers)
         onShortcutClearRequested: (role) =>

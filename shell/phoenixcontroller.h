@@ -50,6 +50,7 @@ class PhoenixController : public QObject
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
     Q_PROPERTY(QString recordShortcut READ recordShortcut NOTIFY recordShortcutChanged)
     Q_PROPERTY(QString searchShortcut READ searchShortcut NOTIFY searchShortcutChanged)
+    Q_PROPERTY(QString promptShortcut READ promptShortcut NOTIFY promptShortcutChanged)
 
     /*! \brief Whether the session search is on screen.
      *
@@ -111,6 +112,11 @@ public:
      *  bound. */
     QString searchShortcut() const;
 
+    /*! \brief The bound global hotkey that opens the prompt editor
+     *  ("Meta+Alt+Return" unless the user re-bound it in System
+     *  Settings). Empty when none is bound. */
+    QString promptShortcut() const;
+
     /*! \brief The user whose sessions the search lists. */
     QString searchUser() const;
 
@@ -154,6 +160,18 @@ public:
 
     /*! \brief Shows the dictation overlay. */
     Q_INVOKABLE void showDictationOverlay();
+
+    /*! \brief Opens the prompt editor: the query is typed, not dictated.
+     *
+     * The same overlay the microphone opens, but with nothing being
+     * recorded: the editor waits for the keyboard and the query is sent
+     * like a dictated one. This is what the panel's keyboard button and
+     * the global hotkey do.
+     *
+     * A dictation in flight owns the overlay (the editor is locked while
+     * the transcript arrives), so the request is ignored while the
+     * microphone is open or the clip is being transcribed. */
+    Q_INVOKABLE void showPromptEditor();
 
     /*! \brief Shows or hides the conversation pane. */
     Q_INVOKABLE void toggleConversationPane();
@@ -216,11 +234,18 @@ Q_SIGNALS:
     void statusMessageChanged();
     void recordShortcutChanged();
     void searchShortcutChanged();
+    void promptShortcutChanged();
     void searchUserChanged();
     void sessionSearchOpenChanged();
 
     /*! \brief Emitted when the dictation overlay should be shown. */
     void dictationOverlayRequested();
+
+    /*! \brief Emitted when the prompt editor should be shown.
+     *
+     * The typed counterpart of dictationOverlayRequested: the query is
+     * written instead of spoken, and no recording takes place. */
+    void promptEditorRequested();
 
     /*! \brief Emitted when the conversation pane should be toggled. */
     void conversationPaneRequested();
@@ -247,6 +272,7 @@ private:
     SettingsStore *m_settings = nullptr;
     QAction *m_toggleShortcut = nullptr;
     QAction *m_searchShortcut = nullptr;
+    QAction *m_promptShortcut = nullptr;
     bool m_recording = false;
     bool m_transcribing = false;
     // Whether the session search is on screen: the panel's search

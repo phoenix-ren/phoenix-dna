@@ -24,10 +24,10 @@ import org.phoenixdna.theme
  *     applies after a daemon restart, the speech-to-text key with the
  *     next dictation.
  *
- *   * Global shortcuts — the three system-wide hotkeys (recording,
- *     screenshot, session search), captured with the keyboard and bound
- *     through KGlobalAccel, so the bindings show up in System Settings →
- *     Shortcuts and survive restarts.
+ *   * Global shortcuts — the four system-wide hotkeys (recording,
+ *     screenshot, session search, typed prompt), captured with the
+ *     keyboard and bound through KGlobalAccel, so the bindings show up in
+ *     System Settings → Shortcuts and survive restarts.
  *
  * Like the results window, this is a fully-fledged decorated toplevel
  * (compositor-owned geometry, size persisted in the XDG state directory)
@@ -48,6 +48,7 @@ Window {
     property string recordShortcut: ""
     property string searchShortcut: ""
     property string screenshotShortcut: ""
+    property string promptShortcut: ""
 
     // The stored API keys and the speech-to-text provider ("minimax" /
     // "openai"). Password-echoed below, revealed by the eye button.
@@ -425,7 +426,8 @@ Window {
                         model: [
                             { role: "record", label: i18n("Toggle recording") },
                             { role: "screenshot", label: i18n("Screenshot a window") },
-                            { role: "search", label: i18n("Search sessions") }
+                            { role: "search", label: i18n("Search sessions") },
+                            { role: "prompt", label: i18n("Type a query") }
                         ]
 
                         delegate: RowLayout {
@@ -436,6 +438,7 @@ Window {
                             readonly property string currentShortcut:
                                 modelData.role === "record" ? window.recordShortcut
                               : modelData.role === "screenshot" ? window.screenshotShortcut
+                              : modelData.role === "prompt" ? window.promptShortcut
                               : window.searchShortcut
 
                             Layout.fillWidth: true

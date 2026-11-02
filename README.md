@@ -18,6 +18,18 @@ and the selected session's queries and responses on the right. Double-clicking
 a session opens it in the results window, where the conversation can be
 continued.
 
+## Typing a query
+
+Not every prompt has to be spoken. The keyboard button next to the record
+button opens the same prompt editor as the microphone, but empty and with
+the keyboard in it: nothing is recorded, nothing is transcribed, and the
+query is sent to the agent like a dictated one. The global shortcut
+`Meta+Alt+Return` does the same from any application.
+
+When the conversation window is on screen, it owns the prompt: the typed
+query goes into its follow-up field and continues the session, exactly like
+a dictated follow-on.
+
 ## Layout
 
 | Path         | Contents                                                        |
@@ -75,11 +87,11 @@ The panel's gear button opens the settings window, which configures:
   Environment variables still take precedence over the file, and the
   window says so when it sees one set.
 
-* **Global shortcuts** — the recording, screenshot and session-search
-  hotkeys, captured with the keyboard and bound through KGlobalAccel.
-  The bindings are the very ones System Settings → Shortcuts edits, so
-  they survive restarts and can still be re-bound there; the window's
-  rows always show the live bindings.
+* **Global shortcuts** — the recording, screenshot, session-search and
+  typed-prompt hotkeys, captured with the keyboard and bound through
+  KGlobalAccel. The bindings are the very ones System Settings → Shortcuts
+  edits, so they survive restarts and can still be re-bound there; the
+  window's rows always show the live bindings.
 
 ## Building
 

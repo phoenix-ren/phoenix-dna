@@ -38,6 +38,12 @@ PlasmaCore.Dialog {
     property string transcript: ""
     property bool listening: false
 
+    // Whether the prompt is being typed rather than dictated: the panel's
+    // keyboard button (and its global hotkey) open the very same editor
+    // for a query the user writes, with the microphone closed and nothing
+    // transcribed. The editor behaves the same, it only starts empty.
+    property bool typing: false
+
     // Set once recording stops and the clip is with the transcription
     // service; the transcript appears (or the error below) when it returns.
     property bool transcribing: false
@@ -90,6 +96,23 @@ PlasmaCore.Dialog {
 
     visible: false
 
+    // Puts the keyboard in the editor: a typed prompt is written right
+    // away, so the editor takes the focus as soon as the overlay opens.
+    // The shell calls this after showing the overlay (the window has to
+    // be up before the item can be given the focus).
+    function focusEditor() {
+        if (!transcriptEdit.readOnly) {
+            transcriptEdit.forceActiveFocus();
+        }
+    }
+
+    // The overlay is a window of its own, so it can only be given the
+    // focus once it is up and active: every activation hands the
+    // keyboard to the editor, which is where a typed prompt is written.
+    onActiveChanged: if (active) {
+        focusEditor();
+    }
+
     onInputAnchorChanged: {
         if (inputAnchor) {
             visualParent = inputAnchor;
@@ -122,14 +145,17 @@ PlasmaCore.Dialog {
                     id: statusIcon
                     Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                     Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-                    source: dictationOverlay.listening ? "audio-input-microphone" : "dialog-information"
+                    source: dictationOverlay.typing ? "input-keyboard"
+                        : dictationOverlay.listening ? "audio-input-microphone"
+                        : "dialog-information"
                 }
 
                 Kirigami.Heading {
                     Layout.fillWidth: true
                     // KF6 6.31 has no Kirigami.Heading.Level enum; levels are plain ints.
                     level: 3
-                    text: dictationOverlay.listening ? i18n("Listening…")
+                    text: dictationOverlay.typing ? i18n("Type a query")
+                        : dictationOverlay.listening ? i18n("Listening…")
                         : dictationOverlay.transcribing ? i18n("Transcribing…")
                         : i18n("Phoenix DNA")
                 }
@@ -299,9 +325,11 @@ PlasmaCore.Dialog {
                     // an unqualified reference is a ReferenceError at load.
                     wrapMode: Text.Wrap
                     // Locked while the engine owns the text; editable the
-                    // moment a result has landed.
+                    // moment a result has landed — and editable right
+                    // away when the prompt is typed rather than dictated.
                     readOnly: dictationOverlay.listening || dictationOverlay.transcribing
-                    placeholderText: dictationOverlay.transcribing ? i18n("Transcribing…")
+                    placeholderText: dictationOverlay.typing ? i18n("Type your query…")
+                                    : dictationOverlay.transcribing ? i18n("Transcribing…")
                                     : dictationOverlay.listening ? i18n("Speak now…")
                                     : i18n("No speech was recognized.")
 

@@ -27,10 +27,11 @@ class QTimer;
  * daemon reads its key once at startup, so a changed LLM key needs
  * "systemctl --user restart phoenix.service".
  *
- * Global shortcuts — re-binds the three system-wide hotkeys (recording,
- * screenshot, session search) through KGlobalAccel. The bindings land in
- * the same store System Settings edits, so they survive restarts and can
- * still be re-bound there; the properties here report the live bindings.
+ * Global shortcuts — re-binds the four system-wide hotkeys (recording,
+ * screenshot, session search, typed prompt) through KGlobalAccel. The
+ * bindings land in the same store System Settings edits, so they survive
+ * restarts and can still be re-bound there; the properties here report the
+ * live bindings.
  *
  * Appearance — the colour scheme of the app's own windows: "system"
  * (the default, following the desktop), "light" or "dark", stored as
@@ -87,11 +88,13 @@ class SettingsStore : public QObject
     Q_PROPERTY(bool statusIsError READ statusIsError NOTIFY statusIsErrorChanged)
 
 public:
-    /*! \brief \a record, \a search and \a screenshot are the three actions
-     *  whose KGlobalAccel bindings applyShortcut()/clearShortcut() change. */
+    /*! \brief \a record, \a search, \a screenshot and \a prompt are the
+     *  four actions whose KGlobalAccel bindings applyShortcut()/
+     *  clearShortcut() change. */
     SettingsStore(QAction *recordShortcut,
                   QAction *searchShortcut,
                   QAction *screenshotShortcut,
+                  QAction *promptShortcut,
                   QObject *parent = nullptr);
 
     QString llmApiKey() const { return m_llmApiKey; }
@@ -112,13 +115,14 @@ public:
      * written by the installer) is reflected without a restart. */
     Q_INVOKABLE void refresh();
 
-    /*! \brief Binds the shortcut of \a role ("record", "screenshot" or
-     *  "search") to the combination the settings window captured.
+    /*! \brief Binds the shortcut of \a role ("record", "screenshot",
+     *  "search" or "prompt") to the combination the settings window
+     *  captured.
      *
      * \a key and \a modifiers are the QKeyEvent's values; \a key 0 means a
      * modifiers-only combination (the picker's "Meta+Alt" style), which
-     * only the screenshot picker accepts — a recording or search hotkey
-     * needs a regular key or it would fire on every press of the
+     * only the screenshot picker accepts — a recording, search or prompt
+     * hotkey needs a regular key or it would fire on every press of the
      * modifiers alone. */
     Q_INVOKABLE bool applyShortcut(const QString &role, int key, int modifiers);
 
@@ -153,9 +157,14 @@ Q_SIGNALS:
     void recordShortcutChanged();
     void searchShortcutChanged();
     void screenshotShortcutChanged();
+    void promptShortcutChanged();
 
 private:
     QAction *actionForRole(const QString &role) const;
+
+    /*! \brief Announces that the binding of \a role changed, through the
+     *  signal that belongs to it. */
+    void emitShortcutChanged(const QString &role);
 
     /*! \brief Reads keys.json, sets \a field to \a value (or removes it
      *  when empty) and writes the file back — atomically, mode 0600, other
@@ -173,6 +182,7 @@ private:
     QAction *m_recordShortcut = nullptr;
     QAction *m_searchShortcut = nullptr;
     QAction *m_screenshotShortcut = nullptr;
+    QAction *m_promptShortcut = nullptr;
     QTimer *m_statusClear = nullptr;
     QString m_llmApiKey;
     QString m_sttApiKey;
