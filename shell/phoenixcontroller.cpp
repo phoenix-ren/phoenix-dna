@@ -114,6 +114,23 @@ PhoenixController::PhoenixController(QObject *parent)
                 m_partialTranscript = cleaned;
                 Q_EMIT partialTranscriptChanged();
             });
+
+    // Selecting root makes the daemon pop the sudo password dialog right
+    // away. Cancelling it (or exhausting the attempts) voids the mode
+    // switch: the widget falls back to user mode, as if the root button
+    // had never been pressed. A dialog that fails during a running
+    // prompt (non-empty run id) is that run's error, not a mode change.
+    connect(m_agent, &AgentBridge::authFinished, this,
+            [this](const QString &runId, bool success) {
+                if (!runId.isEmpty() || success) {
+                    return;
+                }
+                if (m_mode == static_cast<int>(AgentMode::Mode::Root)) {
+                    setMode(static_cast<int>(AgentMode::Mode::User));
+                    setStatusMessage(
+                        i18n("Administrator password cancelled; back in user mode."));
+                }
+            });
     connect(m_transcriber, &Transcriber::failed, this, [this](const QString &message) {
         setTranscribing(false);
         setStatusMessage(QStringLiteral("Transcription failed: %1").arg(message));

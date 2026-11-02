@@ -85,6 +85,9 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("RunFinished"), this,
         SLOT(onRunFinished(QString, QString, QString, uint, uint, uint)));
     QDBusConnection::sessionBus().connect(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("AuthFinished"), this,
+        SLOT(onAuthFinished(QString, bool)));
+    QDBusConnection::sessionBus().connect(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("ToolCallStarted"), this,
         SLOT(onToolCallStarted(QString, QString, QString, QString)));
     QDBusConnection::sessionBus().connect(
@@ -670,6 +673,16 @@ void AgentBridge::onRunFinished(const QString &runId,
     if (!finalText.trimmed().isEmpty()) {
         Q_EMIT resultReady();
     }
+}
+
+void AgentBridge::onAuthFinished(const QString &runId, bool success)
+{
+    // Pure pass-through: the bridge is a dumb pipe, the mode policy that
+    // reacts to a cancelled password dialog lives in the controller.
+    // An empty run id marks the pre-authentication dialog the daemon
+    // shows when root mode is selected; a non-empty one belongs to a
+    // running prompt that needed the password again.
+    Q_EMIT authFinished(runId, success);
 }
 
 void AgentBridge::onTranscriptCleaned(const QString &cleanupId,
