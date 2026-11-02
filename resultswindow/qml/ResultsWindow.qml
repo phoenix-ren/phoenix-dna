@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Dialogs
 import QtQuick.Layouts
+import QtQuick.Pdf
 import QtCore
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
@@ -56,6 +57,13 @@ import org.phoenixdna.theme
  * last, the one part rendered at full size, in a card of its own. An
  * answer the user has to dig for is an answer they miss, and a trail
  * that claims the answer's place buries it.
+ *
+ * The answer's math takes a two-stage path: while the run streams, the
+ * Markdown view shows the LaTeX verbatim; when the run finishes and the
+ * answer carries math, the whole answer is compiled to PDF via LaTeX
+ * (LatexRenderer) and the Markdown card swaps itself out for the
+ * rendered pages. A failed compile — no engine installed, a formula
+ * LaTeX rejects — keeps the verbatim view.
  */
 Window {
     id: resultsWindow
@@ -125,6 +133,14 @@ Window {
     // about four fifths of a line, so paragraphs read as paragraphs.
     readonly property real paragraphSpacing:
         Math.round(Qt.application.font.pixelSize * 0.8)
+
+    // Tokens for the PDF renders of finished answers; the delegates
+    // match their own token in LatexRenderer's signals.
+    property int pdfTokens: 0
+
+    function nextPdfToken() {
+        return ++pdfTokens
+    }
 
     // The header of a folded-away section: the thinking notes and the
     // tool log are context, not the answer, and they start folded —
@@ -397,6 +413,54 @@ Window {
                             required property string thinking
                             required property int toolCount
 
+                            // ---- The answer as PDF ------------------------
+                            // While the run streams, the answer shows as
+                            // native Markdown with its LaTeX verbatim.
+                            // When the run finishes and the answer carries
+                            // LaTeX, the whole answer is handed to the
+                            // LaTeX renderer; once the PDF is ready, the
+                            // markdown card is swapped out for it. A
+                            // failed compile (no engine installed, a
+                            // formula LaTeX rejects) keeps the verbatim
+                            // view — no retry storm.
+                            property int pdfToken: -1
+                            property url answerPdf
+
+                            readonly property bool wantsPdf: !running
+                                && result.length > 0
+                                && pdfToken < 0
+                                && LatexRenderer.available
+                                && LatexRenderer.containsLatex(result)
+
+                            onRunningChanged: maybeRenderPdf()
+                            Component.onCompleted: maybeRenderPdf()
+
+                            function maybeRenderPdf() {
+                                if (!wantsPdf) {
+                                    return
+                                }
+                                pdfToken = resultsWindow.nextPdfToken()
+                                LatexRenderer.render(pdfToken, result)
+                            }
+
+                            Connections {
+                                target: LatexRenderer
+
+                                function onRendered(token, pdf) {
+                                    if (token === exchange.pdfToken) {
+                                        exchange.answerPdf = pdf
+                                    }
+                                }
+
+                                function onFailed(token) {
+                                    // -2: requested, failed, never again
+                                    // for this result.
+                                    if (token === exchange.pdfToken) {
+                                        exchange.pdfToken = -2
+                                    }
+                                }
+                            }
+
                             Layout.preferredWidth: column.width
                             spacing: Kirigami.Units.smallSpacing
 
@@ -545,7 +609,7 @@ Window {
                                     Layout.fillWidth: true
                                     visible: thinkingSection.expanded
 
-                                    text: MarkdownDocument.renderMath(exchange.thinking)
+                                    text: exchange.thinking
                                     textFormat: TextEdit.MarkdownText
                                     wrapMode: Text.WordWrap
                                     color: PhoenixTheme.secondaryTextColor
@@ -592,7 +656,7 @@ Window {
                                     Layout.fillWidth: true
                                     visible: toolSection.expanded
 
-                                    text: MarkdownDocument.renderMath(exchange.toolLog)
+                                    text: exchange.toolLog
                                     textFormat: TextEdit.MarkdownText
                                     wrapMode: Text.WordWrap
                                     color: PhoenixTheme.secondaryTextColor
@@ -637,21 +701,33 @@ Window {
                                     readonly property int padding:
                                         Kirigami.Units.smallSpacing * 2
 
-                                    // Hug the text, but wrap (and so stop
-                                    // growing) at nearly the whole row:
-                                    // the answer is the main text of the
-                                    // window and may use the width.
-                                    // NOTE: implicitWidth, not width — a
+                                    // Whether the compiled PDF replaced
+                                    // the verbatim Markdown view.
+                                    readonly property bool showPdf:
+                                        exchange.answerPdf.toString().length > 0
+
+                                    // NOTE: implicit sizes, not width — a
                                     // ColumnLayout sizes its children
                                     // from their implicit size, and a
                                     // width binding here would be clobbered
-                                    // on the first layout pass.
-                                    implicitWidth: Math.min(
-                                        exchange.width * 0.96,
-                                        resultLabel.implicitWidth
-                                            + 2 * answerCard.padding)
-                                    implicitHeight: resultLabel.implicitHeight
-                                        + 2 * answerCard.padding
+                                    // on the first layout pass. The PDF
+                                    // gets the full card width outright,
+                                    // with a reading height its pages
+                                    // scroll inside.
+                                    implicitWidth: Math.round(
+                                        exchange.width * 0.96)
+                                    implicitHeight: answerCard.showPdf
+                                        ? Math.max(
+                                              Kirigami.Units.gridUnit * 12,
+                                              Math.min(
+                                                  Math.round(
+                                                      exchange.width * 0.96
+                                                      * 1.05),
+                                                  Math.round(
+                                                      Screen.desktopAvailableHeight
+                                                      * 0.55)))
+                                        : resultLabel.implicitHeight
+                                            + 2 * answerCard.padding
 
                                     radius: Kirigami.Units.smallSpacing * 2
                                     color: PhoenixTheme.cardFill
@@ -664,11 +740,13 @@ Window {
 
                                         anchors.fill: parent
                                         anchors.margins: answerCard.padding
+                                        visible: !answerCard.showPdf
 
-                                        // The answer, with its LaTeX
-                                        // math rendered into Unicode
-                                        // before Qt's Markdown pass.
-                                        text: MarkdownDocument.renderMath(exchange.result)
+                                        // While the run streams — and for
+                                        // as long as a PDF render takes —
+                                        // the answer shows as Markdown,
+                                        // its LaTeX verbatim.
+                                        text: exchange.result
                                         textFormat: TextEdit.MarkdownText
                                         wrapMode: Text.WordWrap
                                         color: PhoenixTheme.primaryTextColor
@@ -684,6 +762,22 @@ Window {
                                         onTextChanged: MarkdownDocument.spaceParagraphs(
                                             textDocument,
                                             resultsWindow.paragraphSpacing)
+                                    }
+
+                                    // The finished answer, compiled by
+                                    // LaTeX: swaps in when the PDF is
+                                    // ready, and its pages scroll (and
+                                    // zoom) when they outgrow the card.
+                                    PdfDocument {
+                                        id: answerPdfDocument
+                                        source: exchange.answerPdf
+                                    }
+
+                                    PdfMultiPageView {
+                                        anchors.fill: parent
+                                        anchors.margins: answerCard.padding
+                                        visible: answerCard.showPdf
+                                        document: answerPdfDocument
                                     }
                                 }
 

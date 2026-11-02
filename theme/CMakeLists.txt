@@ -6,9 +6,10 @@
 # A standalone QML module installed to ${KDE_INSTALL_QMLDIR}/org/phoenixdna/theme.
 # Every other component imports it for its colours, and the applet's shell
 # pushes the user's colour-scheme preference into it — so one property
-# recolours the whole UI, live. The MarkdownDocument singleton (C++) is the
-# presentation workbench for the agent's Markdown: paragraph spacing and the
-# LaTeX-to-Unicode math renderer.
+# recolours the whole UI, live. The C++ singletons are the presentation
+# workbench for the agent's answers: MarkdownDocument spaces the native
+# Markdown view's paragraphs; LatexRenderer compiles a finished answer
+# (Markdown + LaTeX math) to PDF via a TeX engine.
 
 find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
 
@@ -17,6 +18,8 @@ ecm_add_qml_module(org.phoenixdna.theme
     VERSION 1.0
     GENERATE_PLUGIN_SOURCE
     SOURCES
+        latexrenderer.cpp
+        latexrenderer.h
         markdowndocument.cpp
         markdowndocument.h
 )
