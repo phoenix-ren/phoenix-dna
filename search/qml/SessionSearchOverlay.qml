@@ -18,8 +18,8 @@ import org.kde.kirigami as Kirigami
  * Typing narrows the list down: the text is matched fuzzily against the
  * names, so every further character drops the sessions that no longer
  * match. The selection moves with the arrow keys and with the mouse;
- * a double click opens the session in the results window, where the
- * conversation carries on.
+ * a double click - or the Return key - opens the session in the results
+ * window, where the conversation carries on.
  *
  * The window is a transparent overlay: the dark backdrop is painted by
  * the content itself, the window around it stays bare. Like the
@@ -177,6 +177,23 @@ PlasmaCore.Dialog {
         }
     }
 
+    // Opens the session at \a index in the results window - what a double
+    // click on it in the list does.
+    function activateSession(index) {
+        if (index < 0 || index > summaries.length - 1) {
+            return
+        }
+        const session = summaries[index]
+        sessionActivated(session.id, session.mode || "",
+                         session.title || session.summary || "")
+    }
+
+    // Opens the selected session in the results window - what the Return
+    // key does.
+    function activateCurrentSession() {
+        activateSession(currentIndex)
+    }
+
     // The place of the session with the given id in the list, or -1.
     function indexOfSession(id) {
         for (let i = 0; i < summaries.length; ++i) {
@@ -210,18 +227,27 @@ PlasmaCore.Dialog {
         focus: true
         Keys.onEscapePressed: searchOverlay.dismiss()
 
-        // The arrow keys walk through the sessions wherever the focus
-        // happens to be. The query field has its own handler (it takes
-        // the keys first while it has the focus); this one is the
-        // fallback for the moments the focus is somewhere else.
-        Keys.onPressed: (event) => {
-            if (event.key === Qt.Key_Down) {
-                searchOverlay.moveSelection(1)
-                event.accepted = true
-            } else if (event.key === Qt.Key_Up) {
-                searchOverlay.moveSelection(-1)
-                event.accepted = true
-            }
+        // The arrow keys and Return belong to the list, not to the text
+        // field: shortcuts rather than key handlers, because the text
+        // input swallows those keys before they reach the item.
+        Shortcut {
+            sequences: ["Up"]
+            context: Qt.WindowShortcut
+            onActivated: searchOverlay.moveSelection(-1)
+        }
+
+        Shortcut {
+            sequences: ["Down"]
+            context: Qt.WindowShortcut
+            onActivated: searchOverlay.moveSelection(1)
+        }
+
+        // Return opens the selected session in the results window, like
+        // a double click on it does.
+        Shortcut {
+            sequences: ["Return", "Enter"]
+            context: Qt.WindowShortcut
+            onActivated: searchOverlay.activateCurrentSession()
         }
 
         // The search opens with an empty query - every session of the
@@ -316,19 +342,6 @@ PlasmaCore.Dialog {
                     onTextChanged: {
                         if (!searchOverlay.clearingQuery) {
                             searchOverlay.queryChanged(text)
-                        }
-                    }
-
-                    // The arrow keys walk through the sessions instead of
-                    // moving the text cursor: while typing, the list on
-                    // the left is what the user is after.
-                    Keys.onPressed: (event) => {
-                        if (event.key === Qt.Key_Down) {
-                            searchOverlay.moveSelection(1)
-                            event.accepted = true
-                        } else if (event.key === Qt.Key_Up) {
-                            searchOverlay.moveSelection(-1)
-                            event.accepted = true
                         }
                     }
                 }
@@ -454,12 +467,7 @@ PlasmaCore.Dialog {
                                 // results window: the conversation carries
                                 // on there, with a follow-up.
                                 onDoubleClicked: {
-                                    searchOverlay.sessionActivated(
-                                        sessionItem.modelData.id,
-                                        sessionItem.modelData.mode || "",
-                                        sessionItem.modelData.title
-                                            || sessionItem.modelData.summary
-                                            || "")
+                                    searchOverlay.activateSession(sessionItem.index)
                                 }
                             }
                         }

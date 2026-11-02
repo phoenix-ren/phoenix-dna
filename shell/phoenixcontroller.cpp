@@ -134,8 +134,14 @@ PhoenixController::PhoenixController(QObject *parent)
     m_searchShortcut = new QAction(this);
     m_searchShortcut->setObjectName(QStringLiteral("search-sessions"));
     m_searchShortcut->setText(i18n("Search Sessions"));
-    m_searchShortcut->setProperty("componentName", QStringLiteral("org.phoenixdna.agent"));
-    m_searchShortcut->setProperty("componentDisplayName", QStringLiteral("Phoenix DNA"));
+    // Its own KGlobalAccel component: the window picker's binding is the
+    // bare "Meta+Alt" (modifiers only), and in the same component that
+    // entry swallows every "Meta+Alt" + punctuation combination - the
+    // grave key among them. A component of its own keeps the search's
+    // shortcut out of its way (and gives it a group of its own in
+    // System Settings).
+    m_searchShortcut->setProperty("componentName", QStringLiteral("org.phoenixdna.search"));
+    m_searchShortcut->setProperty("componentDisplayName", QStringLiteral("Phoenix DNA Search"));
     const QList<QKeySequence> searchHotkey{QKeySequence(QStringLiteral("Meta+Alt+`"))};
     KGlobalAccel::self()->setDefaultShortcut(m_searchShortcut, searchHotkey);
     KGlobalAccel::self()->setShortcut(m_searchShortcut, searchHotkey);
