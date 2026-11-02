@@ -685,12 +685,21 @@ PlasmaCore.Dialog {
                             objectName: "followUpEdit"
 
                             Layout.fillWidth: true
-                            // Grows with the dictated or typed text, but
-                            // never eats the conversation above it; longer
-                            // input scrolls inside the editor.
-                            Layout.preferredHeight: Math.min(
-                                implicitHeight,
-                                Kirigami.Units.gridUnit * 6)
+                            // A visibly multi-line field: two text lines
+                            // tall even when empty (one line reads as a
+                            // single-line edit box). Grows with the
+                            // dictated or typed text — follow-ons are
+                            // often longer and need clarifications — but
+                            // never eats the conversation above it: past
+                            // roughly six text lines the editor stops
+                            // growing and its content scrolls inside.
+                            // Measures are content-based, so the shape
+                            // survives font and scale changes.
+                            Layout.preferredHeight: Math.max(
+                                2 * contentHeight + topPadding + bottomPadding,
+                                Math.min(
+                                    implicitHeight,
+                                    6 * contentHeight + topPadding + bottomPadding))
 
                             wrapMode: Text.Wrap
                             // Locked while the engine owns the text;
