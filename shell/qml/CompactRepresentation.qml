@@ -211,12 +211,19 @@ Item {
             icon.width: Kirigami.Units.iconSizes.small
             icon.height: Kirigami.Units.iconSizes.small
 
+            // The editor is open while the button is pressed: a toggle,
+            // like the search button - pressing it again puts the editor
+            // away again.
+            checked: Phoenix.PhoenixController.promptEditorOpen
+            icon.color: checked ? Kirigami.Theme.highlightColor
+                                : Kirigami.Theme.textColor
+
             // While the microphone is open the dictation owns the
             // prompt: the button waits for it to end rather than
             // fighting it for the overlay.
             enabled: !root.recording && !root.transcribing
 
-            onClicked: Phoenix.PhoenixController.showPromptEditor()
+            onClicked: Phoenix.PhoenixController.togglePromptEditor()
 
             PC3.ToolTip {
                 // Mentions the global hotkey when one is bound, like the

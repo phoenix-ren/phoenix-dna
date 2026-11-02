@@ -52,6 +52,12 @@ class PhoenixController : public QObject
     Q_PROPERTY(QString searchShortcut READ searchShortcut NOTIFY searchShortcutChanged)
     Q_PROPERTY(QString promptShortcut READ promptShortcut NOTIFY promptShortcutChanged)
 
+    /*! \brief Whether the prompt editor is on screen.
+     *
+     * The panel's keyboard button is a toggle: it shows the editor while
+     * it is pressed, and asking again puts it away. */
+    Q_PROPERTY(bool promptEditorOpen READ promptEditorOpen NOTIFY promptEditorOpenChanged)
+
     /*! \brief Whether the session search is on screen.
      *
      * The panel's search button shows it as pressed while it is, so the
@@ -123,6 +129,9 @@ public:
     /*! \brief Whether the session search is on screen. */
     bool sessionSearchOpen() const { return m_sessionSearchOpen; }
 
+    /*! \brief Whether the prompt editor is on screen. */
+    bool promptEditorOpen() const { return m_promptEditorOpen; }
+
     /*! \brief The files attached to the prompt being composed. */
     PromptAttachments *attachments() const { return m_attachments; }
 
@@ -161,17 +170,28 @@ public:
     /*! \brief Shows the dictation overlay. */
     Q_INVOKABLE void showDictationOverlay();
 
-    /*! \brief Opens the prompt editor: the query is typed, not dictated.
+    /*! \brief Opens or puts away the prompt editor: the query is typed,
+     *  not dictated.
      *
      * The same overlay the microphone opens, but with nothing being
      * recorded: the editor waits for the keyboard and the query is sent
      * like a dictated one. This is what the panel's keyboard button and
      * the global hotkey do.
      *
+     * It is a toggle: asking again while the editor is up puts it away
+     * again (the query is kept — Esc is what discards it).
+     *
      * A dictation in flight owns the overlay (the editor is locked while
      * the transcript arrives), so the request is ignored while the
      * microphone is open or the clip is being transcribed. */
-    Q_INVOKABLE void showPromptEditor();
+    Q_INVOKABLE void togglePromptEditor();
+
+    /*! \brief Remembers whether the prompt editor is on screen.
+     *
+     * The shell tells the controller when the editor opened or closed,
+     * so the panel's keyboard button can show it as pressed — the same
+     * way the search button shows the session search. */
+    Q_INVOKABLE void setPromptEditorOpen(bool open);
 
     /*! \brief Shows or hides the conversation pane. */
     Q_INVOKABLE void toggleConversationPane();
@@ -237,6 +257,7 @@ Q_SIGNALS:
     void promptShortcutChanged();
     void searchUserChanged();
     void sessionSearchOpenChanged();
+    void promptEditorOpenChanged();
 
     /*! \brief Emitted when the dictation overlay should be shown. */
     void dictationOverlayRequested();
@@ -246,6 +267,12 @@ Q_SIGNALS:
      * The typed counterpart of dictationOverlayRequested: the query is
      * written instead of spoken, and no recording takes place. */
     void promptEditorRequested();
+
+    /*! \brief Emitted when the prompt editor should be put away again.
+     *
+     * The other half of the toggle: the editor goes back down, the query
+     * is kept (Esc is what discards it). */
+    void promptEditorCloseRequested();
 
     /*! \brief Emitted when the conversation pane should be toggled. */
     void conversationPaneRequested();
@@ -278,6 +305,9 @@ private:
     // Whether the session search is on screen: the panel's search
     // button is a toggle, and this is its state.
     bool m_sessionSearchOpen = false;
+    // Whether the prompt editor is on screen: the panel's keyboard
+    // button is a toggle, and this is its state.
+    bool m_promptEditorOpen = false;
     int m_mode = static_cast<int>(AgentMode::Mode::User);
     QString m_partialTranscript;
     QString m_statusMessage;
