@@ -7,6 +7,7 @@
 #include <QDBusConnection>
 #include <QDBusInterface>
 #include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
 #include <QDBusReply>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -75,6 +76,9 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
     QDBusConnection::sessionBus().connect(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("ToolCallFinished"), this,
         SLOT(onToolCallFinished(QString, QString, QString, QString, QString)));
+    QDBusConnection::sessionBus().connect(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("TranscriptCleaned"), this,
+        SLOT(onTranscriptCleaned(QString, QString, QString, QString)));
 
     // Text deltas arrive per token; the pane need not re-layout for each.
     m_deltaTimer.setInterval(100);
@@ -156,6 +160,35 @@ void AgentBridge::sendPrompt(const QString &prompt)
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("SubmitPrompt"));
     message << prompt << m_modeName << m_sessionId;
     QDBusConnection::sessionBus().asyncCall(message);
+}
+
+void AgentBridge::requestTranscriptCleanup(const QString &text)
+{
+    // SubmitTranscriptCleanup(text) -> cleanup id; the daemon answers
+    // asynchronously via TranscriptCleaned. Only the newest request is
+    // tracked: an older clip's cleanup is dropped when its id no longer
+    // matches (see onTranscriptCleaned), so a stale result can never
+    // overwrite the text of a newer dictation.
+    m_pendingCleanupId.clear();
+    m_pendingCleanupSource = text;
+
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("SubmitTranscriptCleanup"));
+    message << text;
+    auto *watcher =
+        new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this](QDBusPendingCallWatcher *watcher) {
+                const QString id = watcher->reply().arguments().value(0).toString();
+                watcher->deleteLater();
+                if (id.isEmpty()) {
+                    // Cleanup not configured on the daemon: the raw transcript
+                    // stays, exactly as before this feature existed.
+                    m_pendingCleanupSource.clear();
+                    return;
+                }
+                m_pendingCleanupId = id;
+            });
 }
 
 void AgentBridge::setAvailable(bool available)
@@ -446,6 +479,25 @@ void AgentBridge::onRunFinished(const QString &runId,
     if (!finalText.trimmed().isEmpty()) {
         Q_EMIT resultReady();
     }
+}
+
+void AgentBridge::onTranscriptCleaned(const QString &cleanupId,
+                                      const QString &source,
+                                      const QString &cleaned,
+                                      const QString &status)
+{
+    // Only the newest dictation's cleanup is adopted: an older clip's
+    // (late) result must never clobber the text of a newer transcription.
+    if (cleanupId.isEmpty() || cleanupId != m_pendingCleanupId) {
+        return;
+    }
+    m_pendingCleanupId.clear();
+    m_pendingCleanupSource.clear();
+    if (status != QLatin1String("completed") || cleaned.trimmed().isEmpty()) {
+        // The cleanup failed; the raw transcript simply stays on screen.
+        return;
+    }
+    Q_EMIT transcriptCleaned(source, cleaned);
 }
 
 void AgentBridge::setPartialTranscript(const QString &text)

@@ -50,12 +50,29 @@ PhoenixController::PhoenixController(QObject *parent)
 
     // The finished clip comes back as text and lands in the overlay via
     // partialTranscript. An empty answer means nothing was intelligible;
-    // the overlay explains that in its placeholder.
+    // the overlay explains that in its placeholder. The raw text is shown
+    // immediately (it is what the user said) and a single LLM call on the
+    // daemon cleans it up ("Multiply five times twenty-five" -> "Multiply
+    // 5 x 25"); the cleaned text replaces the raw one as soon as it
+    // arrives, unless a newer transcription has taken its place.
     connect(m_transcriber, &Transcriber::finished, this, [this](const QString &text) {
         setTranscribing(false);
         m_partialTranscript = text;
         Q_EMIT partialTranscriptChanged();
+        if (!text.trimmed().isEmpty()) {
+            m_agent->requestTranscriptCleanup(text);
+        }
     });
+    connect(m_agent, &AgentBridge::transcriptCleaned, this,
+            [this](const QString &source, const QString &cleaned) {
+                // Adopt the cleanup only while it still applies to what is on
+                // screen: a newer dictation (or its raw result) supersedes it.
+                if (m_partialTranscript != source) {
+                    return;
+                }
+                m_partialTranscript = cleaned;
+                Q_EMIT partialTranscriptChanged();
+            });
     connect(m_transcriber, &Transcriber::failed, this, [this](const QString &message) {
         setTranscribing(false);
         setStatusMessage(QStringLiteral("Transcription failed: %1").arg(message));

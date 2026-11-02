@@ -55,6 +55,10 @@ _SIGNAL_MAP = {
         "run_finished",
         ("run_id", "status", "final_text", "turns", "tokens_in", "tokens_out"),
     ),
+    "cleanup_finished": (
+        "transcript_cleaned",
+        ("cleanup_id", "source", "cleaned", "status"),
+    ),
 }
 
 
@@ -75,6 +79,9 @@ _DEFAULTS = {
     "turns": 0,
     "tokens_in": 0,
     "tokens_out": 0,
+    "cleanup_id": "",
+    "source": "",
+    "cleaned": "",
 }
 
 
@@ -116,6 +123,7 @@ def build_bridge(service) -> SignalBridge:
             "auth_finished": service.AuthFinished,
             "state_changed": service.StateChanged,
             "run_finished": service.RunFinished,
+            "cleanup_finished": service.TranscriptCleaned,
         }
     )
 
@@ -172,6 +180,9 @@ if dbus is not None:
             self, run_id, status, final_text, turns, tokens_in, tokens_out
         ): ...
 
+        @dbus.service.signal(INTERFACE, signature="ssss")
+        def TranscriptCleaned(self, cleanup_id, source, cleaned, status): ...
+
         # -- methods -----------------------------------------------------------
 
         @dbus.service.method(INTERFACE, in_signature="sss", out_signature="s")
@@ -182,6 +193,15 @@ if dbus is not None:
                 raise dbus.exceptions.DBusException(
                     f"{_ERROR}.InvalidArgument", str(exc)
                 )
+
+        @dbus.service.method(INTERFACE, in_signature="s", out_signature="s")
+        def SubmitTranscriptCleanup(self, text):
+            """Queue the single-shot cleanup of a transcribed clip.
+
+            Returns the cleanup id the eventual TranscriptCleaned signal
+            carries; empty when cleanup is not configured.
+            """
+            return self._daemon.submit_cleanup(str(text))
 
         @dbus.service.method(INTERFACE, in_signature="s", out_signature="b")
         def Cancel(self, run_id):

@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
+# SPDX-License-Identifier: BSD-2-Clause
+
+"""Pure (no D-Bus) tests of the event -> signal mapping."""
+
+from __future__ import annotations
+
+from phoenix_dna import events
+from phoenix_dna.service import SignalBridge
+
+
+class FakeService:
+    """Records emitter calls; stands in for the D-Bus object."""
+
+    def __init__(self):
+        self.calls = []
+
+    def RunFinished(self, *args):
+        self.calls.append(("RunFinished", args))
+
+    def TranscriptCleaned(self, *args):
+        self.calls.append(("TranscriptCleaned", args))
+
+
+def test_cleanup_event_maps_to_transcript_cleaned():
+    service = FakeService()
+    bridge = SignalBridge({"transcript_cleaned": service.TranscriptCleaned})
+    bridge.dispatch(
+        events.make(
+            events.CLEANUP_FINISHED,
+            cleanup_id="cleanup_abc",
+            source="Multiply five times twenty-five",
+            cleaned="Multiply 5 x 25",
+            status="completed",
+        )
+    )
+    assert service.calls == [
+        (
+            "TranscriptCleaned",
+            (
+                "cleanup_abc",
+                "Multiply five times twenty-five",
+                "Multiply 5 x 25",
+                "completed",
+            ),
+        )
+    ]
+
+
+def test_cleanup_event_defaults_blank_fields():
+    service = FakeService()
+    bridge = SignalBridge({"transcript_cleaned": service.TranscriptCleaned})
+    bridge.dispatch({"kind": "cleanup_finished"})
+    assert service.calls == [("TranscriptCleaned", ("", "", "", ""))]
+
+
+def test_unknown_event_kind_is_ignored():
+    service = FakeService()
+    bridge = SignalBridge({"transcript_cleaned": service.TranscriptCleaned})
+    bridge.dispatch({"kind": "mystery"})
+    assert service.calls == []
