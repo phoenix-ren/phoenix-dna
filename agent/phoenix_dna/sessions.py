@@ -251,6 +251,30 @@ class SessionStore:
             ),
         )
 
+    # -- titles ---------------------------------------------------------------
+
+    def set_title(self, user: str, session_id: str, title: str) -> None:
+        """Persist the session's (re)generated title.
+
+        Unlike the usual one-shot providers, the title is rewritten after
+        every completed run: a follow-on can pull the conversation onto new
+        ground, and the stored name must follow it.
+        """
+        with self._lock:
+            db = self._db(user)
+            db.execute(
+                "UPDATE sessions SET title = ? WHERE id = ?", (title, session_id)
+            )
+
+    def title(self, user: str, session_id: str) -> str:
+        """The stored title, or '' when none was generated (yet)."""
+        with self._lock:
+            db = self._db(user)
+            row = db.execute(
+                "SELECT title FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+        return str(row[0]) if row is not None else ""
+
     # -- legacy JSONL import --------------------------------------------------
 
     def _migrate_legacy(self) -> None:
@@ -386,3 +410,9 @@ class SessionManager:
         self.store.record_run(
             conversation.user, conversation.mode, conversation.id, kind, data
         )
+
+    def set_title(self, conversation: Conversation, title: str) -> None:
+        self.store.set_title(conversation.user, conversation.id, title)
+
+    def title(self, conversation: Conversation) -> str:
+        return self.store.title(conversation.user, conversation.id)

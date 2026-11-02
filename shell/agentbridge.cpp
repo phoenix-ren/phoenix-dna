@@ -79,6 +79,9 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
     QDBusConnection::sessionBus().connect(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("TranscriptCleaned"), this,
         SLOT(onTranscriptCleaned(QString, QString, QString, QString)));
+    QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
+                                          QStringLiteral("SessionTitleChanged"), this,
+                                          SLOT(onSessionTitleChanged(QString, QString, QString)));
 
     // Text deltas arrive per token; the pane need not re-layout for each.
     m_deltaTimer.setInterval(100);
@@ -138,8 +141,14 @@ void AgentBridge::setMode(const QString &mode)
     m_modeName = mode;
     // Sessions are filed per mode by the daemon: a follow-on after a mode
     // switch must start a new history instead of landing in (or aliasing)
-    // the previous mode's conversation.
+    // the previous mode's conversation. The previous mode's session title
+    // goes with it — the next title to arrive here belongs to the new
+    // session.
     m_sessionId.clear();
+    if (!m_sessionTitle.isEmpty()) {
+        m_sessionTitle.clear();
+        Q_EMIT sessionTitleChanged();
+    }
 
     QDBusMessage message = QDBusMessage::createMethodCall(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("SetMode"));
@@ -313,6 +322,13 @@ void AgentBridge::onRunStarted(const QString &runId, const QString &mode, const 
         const QueuedPrompt queued = m_pendingPrompts.takeFirst();
         if (queued.newSession) {
             m_conversation.reset();
+            // The new session's title is unknown until its first run
+            // completes; drop the old session's so the header never
+            // shows a title that names a different conversation.
+            if (!m_sessionTitle.isEmpty()) {
+                m_sessionTitle.clear();
+                Q_EMIT sessionTitleChanged();
+            }
         }
         m_conversation.beginExchange(queued.text, senderNameForMode(queued.mode));
     } else {
@@ -508,6 +524,26 @@ void AgentBridge::onTranscriptCleaned(const QString &cleanupId,
         return;
     }
     Q_EMIT transcriptCleaned(source, cleaned);
+}
+
+void AgentBridge::onSessionTitleChanged(const QString &sessionId,
+                                        const QString &mode,
+                                        const QString &title)
+{
+    Q_UNUSED(mode)
+
+    // Only the session this widget is following matters: runs started
+    // elsewhere (the REPL) name their own sessions, which must not
+    // relabel the pane. The title was also persisted daemon-side, so the
+    // next session search can list sessions by it.
+    if (sessionId.isEmpty() || sessionId != m_sessionId) {
+        return;
+    }
+    if (m_sessionTitle == title) {
+        return;
+    }
+    m_sessionTitle = title;
+    Q_EMIT sessionTitleChanged();
 }
 
 void AgentBridge::setPartialTranscript(const QString &text)

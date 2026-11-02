@@ -91,6 +91,36 @@ def build_cleanup_messages(text: str) -> list[dict]:
     ]
 
 
+_TITLE_SYSTEM = """\
+You name a conversation with a desktop AI agent. Reply with a short title \
+- at most six words - that captures what the conversation is about, in \
+the language the conversation itself uses. No quotes, no trailing period, \
+no preamble: the title only."""
+
+#: Per-message truncation and history cap for the title call: a long
+#: session must not blow up the naming round-trip.
+_TITLE_LINE_LIMIT = 400
+_TITLE_MAX_LINES = 24
+
+
+def build_title_messages(exchanges: list[tuple[str, str]]) -> list[dict]:
+    """Single-shot messages asking for a conversation title.
+
+    ``exchanges`` are (role, content) pairs of the conversation so far;
+    each is truncated and only the most recent ones are sent.
+    """
+    lines = []
+    for role, content in exchanges:
+        content = content.strip()
+        if content:
+            lines.append(f"{role}: {content[:_TITLE_LINE_LIMIT]}")
+    transcript = "\n".join(lines[-_TITLE_MAX_LINES:])
+    return [
+        {"role": "system", "content": _TITLE_SYSTEM},
+        {"role": "user", "content": transcript or "(empty conversation)"},
+    ]
+
+
 def build_system_prompt(profile: ModeProfile, extra_context: str | None = None) -> str:
     now = _dt.datetime.now().strftime("%A, %Y-%m-%d %H:%M")
     parts = [

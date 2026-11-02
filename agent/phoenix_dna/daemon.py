@@ -12,6 +12,8 @@ Responsibilities:
   across prompts ("multi-prompt root session");
 * clean up voice transcripts with a single LLM call on a separate auxiliary
   pool, so a slow cleanup never delays the prompt queue;
+* (re)name every session with a single LLM call after a completed run, so
+  a follow-on that shifts the conversation renames it;
 * forward every agent event to ``emitter`` (called from the worker thread -
 * the D-Bus layer marshals events onto the main loop).
 """
@@ -30,7 +32,12 @@ from .config import Config
 from .loop import AgentLoop
 from .modes import MODE_PROFILES, Mode, ModeProfile, build_toolset
 from .privileges import KDialogPasswordProvider, SudoCredentialCache
-from .prompts import build_cleanup_messages, build_system_prompt, load_context_file
+from .prompts import (
+    build_cleanup_messages,
+    build_system_prompt,
+    build_title_messages,
+    load_context_file,
+)
 from .provider import LLMProvider, build_provider
 from .sessions import SessionManager, SessionStore
 
@@ -73,17 +80,23 @@ class AgentDaemon:
         *,
         provider: LLMProvider | None = None,
         cleanup_provider: LLMProvider | None = None,
+        title_provider: LLMProvider | None = None,
         password_provider=None,
         emitter=None,
     ):
         self.config = config
         self._provider = provider or build_provider(config)
-        # Transcript cleanup is a separate, optional single-shot call: a
-        # dedicated provider (not the run provider) so the scripted test
-        # provider's call sequence stays untouched. None disables cleanup.
+        # Transcript cleanup and session titles are separate, optional
+        # single-shot calls: dedicated providers (not the run provider) so
+        # the scripted test provider's call sequence stays untouched.
+        # None disables the respective feature.
         self._cleanup_provider = cleanup_provider
-        self._cleanup_pool = concurrent.futures.ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="phoenix-cleanup"
+        self._title_provider = title_provider
+        # One auxiliary worker serves both single-shot calls: a slow
+        # cleanup or title must neither delay the prompt queue nor block
+        # the D-Bus main loop.
+        self._aux_pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="phoenix-aux"
         )
         self._password_provider = password_provider  # None -> KDialog lazily
         self._emitter = emitter or (lambda event: None)
@@ -202,7 +215,7 @@ class AgentDaemon:
         if not text or self._cleanup_provider is None:
             return ""
         cleanup_id = "cleanup_" + uuid4().hex[:12]
-        future = self._cleanup_pool.submit(self._run_cleanup, cleanup_id, text)
+        future = self._aux_pool.submit(self._run_cleanup, cleanup_id, text)
         future.add_done_callback(
             lambda f: f.exception()
             and log.error("cleanup task failed: %s", f.exception())
@@ -234,6 +247,55 @@ class AgentDaemon:
             )
         )
 
+    def _update_title(self, mode_name: str, session_id: str) -> None:
+        """(Re)name a session from its conversation so far.
+
+        Runs after every completed run, so a follow-on that pulls the
+        conversation onto new ground renames the session (unlike most
+        providers, whose titles are frozen at the first message). A
+        failure keeps the previous title; naming must never disturb the
+        conversation itself.
+        """
+        if self._title_provider is None or not session_id:
+            return
+        try:
+            conversation = self._sessions.get(mode_name, session_id)
+            exchanges = [
+                (
+                    str(message.get("role") or ""),
+                    (
+                        message.get("content")
+                        if isinstance(message.get("content"), str)
+                        else ""
+                    ),
+                )
+                for message in conversation.messages
+                if message.get("role") in ("user", "assistant")
+            ]
+            parts: list[str] = []
+            for item in self._title_provider.stream(
+                build_title_messages(exchanges), tools=[]
+            ):
+                if item.get("type") == "text_delta":
+                    parts.append(item["text"])
+            # Collapse whitespace (models like to wrap titles in newlines),
+            # drop wrapping quotes and a trailing period.
+            title = _strip_wrapper_quotes(" ".join("".join(parts).split()))
+            title = title.rstrip(".").strip()
+            if not title:
+                return
+            self._sessions.set_title(conversation, title)
+            self._emit(
+                events.make(
+                    events.SESSION_TITLE_CHANGED,
+                    session_id=session_id,
+                    mode=mode_name,
+                    title=title,
+                )
+            )
+        except Exception as exc:  # defensive: naming must never crash the daemon
+            log.warning("title update for session %s failed: %s", session_id, exc)
+
     def state(self) -> dict:
         with self._lock:
             return {
@@ -249,7 +311,7 @@ class AgentDaemon:
                 self._current_cancel.set()
             self._cond.notify_all()
         self._thread.join(timeout=timeout)
-        self._cleanup_pool.shutdown(wait=False, cancel_futures=True)
+        self._aux_pool.shutdown(wait=False, cancel_futures=True)
 
     # -- worker ----------------------------------------------------------------
 
@@ -332,7 +394,17 @@ class AgentDaemon:
             max_turns=self.config.max_turns,
             cancel_event=cancel,
         )
-        loop.run(job.prompt)
+        summary = loop.run(job.prompt)
+
+        # A run that produced an answer advanced the conversation: its
+        # title is regenerated from the session's new shape (async, on the
+        # auxiliary pool — the title arrives as its own event). Cancelled
+        # and failed runs name nothing: their half-conversations would
+        # only produce misleading titles.
+        if summary.get("status") in ("completed", "max_turns") and summary.get(
+            "final_text"
+        ):
+            self._aux_pool.submit(self._update_title, job.mode.value, conversation.id)
 
     def _preauthenticate_root(self) -> None:
         """Show the password dialog now, off the D-Bus main loop.
