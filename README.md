@@ -20,6 +20,7 @@ overlay/pane.
 | `shell/`     | Panel widget: the main plasmoid, audio capture, transcription   |
 | `overlay/`   | Dictation overlay shown while recording                         |
 | `pane/`      | Results pane for conversation output                            |
+| `search/`    | Session search: the previous sessions, listed by name           |
 | `waveform/`  | Offline `.wav` → `.png` waveform renderer                       |
 | `widgettest/`| Developer testbench that hosts the widget in a plain window      |
 | `agent/`     | Python agent daemon (`phoenix-dna-agent`), a D-Bus service          |

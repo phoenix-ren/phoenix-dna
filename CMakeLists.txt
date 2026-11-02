@@ -57,11 +57,12 @@ function(phoenixdna_use_boost target)
     KDE_TARGET_ENABLE_EXCEPTIONS(${target} PRIVATE)
 endfunction()
 
-# All three components of the widget live in this repository and are built
+# All components of the widget live in this repository and are built
 # together against one install prefix.
 add_subdirectory(shell)
 add_subdirectory(overlay)
 add_subdirectory(pane)
+add_subdirectory(search)
 
 # Developer testbench: hosts the widget in a plain window without installing.
 add_subdirectory(widgettest)

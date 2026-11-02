@@ -16,6 +16,7 @@ import plasma.applet.org.phoenixdna.agent as Phoenix
  *   * the three mode buttons      (root / user / web, active one checked on)
  *   * the ring-buffered waveform  (the last five seconds of audio)
  *   * the record button, which becomes a stop button while recording
+ *   * the search button, which opens the session search
  */
 Item {
     id: root
@@ -173,6 +174,33 @@ Item {
                 text: {
                     const action = root.recording ? i18n("Stop") : i18n("Record");
                     const hotkey = Phoenix.PhoenixController.recordShortcut;
+                    return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
+                }
+            }
+        }
+
+        // ---- Far right: the search button -----------------------------------
+        // Opens the session search: the user's previous sessions on the
+        // left, the selected one's queries and responses on the right.
+        PC3.ToolButton {
+            id: searchButton
+            objectName: "searchButton"
+
+            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+            icon.name: "edit-find"
+            icon.width: Kirigami.Units.iconSizes.small
+            icon.height: Kirigami.Units.iconSizes.small
+
+            onClicked: Phoenix.PhoenixController.showSessionSearch()
+
+            PC3.ToolTip {
+                // As with the record button, the global hotkey is named
+                // when one is bound.
+                text: {
+                    const action = i18n("Search sessions");
+                    const hotkey = Phoenix.PhoenixController.searchShortcut;
                     return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
                 }
             }
