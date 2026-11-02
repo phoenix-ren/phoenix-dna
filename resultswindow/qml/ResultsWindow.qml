@@ -47,6 +47,14 @@ import org.kde.kirigami as Kirigami
  * The shell binds the conversation model and the dictation state
  * (transcript/listening/transcribing/statusMessage); the window itself is
  * purely presentational.
+ *
+ * What the window shows is weighted: the agent's answer is the point of
+ * the run, so it is the only part rendered at full size, in a card of
+ * its own. The two things that surround it — the notes the agent wrote
+ * while it worked, and the log of the tools it called — are context:
+ * they are dimmed, set in a smaller type and folded away by default,
+ * one click each away. An answer the user has to dig for is an answer
+ * they miss.
  */
 Window {
     id: resultsWindow
@@ -110,6 +118,65 @@ Window {
     // daemon (and re-generated on every follow-on). It rides the window
     // title, so the taskbar entry names the conversation too.
     property string sessionTitle: ""
+
+    // The header of a folded-away section: the thinking notes and the
+    // tool log are context, not the answer, and they start folded —
+    // the title and the arrow that opens the section are always there,
+    // the content only when the user asks for it.
+    component SectionHeader: Item {
+        id: sectionHeader
+
+        // The section's name.
+        property string title: ""
+
+        // Whether the section's content is shown.
+        property bool expanded: false
+
+        // Whether the pointer is on the header: the title brightens
+        // then, to show that the section opens on a click.
+        readonly property bool hovered: hoverArea.containsMouse
+
+        // Emitted when the header is clicked.
+        signal toggled()
+
+        implicitHeight: headerRow.implicitHeight
+
+        RowLayout {
+            id: headerRow
+
+            anchors.fill: parent
+            spacing: Kirigami.Units.smallSpacing
+
+            // The arrow: down while the section is open, to the right
+            // while it is folded.
+            Kirigami.Icon {
+                Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                source: sectionHeader.expanded ? "arrow-down" : "arrow-right"
+                // Brighter while the pointer is on the header: the
+                // section is one click away.
+                color: sectionHeader.hovered ? "#d0d0d0" : "#9a9a9a"
+            }
+
+            Kirigami.Heading {
+                Layout.fillWidth: true
+                // KF6 6.31 has no Kirigami.Heading.Level enum; levels are plain ints.
+                level: 6
+                text: sectionHeader.title
+                color: sectionHeader.hovered ? "#d0d0d0" : "#9a9a9a"
+            }
+        }
+
+        // The whole header is the button.
+        MouseArea {
+            id: hoverArea
+
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: sectionHeader.toggled()
+        }
+    }
 
     title: sessionTitle.length > 0
         ? i18n("%1 — Phoenix DNA", sessionTitle)
@@ -315,6 +382,8 @@ Window {
                             required property string result
                             required property string toolLog
                             required property bool running
+                            required property string thinking
+                            required property int toolCount
 
                             Layout.preferredWidth: column.width
                             spacing: Kirigami.Units.smallSpacing
@@ -427,42 +496,94 @@ Window {
                                 }
                             }
 
-                            // The agent's answer, on the left: full width,
-                            // with the mirrored tail and attribution.
+                            // The agent's answer, on the left: the one
+                            // thing the window exists to show, so it is
+                            // the only part rendered at full size — in a
+                            // card of its own, with the mirrored tail and
+                            // the attribution below it.
                             // Rendered as Markdown: the agent mostly
                             // answers in plain sentences, but code and
-                            // lists do occur — and the tool log below is
-                            // fenced code by construction.
+                            // lists do occur.
                             ColumnLayout {
                                 id: answerGroup
 
                                 Layout.fillWidth: true
                                 spacing: 0
 
-                                Kirigami.SelectableLabel {
-                                    objectName: "resultLabel"
+                                // The answer itself, in a card: bigger
+                                // than the rest of the window, brighter,
+                                // and set off from the notes and the log
+                                // that follow it.
+                                Rectangle {
+                                    id: answerCard
+                                    objectName: "answerCard"
 
-                                    Layout.fillWidth: true
+                                    Layout.alignment: Qt.AlignLeft
+                                    visible: exchange.result.length > 0
 
-                                    text: exchange.result
-                                    textFormat: TextEdit.MarkdownText
-                                    wrapMode: Text.WordWrap
-                                    color: "#f2f2f2"
+                                    // The margin between the answer and
+                                    // the card's edge.
+                                    readonly property int padding:
+                                        Kirigami.Units.smallSpacing * 2
+
+                                    // Hug the text, but wrap (and so stop
+                                    // growing) at nearly the whole row:
+                                    // the answer is the main text of the
+                                    // window and may use the width.
+                                    // NOTE: implicitWidth, not width — a
+                                    // ColumnLayout sizes its children
+                                    // from their implicit size, and a
+                                    // width binding here would be clobbered
+                                    // on the first layout pass.
+                                    implicitWidth: Math.min(
+                                        exchange.width * 0.96,
+                                        resultLabel.implicitWidth
+                                            + 2 * answerCard.padding)
+                                    implicitHeight: resultLabel.implicitHeight
+                                        + 2 * answerCard.padding
+
+                                    radius: Kirigami.Units.smallSpacing * 2
+                                    color: Qt.rgba(1, 1, 1, 0.06)
+                                    border.width: 1
+                                    border.color: Qt.rgba(1, 1, 1, 0.10)
+
+                                    Kirigami.SelectableLabel {
+                                        id: resultLabel
+                                        objectName: "resultLabel"
+
+                                        anchors.fill: parent
+                                        anchors.margins: answerCard.padding
+
+                                        text: exchange.result
+                                        textFormat: TextEdit.MarkdownText
+                                        wrapMode: Text.WordWrap
+                                        color: "#f7f7f7"
+                                        // Larger than the rest of the
+                                        // window: this is the text the
+                                        // user came for.
+                                        font.pixelSize: Math.round(
+                                            Qt.application.font.pixelSize * 1.12)
+                                    }
                                 }
 
                                 // The mirrored pointy edge, at the
-                                // answer's bottom-left.
+                                // answer's bottom-left corner: it takes
+                                // the card's colors, so the two read as
+                                // one shape.
                                 Canvas {
+                                    id: answerTail
                                     objectName: "answerTail"
 
                                     Layout.alignment: Qt.AlignLeft
                                     Layout.leftMargin: Kirigami.Units.smallSpacing * 2
+                                    Layout.topMargin: -1
+                                    visible: exchange.result.length > 0
                                     implicitWidth: Kirigami.Units.smallSpacing * 2
                                     implicitHeight: Kirigami.Units.smallSpacing
                                     onPaint: {
                                         const ctx = getContext("2d")
-                                        ctx.fillStyle = Qt.rgba(1, 1, 1, 0.05)
-                                        ctx.strokeStyle = Qt.rgba(1, 1, 1, 0.12)
+                                        ctx.fillStyle = answerCard.color
+                                        ctx.strokeStyle = answerCard.border.color
                                         ctx.lineWidth = 1
                                         ctx.beginPath()
                                         ctx.moveTo(0, 0)
@@ -478,47 +599,120 @@ Window {
                                     }
                                 }
 
-                                Kirigami.SelectableLabel {
-                                    objectName: "agentLabel"
-
+                                // Who answered — and, while the agent is
+                                // still working, a spinner next to its
+                                // name.
+                                RowLayout {
                                     Layout.alignment: Qt.AlignLeft
                                     Layout.topMargin: 2
+                                    spacing: Kirigami.Units.smallSpacing
 
-                                    text: i18n("Agent")
-                                    textFormat: TextEdit.PlainText
-                                    font.pixelSize: Math.max(
-                                        9, Math.round(
-                                            Qt.application.font.pixelSize * 0.8))
+                                    PC3.BusyIndicator {
+                                        Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                                        Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                                        visible: exchange.running
+                                        running: exchange.running
+                                    }
+
+                                    Kirigami.SelectableLabel {
+                                        id: agentLabel
+                                        objectName: "agentLabel"
+
+                                        text: i18n("Agent")
+                                        textFormat: TextEdit.PlainText
+                                        font.pixelSize: Math.max(
+                                            9, Math.round(
+                                                Qt.application.font.pixelSize * 0.8))
+                                        color: "#9a9a9a"
+                                    }
+                                }
+                            }
+
+                            // What the agent said while it worked: the
+                            // notes it wrote before it reached for a
+                            // tool. The trail of the run, not its
+                            // outcome — dimmed, in a smaller type and
+                            // folded away, one click from view.
+                            ColumnLayout {
+                                id: thinkingSection
+                                objectName: "thinkingSection"
+
+                                // Whether the notes are shown: folded by
+                                // default, for the answer's sake.
+                                property bool expanded: false
+
+                                visible: exchange.thinking.length > 0
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
+
+                                SectionHeader {
+                                    Layout.fillWidth: true
+                                    title: i18n("Thinking")
+                                    expanded: thinkingSection.expanded
+                                    onToggled: thinkingSection.expanded = !thinkingSection.expanded
+                                }
+
+                                Kirigami.SelectableLabel {
+                                    id: thinkingLabel
+                                    objectName: "thinkingLabel"
+
+                                    Layout.fillWidth: true
+                                    visible: thinkingSection.expanded
+
+                                    text: exchange.thinking
+                                    textFormat: TextEdit.MarkdownText
+                                    wrapMode: Text.WordWrap
                                     color: "#9a9a9a"
+                                    // Smaller than the answer: context,
+                                    // not the result.
+                                    font.pixelSize: Math.round(
+                                        Qt.application.font.pixelSize * 0.85)
                                 }
                             }
 
                             // What the agent actually did in this run:
                             // every tool call with its command and output.
-                            // Only present when something ran (plain
-                            // answers often have no tool calls at all).
-                            Kirigami.Separator {
+                            // The evidence for the answer, not the answer
+                            // itself — so it is dimmed and folded away
+                            // like the notes above. Only present when
+                            // something ran (plain answers often have no
+                            // tool calls at all).
+                            ColumnLayout {
+                                id: toolSection
+                                objectName: "toolSection"
+
+                                // Whether the log is shown: folded by
+                                // default, for the answer's sake.
+                                property bool expanded: false
+
+                                visible: exchange.toolLog.length > 0
                                 Layout.fillWidth: true
-                                visible: exchange.toolLog.length > 0
-                            }
+                                spacing: Kirigami.Units.smallSpacing
 
-                            Kirigami.Heading {
-                                level: 5
-                                text: i18n("Tool activity")
-                                color: "#cfcfcf"
-                                visible: exchange.toolLog.length > 0
-                            }
+                                SectionHeader {
+                                    Layout.fillWidth: true
+                                    title: i18n("Tool activity (%1)", exchange.toolCount)
+                                    expanded: toolSection.expanded
+                                    onToggled: toolSection.expanded = !toolSection.expanded
+                                }
 
-                            Kirigami.SelectableLabel {
-                                objectName: "toolLabel"
+                                Kirigami.SelectableLabel {
+                                    id: toolLabel
+                                    objectName: "toolLabel"
 
-                                Layout.fillWidth: true
+                                    Layout.fillWidth: true
+                                    visible: toolSection.expanded
 
-                                text: exchange.toolLog
-                                textFormat: TextEdit.MarkdownText
-                                wrapMode: Text.WordWrap
-                                color: "#e8e8e8"
-                                visible: exchange.toolLog.length > 0
+                                    text: exchange.toolLog
+                                    textFormat: TextEdit.MarkdownText
+                                    wrapMode: Text.WordWrap
+                                    color: "#9a9a9a"
+                                    // Smaller than the answer, and in the
+                                    // plain type: a log to read when
+                                    // wanted, not text to read past.
+                                    font.pixelSize: Math.round(
+                                        Qt.application.font.pixelSize * 0.85)
+                                }
                             }
                         }
                     }

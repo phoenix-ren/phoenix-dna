@@ -90,6 +90,11 @@
  * fenced code blocks), which the results pane renders under the answer —
  * that is what makes a failed run debuggable from the pane.
  *
+ * The text the model streams before it calls a tool is its working
+ * notes, not its answer: the bridge moves it into the row's thinking,
+ * so the pane can show the answer as the point of the run and the
+ * notes as its trail.
+ *
  * Session search: the widget can browse the history the daemon keeps in
  * its per-user SQLite store. SearchSessions(user, query) answers with the
  * user's sessions whose summary name matches the query — the match is
@@ -129,8 +134,10 @@ public:
      * and RunStarted pairs the queue's head with the run that just began
      * (the daemon executes prompts in submission order), opening a new
      * row. TextDelta streams into the row's answer, ToolCall* into its
-     * tool log, and RunFinished finalizes it. Rows are appended, never
-     * cleared, so follow-on questions flow downwards. */
+     * tool log — and the text streamed before them into its thinking, for
+     * the agent was working rather than answering — and RunFinished
+     * finalizes it. Rows are appended, never cleared, so follow-on
+     * questions flow downwards. */
     Q_PROPERTY(ConversationModel *conversation READ conversation CONSTANT)
 
     /*! \brief The title of the session the widget is currently in.
@@ -340,7 +347,9 @@ private Q_SLOTS:
     /*! \brief TextDelta: stream the answer into the current row (throttled). */
     void onTextDelta(const QString &runId, const QString &text);
 
-    /*! \brief ToolCallStarted: append the call's entry head (tool + args). */
+    /*! \brief ToolCallStarted: move the text streamed so far into the
+     *  row's thinking (the agent was working, not answering) and append
+     *  the call's entry head (tool + args). */
     void onToolCallStarted(const QString &runId,
                            const QString &callId,
                            const QString &tool,
@@ -385,11 +394,22 @@ private:
      *
      * The messages are the daemon's transcript of the session (role,
      * content): every user message opens an exchange, the assistant
-     * messages that follow are its answer.
+     * messages that follow are its turns. The last of them is the
+     * answer, the ones before it the notes the agent wrote while it
+     * worked.
      *
      * \a mode names the sender of the queries ("root" or the login
      * name). */
     void loadStoredSession(const QVariantList &messages, const QString &mode);
+
+    /*! \brief Stores one exchange of a stored session: the prompt, who
+     *  sent it and the assistant's turns.
+     *
+     * The last of the \a messages is the answer; the ones before it are
+     * the notes the agent wrote while it worked. */
+    void storeExchange(const QString &prompt,
+                       const QString &sender,
+                       const QStringList &messages);
 
     /*! \brief The sender attribution for a prompt submitted in \a mode:
      *  "root" in root mode, the local user's login name otherwise. */
