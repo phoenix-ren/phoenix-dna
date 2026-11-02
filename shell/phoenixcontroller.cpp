@@ -139,7 +139,7 @@ PhoenixController::PhoenixController(QObject *parent)
     const QList<QKeySequence> searchHotkey{QKeySequence(QStringLiteral("Meta+Alt+`"))};
     KGlobalAccel::self()->setDefaultShortcut(m_searchShortcut, searchHotkey);
     KGlobalAccel::self()->setShortcut(m_searchShortcut, searchHotkey);
-    connect(m_searchShortcut, &QAction::triggered, this, &PhoenixController::showSessionSearch);
+    connect(m_searchShortcut, &QAction::triggered, this, &PhoenixController::toggleSessionSearch);
     connect(KGlobalAccel::self(), &KGlobalAccel::globalShortcutChanged, this,
             [this](QAction *action, const QKeySequence &) {
                 if (action == m_searchShortcut) {
@@ -312,6 +312,26 @@ void PhoenixController::showSessionSearch()
     Q_EMIT sessionSearchRequested();
 }
 
+void PhoenixController::toggleSessionSearch()
+{
+    // The search button is a toggle: pressing it while the search is
+    // up closes it again.
+    if (m_sessionSearchOpen) {
+        Q_EMIT sessionSearchCloseRequested();
+    } else {
+        Q_EMIT sessionSearchRequested();
+    }
+}
+
+void PhoenixController::setSessionSearchOpen(bool open)
+{
+    if (m_sessionSearchOpen == open) {
+        return;
+    }
+    m_sessionSearchOpen = open;
+    Q_EMIT sessionSearchOpenChanged();
+}
+
 void PhoenixController::searchSessions(const QString &query)
 {
     // The daemon does the matching: it knows the session names and can
@@ -322,6 +342,14 @@ void PhoenixController::searchSessions(const QString &query)
 void PhoenixController::openSession(const QString &sessionId)
 {
     m_agent->requestSessionTranscript(searchUser(), sessionId);
+}
+
+void PhoenixController::openSessionResults(const QString &sessionId,
+                                           const QString &mode,
+                                           const QString &title,
+                                           int queryIndex)
+{
+    m_agent->openStoredSession(searchUser(), sessionId, mode, title, queryIndex);
 }
 
 void PhoenixController::submitText(const QString &text, bool newSession)
