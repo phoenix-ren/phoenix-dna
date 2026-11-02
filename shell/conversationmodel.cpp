@@ -40,6 +40,17 @@ QHash<int, QByteArray> ConversationModel::roleNames() const
     };
 }
 
+void ConversationModel::reset()
+{
+    if (m_exchanges.isEmpty()) {
+        return;
+    }
+    beginResetModel();
+    m_exchanges.clear();
+    endResetModel();
+    Q_EMIT countChanged();
+}
+
 void ConversationModel::beginExchange(const QString &prompt, const QString &sender)
 {
     Exchange exchange;

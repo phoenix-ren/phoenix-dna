@@ -59,6 +59,11 @@ Q_SIGNALS:
     void countChanged();
 
 public:
+    /*! \brief Drops every exchange: a new session began, so the pane
+     *  restarts with an empty history instead of appending to prior,
+     *  unrelated conversations. */
+    void reset();
+
     /*! \brief Starts a new exchange: appends a row with the given prompt
      *  and its sender ("root", the login name, or "anon"). */
     void beginExchange(const QString &prompt, const QString &sender);

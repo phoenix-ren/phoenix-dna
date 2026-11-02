@@ -40,6 +40,11 @@ PlasmoidItem {
                 // bindings below; nothing else to do here.
                 return;
             }
+            // followUp is deliberately not touched here: it is false for a
+            // fresh panel-record dictation (new session) and stays true
+            // only while a pane-started clip is handing over (below), whose
+            // submission must remain a follow-on. It resets on submit or
+            // close.
             dictationOverlay.transcript = Phoenix.PhoenixController.partialTranscript;
             dictationOverlay.listening = Phoenix.PhoenixController.recording;
             dictationOverlay.transcribing = Phoenix.PhoenixController.transcribing;
@@ -96,16 +101,29 @@ PlasmoidItem {
     PhoenixOverlay.DictationOverlay {
         id: dictationOverlay
 
+        // Whether a dictation submitted here belongs to the conversation on
+        // screen (follow-on) or starts a new session. Normally the overlay
+        // is opened by the panel's record button — a new session. The one
+        // exception: a dictation started from the pane's input bar that is
+        // still recording when the pane is dismissed hands over to the
+        // overlay (see the pane's onDismissed below); that clip remains a
+        // follow-on of the session it interrupted.
+        property bool followUp: false
+
         // The transcript becomes a prompt only when the user says so; the
         // results pane is not opened here — it appears by itself when the
         // agent's answer comes back.
         onSubmitted: (text) => {
             dictationOverlay.visible = false;
-            Phoenix.PhoenixController.submitText(text);
+            Phoenix.PhoenixController.submitText(text, !dictationOverlay.followUp);
+            dictationOverlay.followUp = false;
         }
 
         // Closing abandons the dictation; nothing is sent.
-        onClosed: dictationOverlay.visible = false
+        onClosed: {
+            dictationOverlay.visible = false;
+            dictationOverlay.followUp = false;
+        }
     }
 
     // Component 3 — the results pane.
@@ -148,16 +166,19 @@ PlasmoidItem {
             // submitted (see submitText()), so the follow-up field is left
             // empty — placeholder reading "Ask a follow-up…" — for the next
             // query; here we only follow the newest exchange while the
-            // answer streams in below the previous ones.
+            // answer streams in below the previous ones. A follow-on keeps
+            // the session: the daemon continues the conversation on screen.
             resultsPane.showLive();
-            Phoenix.PhoenixController.submitText(text);
+            Phoenix.PhoenixController.submitText(text, false);
         }
 
         // The pane persists until closed by hand (button, Esc); a dismissal
         // mid-dictation must not strand the recording: the dictation
         // overlay takes over as the transcript surface so the follow-on can
-        // still be verified and sent.
+        // still be verified and sent — and its submission must keep the
+        // pane's session intent (follow-up), not restart the session.
         onDismissed: if (resultsPane.listening) {
+            dictationOverlay.followUp = true;
             dictationOverlay.transcript = Phoenix.PhoenixController.partialTranscript;
             dictationOverlay.listening = Phoenix.PhoenixController.recording;
             dictationOverlay.transcribing = Phoenix.PhoenixController.transcribing;
