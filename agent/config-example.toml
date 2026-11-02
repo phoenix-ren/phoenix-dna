@@ -7,9 +7,10 @@
 
 [agent]
 # provider = "minimax"            # or "fake" for a canned-response test provider
-# model = "MiniMax-Text-01"
+# model = "MiniMax-M3"             # multimodal; MiniMax-Text-01 cannot see images
 # vision = true                   # send attached images to the model; "auto"
-#                                 # (the default) decides from the model name
+#                                 # (the default) decides from the model name -
+#                                 # "auto" already covers MiniMax-M3
 # llm_base_url = "https://api.minimax.io/v1"
 # request_timeout = 120
 # max_turns = 24

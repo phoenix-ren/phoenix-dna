@@ -32,7 +32,11 @@ def _read_text(path: Path) -> str:
         with open(path, "rb") as fh:
             head = fh.read(_BINARY_SNIFF)
             if b"\x00" in head:
-                raise ToolError(f"refusing to read binary file: {path}")
+                raise ToolError(
+                    f"refusing to read binary file: {path} (binary content is "
+                    "not returned as text; images are attached to the prompt as "
+                    "image parts)"
+                )
             return head.decode("utf-8", errors="replace") + fh.read().decode(
                 "utf-8", errors="replace"
             )

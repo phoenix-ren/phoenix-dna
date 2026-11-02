@@ -135,6 +135,28 @@ def test_vision_enabled_follows_the_model_name():
     assert vision_enabled(Config(model="MiniMax-VL-01", vision=False)) is False
 
 
+def test_vision_enabled_knows_the_minimax_models():
+    """MiniMax-M3 sees images; the text-only MiniMax model does not."""
+    assert vision_enabled(Config(model="MiniMax-M3")) is True
+    assert vision_enabled(Config(model="MiniMax-M3.1-Flash")) is True
+    assert vision_enabled(Config(model="MiniMax-Text-01")) is False
+
+
+def test_build_user_message_says_when_an_image_is_not_sent(tmp_path):
+    """A blind model is told the image is not there, so it does not guess."""
+    image = write_png(tmp_path / "shot.png")
+    attachment = Attachment(path=image, name="shot.png", mime_type="image/png")
+
+    blind = build_user_message("what is this?", [attachment], vision=False)
+    assert isinstance(blind["content"], str)
+    assert "(image content is not sent to this model)" in blind["content"]
+
+    seeing = build_user_message("what is this?", [attachment], vision=True)
+    assert isinstance(seeing["content"], list)
+    assert "not sent to this model" not in seeing["content"][0]["text"]
+    assert any(part["type"] == "image_url" for part in seeing["content"])
+
+
 def test_daemon_sends_the_attachments_with_the_prompt(config, tmp_path):
     image = write_png(tmp_path / "shot.png")
     provider = FakeProvider(["I can see it."])
