@@ -250,6 +250,17 @@ void PhoenixController::submitText(const QString &text)
     if (text.isEmpty()) {
         return;
     }
+    // The transcript is consumed: it is now a prompt. Both transcript
+    // surfaces (the overlay's editor and the pane's follow-up field) are
+    // cleared through partialTranscriptChanged, so the follow-up field is
+    // empty — placeholder reading "Ask a follow-up…" — when the answer's
+    // pane appears, instead of duplicating the prompt bubble with the
+    // query that produced it. Clearing also voids the pending transcript
+    // cleanup: the raw text was already submitted, so its cleaned variant
+    // no longer has anything to replace (AgentBridge compares the source).
+    m_partialTranscript.clear();
+    Q_EMIT partialTranscriptChanged();
+
     // The query is generated and on its way; the pane no longer opens here.
     // It appears by itself when the daemon's answer arrives — see
     // AgentBridge::onRunFinished().
