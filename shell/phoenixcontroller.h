@@ -20,6 +20,7 @@ class AgentBridge;
 class AudioCapture;
 class ClipRecorder;
 class Transcriber;
+class ShutterSound;
 
 /*!
  * \brief The widget's controller, exposed to QML as a singleton.
@@ -242,6 +243,7 @@ private:
     Transcriber *m_transcriber = nullptr;
     PromptAttachments *m_attachments = nullptr;
     WindowScreenshotPicker *m_screenshotPicker = nullptr;
+    ShutterSound *m_shutterSound = nullptr;
     SettingsStore *m_settings = nullptr;
     QAction *m_toggleShortcut = nullptr;
     QAction *m_searchShortcut = nullptr;
