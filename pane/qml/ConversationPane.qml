@@ -180,6 +180,24 @@ PlasmaCore.Dialog {
     // content change.
     property bool systemResizing: false
 
+    // True while a compositor-driven move is in flight (see the header's
+    // move handle): x/y changes arriving then are the user dragging the
+    // real window — clients cannot position their own toplevels on
+    // Wayland — and they update the remembered position, which the settle
+    // timer persists when the drag comes to rest.
+    property bool systemMoving: false
+
+    // Tracks a compositor-driven move.
+    onXChanged: if (systemMoving) {
+        userX = conversationPane.x
+        moveSettleTimer.restart()
+    }
+
+    onYChanged: if (systemMoving) {
+        userY = conversationPane.y
+        moveSettleTimer.restart()
+    }
+
     // Puts the window at the user's remembered position; a no-op while the
     // pane has never been moved (the Dialog then keeps its own placement
     // next to the anchor item). Called right after the window becomes
@@ -416,6 +434,18 @@ PlasmaCore.Dialog {
             onTriggered: conversationPane.systemResizing = false
         }
 
+        // Ends a compositor-driven move the same way, persisting the
+        // position the drag ended at.
+        Timer {
+            id: moveSettleTimer
+
+            interval: 250
+            onTriggered: {
+                conversationPane.systemMoving = false
+                conversationPane.savePosition()
+            }
+        }
+
         implicitWidth: conversationPane.maximized
             ? Screen.width - 2 * Kirigami.Units.gridUnit
             : (conversationPane.userWidth > 0
@@ -521,9 +551,21 @@ PlasmaCore.Dialog {
                             pressGlobal = mapToGlobal(mouse.x, mouse.y)
                             startPos = Qt.point(conversationPane.x, conversationPane.y)
                             moved = false
+                            // Compositor-driven move first: on Wayland a
+                            // client cannot position its own toplevel, so
+                            // plain x/y assignments were silently ignored
+                            // and the window never followed the mouse. The
+                            // compositor's interactive move moves the real
+                            // window; the pane's x/y handlers record where
+                            // it lands. Without system move, fall back to
+                            // manual math in global coordinates from the
+                            // press-time anchor (same reasoning as the
+                            // resize handles).
+                            conversationPane.systemMoving =
+                                conversationPane.startSystemMove()
                         }
                         onPositionChanged: (mouse) => {
-                            if (!pressed) {
+                            if (!pressed || moved || conversationPane.systemMoving) {
                                 return
                             }
                             const global = mapToGlobal(mouse.x, mouse.y)
