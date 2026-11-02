@@ -23,8 +23,12 @@ QVariant ConversationModel::data(const QModelIndex &index, int role) const
         return exchange.sender;
     case ResultRole:
         return exchange.result;
+    case ThinkingRole:
+        return exchange.thinking;
     case ToolLogRole:
         return exchange.toolLog;
+    case ToolCountRole:
+        return exchange.toolCount;
     case RunningRole:
         return exchange.running;
     default:
@@ -36,7 +40,8 @@ QHash<int, QByteArray> ConversationModel::roleNames() const
 {
     return {
         {PromptRole, "prompt"},   {SenderRole, "sender"},   {ResultRole, "result"},
-        {ToolLogRole, "toolLog"}, {RunningRole, "running"},
+        {ToolLogRole, "toolLog"}, {RunningRole, "running"}, {ThinkingRole, "thinking"},
+        {ToolCountRole, "toolCount"},
     };
 }
 
@@ -80,7 +85,41 @@ void ConversationModel::setResult(const QString &result)
         return;
     }
     m_exchanges.last().result = result;
+    if (dropLastThinkingIf(result)) {
+        touchCurrent({ResultRole, ThinkingRole});
+        return;
+    }
     touchCurrent({ResultRole});
+}
+
+void ConversationModel::demoteResultToThinking()
+{
+    if (m_exchanges.isEmpty()) {
+        return;
+    }
+    Exchange &exchange = m_exchanges.last();
+    if (exchange.result.isEmpty()) {
+        return;
+    }
+    // The notes are one chunk per turn, separated by a blank line.
+    if (!exchange.thinking.isEmpty()) {
+        exchange.thinking += QStringLiteral("\n\n");
+    }
+    exchange.thinking += exchange.result;
+    exchange.result.clear();
+    touchCurrent({ThinkingRole, ResultRole});
+}
+
+void ConversationModel::setThinking(const QString &thinking)
+{
+    if (m_exchanges.isEmpty()) {
+        return;
+    }
+    if (m_exchanges.last().thinking == thinking) {
+        return;
+    }
+    m_exchanges.last().thinking = thinking;
+    touchCurrent({ThinkingRole});
 }
 
 void ConversationModel::appendToolLog(const QString &markdown)
@@ -90,6 +129,15 @@ void ConversationModel::appendToolLog(const QString &markdown)
     }
     m_exchanges.last().toolLog += markdown;
     touchCurrent({ToolLogRole});
+}
+
+void ConversationModel::noteToolCall()
+{
+    if (m_exchanges.isEmpty()) {
+        return;
+    }
+    ++m_exchanges.last().toolCount;
+    touchCurrent({ToolCountRole});
 }
 
 void ConversationModel::finishExchange()
@@ -111,4 +159,27 @@ void ConversationModel::touchCurrent(const QList<int> &roles)
     }
     const QModelIndex index = this->index(m_exchanges.size() - 1);
     Q_EMIT dataChanged(index, index, roles);
+}
+
+bool ConversationModel::dropLastThinkingIf(const QString &text)
+{
+    Exchange &exchange = m_exchanges.last();
+    if (exchange.thinking.isEmpty() || text.isEmpty()) {
+        return false;
+    }
+    // The notes are one chunk per turn, separated by a blank line: only
+    // a whole chunk is dropped, never a part of one.
+    const int separator = exchange.thinking.lastIndexOf(QStringLiteral("\n\n"));
+    const QString lastChunk = separator < 0
+        ? exchange.thinking
+        : exchange.thinking.mid(separator + 2);
+    if (lastChunk != text) {
+        return false;
+    }
+    if (separator < 0) {
+        exchange.thinking.clear();
+    } else {
+        exchange.thinking.truncate(separator);
+    }
+    return true;
 }

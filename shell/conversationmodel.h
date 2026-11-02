@@ -25,7 +25,12 @@
  *                for runs not started from this widget
  * - \c result    the answer so far (Markdown; still streaming while
  *                \c running)
+ * - \c thinking  the notes the agent wrote while it worked (Markdown): the
+ *                text of the turns that ended in a tool call. Kept apart
+ *                from the answer, so the pane can show the answer as the
+ *                point of the run and the notes as its trail.
  * - \c toolLog   the Markdown tool-activity log of the run
+ * - \c toolCount how many tool calls the run made
  * - \c running   true until the run's final text arrived
  *
  * All mutations run on the GUI thread (the D-Bus layer marshals the
@@ -44,7 +49,9 @@ public:
         SenderRole,
         ResultRole,
         ToolLogRole,
-        RunningRole
+        RunningRole,
+        ThinkingRole,
+        ToolCountRole
     };
     Q_ENUM(Roles)
 
@@ -74,8 +81,22 @@ public:
     /*! \brief Replaces the current exchange's result (e.g. on finish). */
     void setResult(const QString &result);
 
+    /*! \brief Moves the current exchange's result into its thinking.
+     *
+     * The text a turn produced before it turned out to call tools is the
+     * agent thinking, not the answer: the pane shows it as such, so the
+     * answer keeps the place it deserves. */
+    void demoteResultToThinking();
+
+    /*! \brief Replaces the current exchange's thinking (the notes the
+     *  agent wrote while it worked). */
+    void setThinking(const QString &thinking);
+
     /*! \brief Appends tool-activity Markdown to the current exchange. */
     void appendToolLog(const QString &markdown);
+
+    /*! \brief Counts one more tool call in the current exchange. */
+    void noteToolCall();
 
     /*! \brief The run finished: \c running goes false. */
     void finishExchange();
@@ -84,12 +105,21 @@ private:
     /*! \brief Emits dataChanged for the current row's \a roles. */
     void touchCurrent(const QList<int> &roles);
 
+    /*! \brief Drops the last chunk of the thinking if it is \a text.
+     *
+     * The agent's last words before it stopped are the answer now, so
+     * the notes must not show them a second time. Returns whether
+     * something was dropped. */
+    bool dropLastThinkingIf(const QString &text);
+
     struct Exchange
     {
         QString prompt;
         QString sender;
         QString result;
+        QString thinking;
         QString toolLog;
+        int toolCount = 0;
         bool running = true;
     };
 

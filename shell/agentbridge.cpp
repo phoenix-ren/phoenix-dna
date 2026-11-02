@@ -354,7 +354,7 @@ void AgentBridge::loadStoredSession(const QVariantList &messages, const QString 
 
     const QString sender = senderNameForMode(mode);
     QString prompt;
-    QString answer;
+    QStringList answers;
     bool open = false;
     for (const QVariant &entry : messages) {
         const QVariantMap message = entry.toMap();
@@ -362,27 +362,36 @@ void AgentBridge::loadStoredSession(const QVariantList &messages, const QString 
         const QString content = message.value(QStringLiteral("content")).toString();
         if (role == QLatin1String("user")) {
             if (open) {
-                m_conversation.beginExchange(prompt, sender);
-                m_conversation.setResult(answer);
-                m_conversation.finishExchange();
+                storeExchange(prompt, sender, answers);
             }
             prompt = content;
-            answer.clear();
+            answers.clear();
             open = true;
         } else if (role == QLatin1String("assistant") && !content.isEmpty()) {
-            // A run with tool calls leaves empty assistant messages
-            // behind; only the text counts as the answer.
-            if (!answer.isEmpty()) {
-                answer += QStringLiteral("\n\n");
-            }
-            answer += content;
+            // One assistant message per turn of the run: the last one is
+            // the answer, the ones before it are the notes the agent
+            // wrote while it worked.
+            answers << content;
         }
     }
     if (open) {
-        m_conversation.beginExchange(prompt, sender);
-        m_conversation.setResult(answer);
-        m_conversation.finishExchange();
+        storeExchange(prompt, sender, answers);
     }
+}
+
+void AgentBridge::storeExchange(const QString &prompt,
+                                const QString &sender,
+                                const QStringList &messages)
+{
+    m_conversation.beginExchange(prompt, sender);
+    if (!messages.isEmpty()) {
+        // The last message is the answer; the ones before it are the
+        // agent's working notes.
+        m_conversation.setThinking(
+            messages.mid(0, messages.size() - 1).join(QStringLiteral("\n\n")));
+        m_conversation.setResult(messages.last());
+    }
+    m_conversation.finishExchange();
 }
 
 void AgentBridge::onServiceOwnerChanged(const QString &service,
@@ -550,6 +559,13 @@ void AgentBridge::onToolCallStarted(const QString &runId,
     // A tool call is activity too: the pane opens even if the model calls
     // tools before producing any text.
     beginStreaming();
+
+    // The text the model produced before it reached for a tool is its
+    // working notes, not the answer: move it out of the answer, so the
+    // answer keeps the place it deserves in the pane.
+    flushDeltas();
+    m_conversation.demoteResultToThinking();
+    m_conversation.noteToolCall();
 
     // Head of a log entry: the tool name and its arguments. Written at
     // "started" rather than "finished" so a command that hangs or dies with
