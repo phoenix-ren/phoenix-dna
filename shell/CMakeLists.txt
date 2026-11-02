@@ -1,14 +1,16 @@
 # SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
-# Component 1 of 3 — the panel widget.
+# Component 1 — the panel widget.
 #
 # Compiled Plasma::Applet that lives in the taskbar. It owns:
 #   * the record button and the ring-buffered waveform (C++ side),
 #   * the dictation overlay (component 2, `overlay/`),
-#   * the docked results pane (component 3, `pane/`).
+#   * the results window (component 3, `resultswindow/`),
+#   * the session search (component 4, `search/`),
+#   * the settings window (component 5, `settingswindow/`).
 #
-# The overlay and pane are separate QML modules installed by their own
+# The other components are separate QML modules installed by their own
 # subprojects; this applet imports them.
 
 add_definitions(-DTRANSLATION_DOMAIN=\"plasma_applet_org.phoenixdna.agent\")
@@ -39,6 +41,8 @@ plasma_add_applet(org.phoenixdna.agent
         windowpicture.h
         windowscreenshotpicker.cpp
         windowscreenshotpicker.h
+        settingsstore.cpp
+        settingsstore.h
         transcriber.cpp
         transcriber.h
         agentmode.cpp

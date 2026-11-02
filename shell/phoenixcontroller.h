@@ -9,6 +9,7 @@
 
 #include "agentmode.h"
 #include "promptattachments.h"
+#include "settingsstore.h"
 #include "windowscreenshotpicker.h"
 
 #include <QUrl>
@@ -72,6 +73,13 @@ class PhoenixController : public QObject
     /*! \brief The picker that photographs a window of the desktop. */
     Q_PROPERTY(WindowScreenshotPicker *screenshotPicker READ screenshotPicker CONSTANT)
 
+    /*! \brief The user-level settings: API keys and global shortcuts.
+     *
+     * What the settings window edits: the LLM and speech-to-text keys in
+     * ~/.config/phoenix-dna/keys.json, and the re-binding of the three
+     * system-wide hotkeys through KGlobalAccel. */
+    Q_PROPERTY(SettingsStore *settings READ settings CONSTANT)
+
 public:
     explicit PhoenixController(QObject *parent = nullptr);
     ~PhoenixController() override;
@@ -123,6 +131,9 @@ public:
 
     /*! \brief The picker that photographs a window of the desktop. */
     WindowScreenshotPicker *screenshotPicker() const { return m_screenshotPicker; }
+
+    /*! \brief The user-level settings store of the settings window. */
+    SettingsStore *settings() const { return m_settings; }
 
     /*! \brief Starts the window picker: the user clicks a window of the
      *  desktop and its picture is attached to the prompt.
@@ -231,6 +242,7 @@ private:
     Transcriber *m_transcriber = nullptr;
     PromptAttachments *m_attachments = nullptr;
     WindowScreenshotPicker *m_screenshotPicker = nullptr;
+    SettingsStore *m_settings = nullptr;
     QAction *m_toggleShortcut = nullptr;
     QAction *m_searchShortcut = nullptr;
     bool m_recording = false;

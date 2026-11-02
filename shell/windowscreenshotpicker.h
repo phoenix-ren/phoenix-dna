@@ -73,6 +73,12 @@ public:
     /*! \brief The title of the window under the pointer. */
     QString targetTitle() const { return m_targetTitle; }
 
+    /*! \brief The KGlobalAccel action behind the shortcut.
+     *
+     * For the settings store, which re-binds the picker's hotkey through
+     * the same action System Settings would edit. */
+    QAction *shortcutAction() const { return m_shortcut; }
+
     /*! \brief Starts the picker.
      *
      * Does nothing while a pick is already in flight. */

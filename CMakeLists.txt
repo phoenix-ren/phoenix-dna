@@ -63,6 +63,7 @@ add_subdirectory(shell)
 add_subdirectory(overlay)
 add_subdirectory(resultswindow)
 add_subdirectory(search)
+add_subdirectory(settingswindow)
 
 # Developer testbench: hosts the widget in a plain window without installing.
 add_subdirectory(widgettest)
