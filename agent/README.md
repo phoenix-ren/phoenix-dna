@@ -88,11 +88,19 @@ environment → `~/.config/phoenix-dna/keys.json` (mode 0600) for keys, and
 
 | Key / setting | Env var | Purpose |
 |---|---|---|
-| `minimax_api_key` | `MINIMAX_API_KEY` | LLM (`https://api.minimax.io/v1`, model `MiniMax-Text-01`) |
+| `minimax_api_key` | `MINIMAX_API_KEY` | LLM (`https://api.minimax.io/v1`, model `MiniMax-Text-01`; set `model = "MiniMax-M3"` for a multimodal model) |
 | `tavily_api_key` | `TAVILY_API_KEY` | web search in every mode (tool omitted if unset) |
 | `exa_api_key` | `EXA_API_KEY` | web search in every mode (tool omitted if unset) |
 | `stt_provider`, `openai_api_key` | `PHOENIX_STT_PROVIDER`, `OPENAI_API_KEY` | the plasmoid's speech-to-text: provider (`minimax` default) and its key — read by the widget, not the daemon |
 | `model`, `llm_base_url`, `max_turns`, `credential_ttl_seconds`, bash timeouts … | `PHOENIX_MODEL`, `PHOENIX_BASE_URL`, … | see `config-example.toml` |
+
+Images attached to a prompt reach the model as image parts only when it can
+see them. With `vision = "auto"` (the default) that is decided from the model
+name: `MiniMax-M3` and `MiniMax-M3.1` are multimodal, `MiniMax-Text-01` is
+not. Set `model = "MiniMax-M3"` and `vision = true` in `agent.toml` to be
+explicit. A model that cannot see images still gets the file paths, marked
+as "image content is not sent to this model", so it does not try to read the
+binary file and conclude that it has no vision at all.
 
 Optional `~/.config/phoenix-dna/PHOENIX.md` (or `AGENTS.md`) is appended to the
 system prompt as extra user instructions.

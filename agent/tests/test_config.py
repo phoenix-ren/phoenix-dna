@@ -67,6 +67,20 @@ def test_toml_overrides_and_unknown_settings(tmp_path):
     assert config.model == "MiniMax-Env"
 
 
+def test_vision_is_a_tri_state_setting(tmp_path):
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    (cfg / "agent.toml").write_text('[agent]\nmodel = "MiniMax-M3"\nvision = "auto"\n')
+    config = load_config(config_dir=cfg, data_dir=tmp_path / "d", env={})
+    assert config.model == "MiniMax-M3"
+    # "auto" keeps the automatic behaviour, it does not switch vision off.
+    assert config.vision is None
+
+    (cfg / "agent.toml").write_text("[agent]\nvision = true\n")
+    config = load_config(config_dir=cfg, data_dir=tmp_path / "d", env={})
+    assert config.vision is True
+
+
 def test_describe_masks_keys(tmp_path):
     cfg = tmp_path / "cfg"
     cfg.mkdir()

@@ -99,9 +99,9 @@ def _apply_overrides(config: Config, overrides: dict) -> Config:
             if isinstance(current, bool):
                 value = bool(value)
             elif current is None:
-                # A tri-state setting (e.g. "vision"): an empty value
-                # leaves the automatic behaviour in place.
-                if value in ("", None):
+                # A tri-state setting (e.g. "vision"): an empty value or
+                # "auto" leaves the automatic behaviour in place.
+                if value in ("", None) or str(value).strip().lower() == "auto":
                     value = None
                 else:
                     value = str(value).strip().lower() in ("1", "true", "yes", "on")

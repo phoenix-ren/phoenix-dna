@@ -43,6 +43,10 @@ _VISION_MIME_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 
 #: Model names that are known to accept image parts. Used when the config
 #: does not say explicitly whether the model can see.
+#:
+#: The MiniMax entry matters: MiniMax-M3 and MiniMax-M3.1 accept image
+#: parts, MiniMax-Text-01 does not. A bare "minimax" hint would wrongly
+#: call the text-only model multimodal, so the family name is not enough.
 _VISION_MODEL_HINTS = (
     "vl",
     "vision",
@@ -56,6 +60,7 @@ _VISION_MODEL_HINTS = (
     "pixtral",
     "qwen-vl",
     "internvl",
+    "minimax-m3",
 )
 
 
@@ -172,16 +177,17 @@ def build_user_message(
     Without attachments this is the plain prompt, exactly as before. With
     attachments the text part also lists the files (name, type and path),
     and images are added as image parts when the model can see them.
+
+    An image that is not sent - the model is text-only, or the file is
+    unusable - is marked as such in the listing. Without that note the
+    model tries to read the file, hits the binary-file refusal, and
+    concludes that it cannot see images at all.
     """
     if not attachments:
         return {"role": "user", "content": prompt}
 
-    lines = [prompt.rstrip(), "", "Attached files:"]
-    for attachment in attachments:
-        lines.append(f"- {attachment.name} ({attachment.mime_type}): {attachment.path}")
-    text = "\n".join(lines)
-
-    parts: list[dict] = [{"type": "text", "text": text}]
+    parts: list[dict] = []
+    listed: list[str] = []
 
     for attachment in attachments:
         if attachment.is_pdf:
@@ -195,12 +201,31 @@ def build_user_message(
                         ),
                     }
                 )
+            listed.append(
+                f"- {attachment.name} ({attachment.mime_type}): {attachment.path}"
+            )
             continue
-        if not attachment.is_image or not vision:
-            continue
-        data_url = image_data_url(attachment)
-        if data_url:
-            parts.append({"type": "image_url", "image_url": {"url": data_url}})
+
+        if attachment.is_image and vision:
+            data_url = image_data_url(attachment)
+            if data_url:
+                parts.append({"type": "image_url", "image_url": {"url": data_url}})
+                listed.append(
+                    f"- {attachment.name} ({attachment.mime_type}): {attachment.path}"
+                )
+                continue
+            note = " (image content could not be inlined)"
+        elif attachment.is_image:
+            note = " (image content is not sent to this model)"
+        else:
+            note = ""
+
+        listed.append(
+            f"- {attachment.name} ({attachment.mime_type}): {attachment.path}{note}"
+        )
+
+    text = "\n".join([prompt.rstrip(), "", "Attached files:", *listed])
+    parts.insert(0, {"type": "text", "text": text})
 
     if len(parts) == 1:
         return {"role": "user", "content": text}
