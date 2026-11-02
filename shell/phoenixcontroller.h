@@ -175,19 +175,17 @@ public:
 
     /*! \brief Opens a stored session in the results pane.
      *
-     * The session's history is loaded into the conversation model - up to
-     * and including the answer of the query the user clicked in the
-     * session search - and the pane is opened on it. The widget follows
-     * that session from then on, so a follow-on typed in the pane
-     * continues that very conversation.
+     * The session's history is loaded into the conversation model and
+     * the pane is opened on it. The widget follows that session from
+     * then on, so a follow-on typed in the pane continues that very
+     * conversation.
      *
      * \a mode is the session's mode ("root", "user" or "web"), which
      * names the sender of its queries, and \a title the name the pane's
      * header shows. */
     Q_INVOKABLE void openSessionResults(const QString &sessionId,
                                         const QString &mode,
-                                        const QString &title,
-                                        int queryIndex);
+                                        const QString &title);
 
     /*! \brief Sends the given text to the agent.
      *

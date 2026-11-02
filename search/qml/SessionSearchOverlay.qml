@@ -17,7 +17,9 @@ import org.kde.kirigami as Kirigami
  *
  * Typing narrows the list down: the text is matched fuzzily against the
  * names, so every further character drops the sessions that no longer
- * match. The selection moves with the arrow keys and with the mouse.
+ * match. The selection moves with the arrow keys and with the mouse;
+ * a double click opens the session in the results window, where the
+ * conversation carries on.
  *
  * The window is a transparent overlay: the dark backdrop is painted by
  * the content itself, the window around it stays bare. Like the
@@ -42,10 +44,6 @@ PlasmaCore.Dialog {
     // name). Bound by the shell.
     property string user: ""
 
-    // The item the overlay floats next to - the shell passes its own
-    // item, so the search appears where the user triggered it.
-    property Item anchor: null
-
     // Emitted when the query changed: the shell asks the daemon for the
     // sessions that match it.
     signal queryChanged(string query)
@@ -61,26 +59,14 @@ PlasmaCore.Dialog {
     // and asks for the full list of sessions.
     signal opened()
 
-    // Emitted when the user clicks a query in the transcript: the shell
-    // opens the results pane on that query, so the conversation can
-    // continue there.
-    signal queryActivated(string sessionId, string mode, string title, int index)
+    // Emitted when the user double-clicks a session in the list: the
+    // shell opens the results window on that session, so the
+    // conversation can be continued there.
+    signal sessionActivated(string sessionId, string mode, string title)
 
     // The session the right pane shows, and its place in the list.
     property string currentSessionId: ""
     property int currentIndex: -1
-
-    // The selected session's mode and its name: the mode names the
-    // sender of its queries, the name is what the results pane's header
-    // shows when the session is opened there.
-    readonly property string currentMode: currentIndex >= 0
-        && currentIndex < summaries.length
-        ? (summaries[currentIndex].mode || "")
-        : ""
-    readonly property string currentTitle: currentIndex >= 0
-        && currentIndex < summaries.length
-        ? (summaries[currentIndex].title || summaries[currentIndex].summary || "")
-        : ""
 
     // While the query field is cleared on opening, its text change must
     // not trigger a second search.
@@ -127,12 +113,6 @@ PlasmaCore.Dialog {
     // "opacity" parameter are deprecated (and warn on every load).
     onOpacityChanged: searchOverlay.visible = searchOverlay.opacity > 0
 
-    onAnchorChanged: {
-        if (anchor) {
-            visualParent = anchor;
-        }
-    }
-
     // Opens the search: an empty query lists every session of the user,
     // newest first, and the newest one is selected. The content below
     // resets the query field and takes the focus - it is the only place
@@ -150,10 +130,13 @@ PlasmaCore.Dialog {
 
     // Puts the window in the middle of the display, at its full size.
     //
-    // The size follows the area the plasma panels leave free (so the
-    // window never hides under them), the place the screen itself: the
-    // available area's origin is not exposed to QML, and a window of
-    // that size fits between the panels wherever it is centred.
+    // The window has no visual parent, so Plasma places it in the
+    // middle of the screen; the position set here is what the X11
+    // window manager uses (on Wayland a client cannot position its own
+    // toplevel - the compositor does it).
+    //
+    // The size follows the area the plasma panels leave free, so the
+    // window never hides under them.
     function placeOnDisplay() {
         width = searchWidth
         height = searchHeight
@@ -466,6 +449,18 @@ PlasmaCore.Dialog {
                                     // goes on narrowing the list down.
                                     queryField.forceActiveFocus()
                                 }
+
+                                // A double click opens the session in the
+                                // results window: the conversation carries
+                                // on there, with a follow-up.
+                                onDoubleClicked: {
+                                    searchOverlay.sessionActivated(
+                                        sessionItem.modelData.id,
+                                        sessionItem.modelData.mode || "",
+                                        sessionItem.modelData.title
+                                            || sessionItem.modelData.summary
+                                            || "")
+                                }
                             }
                         }
                     }
@@ -514,7 +509,6 @@ PlasmaCore.Dialog {
                                     id: message
 
                                     required property var modelData
-                                    required property int index
 
                                     Layout.fillWidth: true
                                     spacing: 0
@@ -544,12 +538,7 @@ PlasmaCore.Dialog {
                                         radius: Kirigami.Units.smallSpacing * 2
                                         color: Qt.rgba(1, 1, 1, 0.08)
                                         border.width: 1
-                                        // A query opens the conversation it
-                                        // belongs to: the border says so
-                                        // while the mouse is on it.
-                                        border.color: bubbleMouse.containsMouse
-                                            ? Qt.rgba(1, 1, 1, 0.45)
-                                            : Qt.rgba(1, 1, 1, 0.14)
+                                        border.color: Qt.rgba(1, 1, 1, 0.14)
 
                                         Kirigami.SelectableLabel {
                                             id: queryLabel
@@ -561,26 +550,6 @@ PlasmaCore.Dialog {
                                             textFormat: TextEdit.PlainText
                                             wrapMode: Text.WordWrap
                                             color: "#e8e8e8"
-                                        }
-
-                                        MouseArea {
-                                            id: bubbleMouse
-
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-
-                                            onClicked: {
-                                                searchOverlay.queryActivated(
-                                                    searchOverlay.currentSessionId,
-                                                    searchOverlay.currentMode,
-                                                    searchOverlay.currentTitle,
-                                                    message.index)
-                                            }
-
-                                            PC3.ToolTip {
-                                                text: i18n("Open this query in the conversation")
-                                            }
                                         }
                                     }
 
