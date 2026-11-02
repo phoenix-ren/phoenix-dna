@@ -302,6 +302,14 @@ Q_SIGNALS:
      * transcribed in the meantime. */
     void transcriptCleaned(const QString &source, const QString &cleaned);
 
+    /*! \brief The daemon's sudo password dialog closed.
+     *
+     * \a runId is empty for the pre-authentication dialog the daemon
+     * shows when root mode is selected (a non-empty id belongs to a
+     * running prompt); \a success is false when the dialog was cancelled
+     * or the password rejected. */
+    void authFinished(const QString &runId, bool success);
+
 private Q_SLOTS:
     /*! \brief Re-probes and re-subscribes when the service appears or vanishes. */
     void onServiceOwnerChanged(const QString &service,
@@ -325,6 +333,9 @@ private Q_SLOTS:
 
     /*! \brief RunStarted: reset the streaming state for the new run. */
     void onRunStarted(const QString &runId, const QString &mode, const QString &sessionId);
+
+    /*! \brief AuthFinished: the daemon's password dialog closed. */
+    void onAuthFinished(const QString &runId, bool success);
 
     /*! \brief TextDelta: stream the answer into the current row (throttled). */
     void onTextDelta(const QString &runId, const QString &text);
