@@ -36,7 +36,7 @@ Item {
     // Emitted when the settings window should open (the gear button).
     signal settingsClicked()
 
-    // Around 2 cm of physical panel width, so the waveform stays legible on
+    // Around 1.5 cm of physical panel width, so the waveform stays legible on
     // any display. Screen reports physical dots per millimetre; dividing out
     // the device pixel ratio yields the logical pixels QML geometry uses.
     //
@@ -45,10 +45,10 @@ Item {
     // crowded panel shrink the widget below its content size, which clipped
     // the waveform and record button at the panel edge. The minimum is the
     // layout's own minimum (the buttons, waveform and record button cannot
-    // shrink further), never below the 2 cm floor — a smaller allocation
+    // shrink further), never below the 1.5 cm floor — a smaller allocation
     // made the row overflow its background and spill the record button onto
     // the neighbouring widgets.
-    readonly property real minimumWidthCm: 2
+    readonly property real minimumWidthCm: 1.5
     readonly property real minimumWidthPx:
         minimumWidthCm * 10 * Screen.pixelDensity / Screen.devicePixelRatio
 
