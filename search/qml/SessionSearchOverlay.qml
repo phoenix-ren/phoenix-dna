@@ -598,9 +598,7 @@ PlasmaCore.Dialog {
                                         Layout.fillWidth: true
                                         visible: !message.fromUser
 
-                                        // The agent's answers arrive as
-                                        // Markdown with LaTeX math.
-                                        text: MarkdownDocument.renderMath(message.contentText)
+                                        text: message.contentText
                                         // The agent answers in Markdown;
                                         // the query was plain speech.
                                         textFormat: TextEdit.MarkdownText
