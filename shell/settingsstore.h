@@ -32,6 +32,12 @@ class QTimer;
  * the same store System Settings edits, so they survive restarts and can
  * still be re-bound there; the properties here report the live bindings.
  *
+ * Appearance — the colour scheme of the app's own windows: "system"
+ * (the default, following the desktop), "light" or "dark", stored as
+ * "ui_theme" in the same keys.json. The shell pushes the property into
+ * the shared theme singleton every window reads, so a change applies
+ * to all of them the moment it is made.
+ *
  * Everything the user does is answered with a statusMessage (errors in
  * statusIsError), which the settings window shows. Success messages fade
  * out by themselves; errors stay until the next action.
@@ -49,6 +55,10 @@ class SettingsStore : public QObject
 
     /*! \brief The speech-to-text provider: "minimax" (default) or "openai". */
     Q_PROPERTY(QString sttProvider READ sttProvider NOTIFY sttProviderChanged)
+
+    /*! \brief The colour scheme of the app's windows: "system" (default),
+     *  "light" or "dark". */
+    Q_PROPERTY(QString theme READ theme NOTIFY themeChanged)
 
     /*! \brief The keys.json field behind llmApiKey, shown by the UI. */
     Q_PROPERTY(QString llmKeyField READ llmKeyField CONSTANT)
@@ -87,6 +97,7 @@ public:
     QString llmApiKey() const { return m_llmApiKey; }
     QString sttApiKey() const { return m_sttApiKey; }
     QString sttProvider() const { return m_sttProvider; }
+    QString theme() const { return m_theme; }
     QString llmKeyField() const { return QStringLiteral("minimax_api_key"); }
     QString sttKeyField() const;
     QString keysFilePath() const;
@@ -124,10 +135,15 @@ public:
     /*! \brief Stores the speech-to-text provider ("minimax"/"openai"). */
     Q_INVOKABLE bool saveSttProvider(const QString &provider);
 
+    /*! \brief Stores the colour scheme ("system"/"light"/"dark"); every
+     *  window follows it immediately through the theme singleton. */
+    Q_INVOKABLE bool saveTheme(const QString &theme);
+
 Q_SIGNALS:
     void llmApiKeyChanged();
     void sttApiKeyChanged();
     void sttProviderChanged();
+    void themeChanged();
     void keysEnvironmentChanged();
     void statusMessageChanged();
     void statusIsErrorChanged();
@@ -161,6 +177,7 @@ private:
     QString m_llmApiKey;
     QString m_sttApiKey;
     QString m_sttProvider = QStringLiteral("minimax");
+    QString m_theme = QStringLiteral("system");
     QString m_statusMessage;
     bool m_llmKeyFromEnvironment = false;
     bool m_sttKeyFromEnvironment = false;

@@ -6,6 +6,7 @@ import QtQuick.Layouts
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
+import org.phoenixdna.theme
 
 /*
  * The session search overlay.
@@ -299,15 +300,15 @@ PlasmaCore.Dialog {
         implicitWidth: searchOverlay.searchWidth
         implicitHeight: searchOverlay.searchHeight
 
-        // The dark, semi-transparent backdrop. Deliberately fixed rather
-        // than theme-derived: it must be dark whichever theme runs, and
-        // so the text on it can be fixed light.
+        // The semi-transparent backdrop, painted after the chosen colour
+        // scheme (see PhoenixTheme) — the theme's own background would be
+        // opaque; the dialog surface itself stays bare.
         Rectangle {
             anchors.fill: parent
             radius: Kirigami.Units.smallSpacing
-            color: Qt.rgba(0.07, 0.07, 0.09, 0.93)
+            color: PhoenixTheme.backgroundColor
             border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.18)
+            border.color: PhoenixTheme.backdropBorderColor
         }
 
         ColumnLayout {
@@ -326,7 +327,7 @@ PlasmaCore.Dialog {
                     Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                     Layout.preferredHeight: Kirigami.Units.iconSizes.medium
                     source: "edit-find"
-                    color: "#f2f2f2"
+                    color: PhoenixTheme.headingTextColor
                 }
 
                 // The query: matched fuzzily against the session names.
@@ -351,7 +352,7 @@ PlasmaCore.Dialog {
                     objectName: "closeButton"
 
                     icon.name: "window-close"
-                    icon.color: "white"
+                    icon.color: PhoenixTheme.textColor
 
                     onClicked: searchOverlay.dismiss()
 
@@ -380,7 +381,7 @@ PlasmaCore.Dialog {
                     Layout.minimumWidth: Kirigami.Units.gridUnit * 8
                     Layout.fillHeight: true
                     radius: Kirigami.Units.smallSpacing
-                    color: Qt.rgba(1, 1, 1, 0.04)
+                    color: PhoenixTheme.paneFill
 
                     ListView {
                         id: sessionList
@@ -412,7 +413,7 @@ PlasmaCore.Dialog {
                                 + 2 * Kirigami.Units.smallSpacing
                             radius: Kirigami.Units.smallSpacing
                             color: searchOverlay.currentIndex === index
-                                ? Qt.rgba(1, 1, 1, 0.12)
+                                ? PhoenixTheme.selectionFill
                                 : "transparent"
 
                             ColumnLayout {
@@ -431,7 +432,7 @@ PlasmaCore.Dialog {
                                         ? sessionItem.summaryText
                                         : i18n("(untitled session)")
                                     elide: Text.ElideRight
-                                    color: "#f2f2f2"
+                                    color: PhoenixTheme.headingTextColor
                                 }
 
                                 // The query the session started with - the
@@ -447,7 +448,7 @@ PlasmaCore.Dialog {
                                     font.pixelSize: Math.max(
                                         9, Math.round(
                                             Qt.application.font.pixelSize * 0.8))
-                                    color: "#9a9a9a"
+                                    color: PhoenixTheme.secondaryTextColor
                                 }
                             }
 
@@ -483,7 +484,7 @@ PlasmaCore.Dialog {
                         text: queryField.text.length > 0
                             ? i18n("No session matches the query.")
                             : i18n("No sessions yet.")
-                        color: "#9a9a9a"
+                        color: PhoenixTheme.secondaryTextColor
                     }
                 }
 
@@ -492,7 +493,7 @@ PlasmaCore.Dialog {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: Kirigami.Units.smallSpacing
-                    color: Qt.rgba(1, 1, 1, 0.04)
+                    color: PhoenixTheme.paneFill
 
                     Flickable {
                         id: transcript
@@ -544,9 +545,9 @@ PlasmaCore.Dialog {
                                         implicitHeight: queryLabel.implicitHeight
                                             + 2 * Kirigami.Units.smallSpacing
                                         radius: Kirigami.Units.smallSpacing * 2
-                                        color: Qt.rgba(1, 1, 1, 0.08)
+                                        color: PhoenixTheme.bubbleFill
                                         border.width: 1
-                                        border.color: Qt.rgba(1, 1, 1, 0.14)
+                                        border.color: PhoenixTheme.bubbleBorderColor
 
                                         Kirigami.SelectableLabel {
                                             id: queryLabel
@@ -557,7 +558,7 @@ PlasmaCore.Dialog {
                                             text: message.contentText
                                             textFormat: TextEdit.PlainText
                                             wrapMode: Text.WordWrap
-                                            color: "#e8e8e8"
+                                            color: PhoenixTheme.textColor
                                         }
                                     }
 
@@ -567,7 +568,7 @@ PlasmaCore.Dialog {
                                         level: 6
                                         text: i18n("You")
                                         horizontalAlignment: Text.AlignRight
-                                        color: "#9a9a9a"
+                                        color: PhoenixTheme.secondaryTextColor
                                     }
 
                                     Kirigami.Heading {
@@ -578,7 +579,7 @@ PlasmaCore.Dialog {
                                         level: 6
                                         text: i18n("Agent")
                                         horizontalAlignment: Text.AlignLeft
-                                        color: "#9a9a9a"
+                                        color: PhoenixTheme.secondaryTextColor
                                     }
 
                                     Kirigami.SelectableLabel {
@@ -590,7 +591,7 @@ PlasmaCore.Dialog {
                                         // the query was plain speech.
                                         textFormat: TextEdit.MarkdownText
                                         wrapMode: Text.WordWrap
-                                        color: "#f2f2f2"
+                                        color: PhoenixTheme.primaryTextColor
                                     }                                }
                             }
                         }
@@ -606,7 +607,7 @@ PlasmaCore.Dialog {
                         text: searchOverlay.currentSessionId.length > 0
                             ? i18n("This session has no messages yet.")
                             : i18n("Select a session to see its conversation.")
-                        color: "#9a9a9a"
+                        color: PhoenixTheme.secondaryTextColor
                     }
                 }
             }

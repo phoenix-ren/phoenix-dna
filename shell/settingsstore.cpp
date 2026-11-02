@@ -30,6 +30,12 @@ const QString kScreenshotRole = QStringLiteral("screenshot");
 const QString kSttProviderMiniMax = QStringLiteral("minimax");
 const QString kSttProviderOpenAI = QStringLiteral("openai");
 
+// The colour schemes the settings window offers; anything else in
+// keys.json follows the system, the resolved default.
+const QString kThemeSystem = QStringLiteral("system");
+const QString kThemeLight = QStringLiteral("light");
+const QString kThemeDark = QStringLiteral("dark");
+
 /*! \brief The modifier bits that can make up a shortcut's modifier part. */
 Qt::KeyboardModifiers relevantModifiers(int modifiers)
 {
@@ -136,6 +142,16 @@ void SettingsStore::refresh()
                               .toString();
     const QString llmKey = keys.value(QStringLiteral("minimax_api_key")).toString();
 
+    // The colour scheme resolves like the provider does: only the three
+    // spellings mean anything, everything else (including no entry at
+    // all) is the default, "follow the system".
+    QString theme = keys.value(QStringLiteral("ui_theme")).toString();
+    theme = theme.compare(kThemeLight, Qt::CaseInsensitive) == 0
+                ? kThemeLight
+            : theme.compare(kThemeDark, Qt::CaseInsensitive) == 0
+                ? kThemeDark
+                : kThemeSystem;
+
     if (llmKey != m_llmApiKey) {
         m_llmApiKey = llmKey;
         Q_EMIT llmApiKeyChanged();
@@ -147,6 +163,10 @@ void SettingsStore::refresh()
     if (provider != m_sttProvider) {
         m_sttProvider = provider;
         Q_EMIT sttProviderChanged();
+    }
+    if (theme != m_theme) {
+        m_theme = theme;
+        Q_EMIT themeChanged();
     }
     refreshEnvironmentFlags();
 }
@@ -384,6 +404,28 @@ bool SettingsStore::saveSttProvider(const QString &provider)
 
     setStatus(i18n("Unknown speech-to-text provider: %1", provider), true);
     return false;
+}
+
+bool SettingsStore::saveTheme(const QString &theme)
+{
+    // Unknown values become "system" rather than an error: a hand-edited
+    // keys.json with a typo should not lock the combo (and refresh()
+    // normalises the same way).
+    const QString normalized = theme.compare(kThemeLight, Qt::CaseInsensitive) == 0
+        ? kThemeLight
+        : theme.compare(kThemeDark, Qt::CaseInsensitive) == 0
+        ? kThemeDark
+        : kThemeSystem;
+    if (!writeKeyField(QStringLiteral("ui_theme"), normalized)) {
+        return false;
+    }
+
+    setStatus(i18n("Color scheme set to %1.",
+                   normalized == kThemeLight ? i18n("Light")
+                   : normalized == kThemeDark ? i18n("Dark")
+                                              : i18n("Follow system")),
+              false);
+    return true;
 }
 
 void SettingsStore::setStatus(const QString &message, bool isError)

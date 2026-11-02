@@ -9,11 +9,16 @@ import org.kde.plasma.plasmoid
 // mode enum, and the QML types defined alongside them.
 import plasma.applet.org.phoenixdna.agent as Phoenix
 
+// Kirigami's theme, read inside the applet, is the Plasma theme — the
+// judge of what "follow the system" resolves to (see the Binding below).
+import org.kde.kirigami as Kirigami
+
 // Components 2, 3, 4 and 5 are separate QML modules, installed independently.
 import org.phoenixdna.overlay as PhoenixOverlay
 import org.phoenixdna.resultswindow as PhoenixResults
 import org.phoenixdna.search as PhoenixSearch
 import org.phoenixdna.settings as PhoenixSettings
+import org.phoenixdna.theme
 
 /*
  * Component 1 — the panel widget.
@@ -116,6 +121,33 @@ PlasmoidItem {
 
         function onStatusMessageChanged() {
             dictationOverlay.statusMessage = Phoenix.PhoenixController.statusMessage;
+        }
+    }
+
+    // The colour scheme of the app's windows reaches every component
+    // through the shared theme singleton: the store below owns the
+    // persisted value, and these bindings push the live inputs into the
+    // singleton — so a change made in the settings window, or the
+    // desktop switching its own scheme, recolours the results window,
+    // the session search and the dictation overlay at once.
+    Binding {
+        target: PhoenixTheme
+        property: "preference"
+        value: Phoenix.PhoenixController.settings.theme
+    }
+    Binding {
+        target: PhoenixTheme
+        property: "systemPrefersDark"
+        // The desktop's mode, read off the applet's own Kirigami theme:
+        // inside plasmashell that is the Plasma theme (PlasmaCore no
+        // longer exposes a Theme object to QML), and the attached
+        // property updates live when the desktop switches schemes. The
+        // perceived-brightness test draws the light/dark line.
+        value: {
+            const background = Kirigami.Theme.backgroundColor;
+            return 0.299 * background.r
+                + 0.587 * background.g
+                + 0.114 * background.b < 0.5;
         }
     }
 
@@ -299,6 +331,11 @@ PlasmoidItem {
     PhoenixSettings.SettingsWindow {
         id: settingsWindow
 
+        // The colour scheme of the app's windows ("system"/"light"/
+        // "dark"); the store persists it and the Binding above fans it
+        // out to every window through the theme singleton.
+        theme: Phoenix.PhoenixController.settings.theme
+
         // The live global bindings, as the panel buttons' tooltips show
         // them. Re-binds in System Settings update these too.
         recordShortcut: Phoenix.PhoenixController.recordShortcut
@@ -323,6 +360,8 @@ PlasmoidItem {
             Phoenix.PhoenixController.settings.saveSttApiKey(key)
         onSttProviderChangeRequested: (provider) =>
             Phoenix.PhoenixController.settings.saveSttProvider(provider)
+        onThemeChangeRequested: (theme) =>
+            Phoenix.PhoenixController.settings.saveTheme(theme)
 
         // role is "record", "screenshot" or "search"; the store dispatches
         // to the matching KGlobalAccel action.
