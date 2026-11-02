@@ -17,6 +17,7 @@ import plasma.applet.org.phoenixdna.agent as Phoenix
  *   * the ring-buffered waveform  (the last five seconds of audio)
  *   * the record button, which becomes a stop button while recording
  *   * the search button, which opens the session search
+ *   * the settings button, which opens the settings window
  */
 Item {
     id: root
@@ -31,6 +32,9 @@ Item {
     property var waveformModel: Phoenix.PhoenixController.waveform
 
     signal recordClicked()
+
+    // Emitted when the settings window should open (the gear button).
+    signal settingsClicked()
 
     // Around 3 cm of physical panel width, so the waveform stays legible on
     // any display. Screen reports physical dots per millimetre; dividing out
@@ -208,6 +212,26 @@ Item {
                     const hotkey = Phoenix.PhoenixController.searchShortcut;
                     return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
                 }
+            }
+        }
+
+        // ---- Far right: the settings button ---------------------------------
+        // Opens the settings window: the API keys and the global hotkeys.
+        PC3.ToolButton {
+            id: settingsButton
+            objectName: "settingsButton"
+
+            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+            icon.name: "settings-configure"
+            icon.width: Kirigami.Units.iconSizes.small
+            icon.height: Kirigami.Units.iconSizes.small
+
+            onClicked: root.settingsClicked()
+
+            PC3.ToolTip {
+                text: i18n("Settings — API keys and global shortcuts")
             }
         }
     }

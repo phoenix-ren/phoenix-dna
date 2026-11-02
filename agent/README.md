@@ -89,6 +89,7 @@ environment → `~/.config/phoenix-dna/keys.json` (mode 0600) for keys, and
 | `minimax_api_key` | `MINIMAX_API_KEY` | LLM (`https://api.minimax.io/v1`, model `MiniMax-Text-01`) |
 | `tavily_api_key` | `TAVILY_API_KEY` | web-mode search (tool omitted if unset) |
 | `exa_api_key` | `EXA_API_KEY` | web-mode search (tool omitted if unset) |
+| `stt_provider`, `openai_api_key` | `PHOENIX_STT_PROVIDER`, `OPENAI_API_KEY` | the plasmoid's speech-to-text: provider (`minimax` default) and its key — read by the widget, not the daemon |
 | `model`, `llm_base_url`, `max_turns`, `credential_ttl_seconds`, bash timeouts … | `PHOENIX_MODEL`, `PHOENIX_BASE_URL`, … | see `config-example.toml` |
 
 Optional `~/.config/phoenix-dna/PHOENIX.md` (or `AGENTS.md`) is appended to the

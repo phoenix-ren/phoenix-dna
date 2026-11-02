@@ -9,10 +9,11 @@ import org.kde.plasma.plasmoid
 // mode enum, and the QML types defined alongside them.
 import plasma.applet.org.phoenixdna.agent as Phoenix
 
-// Components 2, 3 and 4 are separate QML modules, installed independently.
+// Components 2, 3, 4 and 5 are separate QML modules, installed independently.
 import org.phoenixdna.overlay as PhoenixOverlay
 import org.phoenixdna.resultswindow as PhoenixResults
 import org.phoenixdna.search as PhoenixSearch
+import org.phoenixdna.settings as PhoenixSettings
 
 /*
  * Component 1 — the panel widget.
@@ -288,11 +289,66 @@ PlasmoidItem {
         onDismissed: Phoenix.PhoenixController.setSessionSearchOpen(false);
     }
 
+    // Component 5 — the settings window.
+    //
+    // The gear button opens it. The window itself is presentational
+    // (like the other components): the state below is bound from the
+    // controller's settings store and the live hotkey bindings, and the
+    // interaction signals are routed back to the store, which owns
+    // keys.json and the KGlobalAccel actions.
+    PhoenixSettings.SettingsWindow {
+        id: settingsWindow
+
+        // The live global bindings, as the panel buttons' tooltips show
+        // them. Re-binds in System Settings update these too.
+        recordShortcut: Phoenix.PhoenixController.recordShortcut
+        searchShortcut: Phoenix.PhoenixController.searchShortcut
+        screenshotShortcut: Phoenix.PhoenixController.screenshotPicker.shortcut
+
+        // The stored keys and everything about them the fields explain.
+        llmApiKey: Phoenix.PhoenixController.settings.llmApiKey
+        llmKeyField: Phoenix.PhoenixController.settings.llmKeyField
+        llmKeyFromEnvironment: Phoenix.PhoenixController.settings.llmKeyFromEnvironment
+        sttApiKey: Phoenix.PhoenixController.settings.sttApiKey
+        sttKeyField: Phoenix.PhoenixController.settings.sttKeyField
+        sttProvider: Phoenix.PhoenixController.settings.sttProvider
+        sttKeyFromEnvironment: Phoenix.PhoenixController.settings.sttKeyFromEnvironment
+        keysFilePath: Phoenix.PhoenixController.settings.keysFilePath
+        statusMessage: Phoenix.PhoenixController.settings.statusMessage
+        statusIsError: Phoenix.PhoenixController.settings.statusIsError
+
+        onLlmKeySaveRequested: (key) =>
+            Phoenix.PhoenixController.settings.saveLlmApiKey(key)
+        onSttKeySaveRequested: (key) =>
+            Phoenix.PhoenixController.settings.saveSttApiKey(key)
+        onSttProviderChangeRequested: (provider) =>
+            Phoenix.PhoenixController.settings.saveSttProvider(provider)
+
+        // role is "record", "screenshot" or "search"; the store dispatches
+        // to the matching KGlobalAccel action.
+        onShortcutCaptureRequested: (role, key, modifiers) =>
+            Phoenix.PhoenixController.settings.applyShortcut(role, key, modifiers)
+        onShortcutClearRequested: (role) =>
+            Phoenix.PhoenixController.settings.clearShortcut(role)
+    }
+
     compactRepresentation: Phoenix.CompactRepresentation {
         onRecordClicked: Phoenix.PhoenixController.toggleRecording()
+
+        // The window re-reads keys.json when it opens, so hand-edits and
+        // the installer's writes are reflected without a restart.
+        onSettingsClicked: {
+            Phoenix.PhoenixController.settings.refresh()
+            settingsWindow.openSettings()
+        }
     }
 
     fullRepresentation: Phoenix.CompactRepresentation {
         onRecordClicked: Phoenix.PhoenixController.toggleRecording()
+
+        onSettingsClicked: {
+            Phoenix.PhoenixController.settings.refresh()
+            settingsWindow.openSettings()
+        }
     }
 }

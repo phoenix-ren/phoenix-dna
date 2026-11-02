@@ -26,6 +26,7 @@ continued.
 | `overlay/`   | Dictation overlay shown while recording                         |
 | `resultswindow/` | Fully-fledged results window for conversation output        |
 | `search/`    | Session search: the previous sessions, listed by name           |
+| `settingswindow/` | Settings window: API keys and global shortcuts             |
 | `waveform/`  | Offline `.wav` → `.png` waveform renderer                       |
 | `widgettest/`| Developer testbench that hosts the widget in a plain window      |
 | `agent/`     | Python agent daemon (`phoenix-dna-agent`), a D-Bus service          |
@@ -49,6 +50,26 @@ attached to the prompt that is being composed, like any other file.
 
 Both need KWin, which is where the pointer is followed, the target window
 is highlighted and the picture is taken.
+
+## Settings
+
+The panel's gear button opens the settings window, which configures:
+
+* **API keys** — the LLM key (the agent daemon's MiniMax key) and the
+  speech-to-text key, with the speech-to-text provider (MiniMax or OpenAI)
+  chosen alongside it. Both are stored in
+  `~/.config/phoenix-dna/keys.json` (mode 0600), the file the daemon and
+  the transcriber already read. A changed speech-to-text key applies to
+  the next dictation; the daemon reads its key at startup, so a changed
+  LLM key applies after `systemctl --user restart phoenix.service`.
+  Environment variables still take precedence over the file, and the
+  window says so when it sees one set.
+
+* **Global shortcuts** — the recording, screenshot and session-search
+  hotkeys, captured with the keyboard and bound through KGlobalAccel.
+  The bindings are the very ones System Settings → Shortcuts edits, so
+  they survive restarts and can still be re-bound there; the window's
+  rows always show the live bindings.
 
 ## Building
 

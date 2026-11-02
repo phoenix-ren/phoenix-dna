@@ -36,7 +36,9 @@ struct TranscriptionConfig
  * spelling wins within the environment) and is re-resolved for every request,
  * so a changed key takes effect without restarting plasmashell:
  *
- *   PHOENIX_STT_PROVIDER  "minimax" (default) or "openai"
+ *   PHOENIX_STT_PROVIDER  "minimax" (default) or "openai"; without it, the
+ *                         "stt_provider" entry of keys.json decides (the one
+ *                         the settings window writes)
  *   PHOENIX_STT_MODEL     model override (e.g. "whisper-1")
  *   PHOENIX_STT_ENDPOINT  endpoint override
  *

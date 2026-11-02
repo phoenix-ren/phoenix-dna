@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 #include "transcriber.h"
+#include "keysfile.h"
 
-#include <QDir>
-#include <QFile>
 #include <QHttpMultiPart>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -51,15 +50,7 @@ const ProviderSpec &providerSpec(const QString &name)
 
 QString keysJsonValue(const char *field)
 {
-    QString configDir = qEnvironmentVariable("PHOENIX_CONFIG_DIR");
-    if (configDir.isEmpty()) {
-        configDir = QDir::homePath() + QStringLiteral("/.config/phoenix-dna");
-    }
-    QFile file(QDir(configDir).filePath(QStringLiteral("keys.json")));
-    if (!file.open(QIODevice::ReadOnly)) {
-        return {};
-    }
-    return QJsonDocument::fromJson(file.readAll()).object().value(QLatin1String(field)).toString();
+    return PhoenixKeys::readKeys().value(QLatin1String(field)).toString();
 }
 
 QString environmentOrEmpty(const char *name)
@@ -76,7 +67,13 @@ TranscriptionConfig Transcriber::resolveConfig()
 {
     TranscriptionConfig config;
 
+    // Provider precedence mirrors the key precedence: environment beats
+    // keys.json ("stt_provider", the entry the settings window writes)
+    // beats the MiniMax default.
     QString provider = qEnvironmentVariable("PHOENIX_STT_PROVIDER");
+    if (provider.isEmpty()) {
+        provider = keysJsonValue("stt_provider");
+    }
     if (provider.isEmpty()) {
         provider = QStringLiteral("minimax");
     }

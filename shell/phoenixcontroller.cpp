@@ -7,6 +7,7 @@
 #include "audiocapture.h"
 #include "audioringbuffer.h"
 #include "cliprecorder.h"
+#include "settingsstore.h"
 #include "transcriber.h"
 
 #include <KGlobalAccel>
@@ -152,6 +153,20 @@ PhoenixController::PhoenixController(QObject *parent)
                     Q_EMIT searchShortcutChanged();
                 }
             });
+
+    // The settings store edits what lives here: the two hotkey actions
+    // above (plus the picker's) and the API keys in keys.json. It re-binds
+    // through the same actions, so its changes announce themselves through
+    // the same changed signals the QML side already watches — forwarded
+    // here, and to the picker for its shortcut.
+    m_settings = new SettingsStore(m_toggleShortcut, m_searchShortcut,
+                                   m_screenshotPicker->shortcutAction(), this);
+    connect(m_settings, &SettingsStore::recordShortcutChanged, this,
+            &PhoenixController::recordShortcutChanged);
+    connect(m_settings, &SettingsStore::searchShortcutChanged, this,
+            &PhoenixController::searchShortcutChanged);
+    connect(m_settings, &SettingsStore::screenshotShortcutChanged,
+            m_screenshotPicker, &WindowScreenshotPicker::shortcutChanged);
 }
 
 PhoenixController::~PhoenixController() = default;
