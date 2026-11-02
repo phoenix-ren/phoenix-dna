@@ -34,6 +34,7 @@ import datetime as _dt
 import getpass
 import json
 import logging
+import re
 import sqlite3
 import threading
 from collections import OrderedDict
@@ -47,6 +48,24 @@ log = logging.getLogger("phoenix.sessions")
 
 #: How long the preview of a session's first query may get.
 _PREVIEW_LENGTH = 120
+
+#: Reasoning models wrap their thinking in these tags inside the content.
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
+#: An unclosed block: a run cut off mid-thought.
+_THINK_OPEN = re.compile(r"<think>.*$", re.DOTALL)
+
+
+def _strip_thinking(content: str) -> str:
+    """Removes ``<think>…</think>`` blocks from an assistant message.
+
+    The thinking stays in ``message_json``, where the LLM conversation
+    replays it; the searchable, shown transcript text is the answer only.
+    """
+    stripped = _THINK_OPEN.sub("", _THINK_BLOCK.sub("", content))
+    if stripped == content:
+        return content
+    return stripped.strip()
+
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -266,6 +285,12 @@ class SessionStore:
             # Assistant messages with tool calls may carry None; the query
             # text lives in message_json either way.
             content = "" if content is None else str(content)
+        if role == "assistant":
+            # Reasoning models wrap their thinking in <think> tags inside
+            # the content. The thinking stays in message_json; the search
+            # queries and the transcripts the frontends show want the
+            # answer only.
+            content = _strip_thinking(content)
         db.execute(
             "INSERT INTO messages (session_id, ts, role, content, message_json) "
             "VALUES (?, ?, ?, ?, ?)",

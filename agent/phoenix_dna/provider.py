@@ -10,11 +10,16 @@ suite and by ``--provider fake`` to smoke-test the daemon without network.
 
 The streaming contract: ``stream()`` yields progress dicts
 
+    {"type": "thinking_delta", "text": "..."}
     {"type": "text_delta", "text": "..."}
     ...
     {"type": "response", "response": LLMResponse(...)}
 
-exactly one ``response`` per call, as the final item.
+exactly one ``response`` per call, as the final item. Reasoning models wrap
+their thinking around the answer — in ``<think>…</think>`` blocks inside the
+content, or in a separate ``reasoning_content`` field — and the provider
+splits it out as ``thinking_delta`` items, so frontends can show the answer
+as the result of the run and the thinking as its trail.
 """
 
 from __future__ import annotations
@@ -78,7 +83,17 @@ class Usage:
 
 @dataclass(frozen=True)
 class LLMResponse:
+    #: The model's answer: its content with the thinking taken out (the
+    #: ``<think>…</think>`` blocks and the ``reasoning_content`` channel).
+    #: This is the text a frontend shows as the result of the run.
     text: str = ""
+    #: The thinking that came wrapped around the answer, kept apart so it
+    #: can be shown as the trail of the run instead of its result.
+    thinking: str = ""
+    #: The content as the model sent it, thinking included: what the
+    #: conversation history carries, where the model reads its own past
+    #: reasoning.
+    raw_text: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
     usage: Usage | None = None
     finish_reason: str | None = None
@@ -91,6 +106,119 @@ class LLMProvider(Protocol):
         tools: list[ToolSpec],
         should_cancel: Callable[[], bool] | None = None,
     ) -> Iterator[dict]: ...
+
+
+class _ThinkSplitter:
+    """Splits ``<think>…</think>`` blocks out of streamed content.
+
+    Reasoning models (MiniMax-M2 and friends) wrap their thinking in these
+    tags inside the ordinary ``content`` field, and a tag can arrive split
+    across any number of deltas. Text is therefore held at a boundary only
+    while it could still turn into a tag — a few characters — and streams
+    through immediately otherwise.
+
+    Repeated blocks are handled: ``<think>a</think>mid<think>b</think>end``
+    is thinking ``ab`` around the answer ``midend``.
+    """
+
+    OPEN = "<think>"
+    CLOSE = "</think>"
+
+    def __init__(self) -> None:
+        # Received but not yet classified: it may hold the start of a tag.
+        self._pending = ""
+        # Whether the stream is currently inside a think block.
+        self._in_think = False
+        # Whether the next answer text should lose its leading whitespace
+        # (it does right after a think block closes).
+        self._trim_answer = False
+
+    def feed(self, delta: str) -> tuple[str, str]:
+        """Classifies one delta; returns (thinking, answer)."""
+        self._pending += delta
+        thinking: list[str] = []
+        answer: list[str] = []
+        while self._pending:
+            if not self._in_think:
+                stripped = self._pending.lstrip()
+                if not stripped:
+                    break  # whitespace may still precede a tag: hold it
+                state = self._tag_state(stripped, self.OPEN)
+                if state == "partial":
+                    break  # could still become "<think>": hold it
+                if state == "complete":
+                    # The whitespace before the tag was never answer text.
+                    self._pending = stripped[len(self.OPEN) :]
+                    self._in_think = True
+                    continue
+                cut = self._open_before_end()
+                text = self._pending[:cut]
+                self._pending = self._pending[cut:]
+                if self._trim_answer:
+                    trimmed = text.lstrip()
+                    if trimmed:
+                        self._trim_answer = False
+                    text = trimmed
+                if text:
+                    answer.append(text)
+                if not cut:
+                    break  # nothing could be classified yet
+                continue
+            close = self._pending.find(self.CLOSE)
+            if close >= 0:
+                thinking.append(self._pending[:close])
+                self._pending = self._pending[close + len(self.CLOSE) :]
+                self._in_think = False
+                self._trim_answer = True
+                continue
+            # Hold back only a tail that might be the start of the tag.
+            keep = self._held_back(self._pending, self.CLOSE)
+            if keep < len(self._pending):
+                thinking.append(self._pending[: len(self._pending) - keep])
+                self._pending = self._pending[len(self._pending) - keep :]
+            break
+        return "".join(thinking), "".join(answer)
+
+    def finish(self) -> tuple[str, str]:
+        """Classifies what is left at the end of the stream."""
+        thinking, answer = self.feed("")
+        if self._in_think:
+            # A think block that never closed: all of it thinking.
+            thinking += self._pending
+        else:
+            text = self._pending
+            if self._trim_answer:
+                text = text.lstrip()
+            answer += text
+        self._pending = ""
+        return thinking, answer
+
+    def _open_before_end(self) -> int:
+        """Where the answer text of ``_pending`` ends.
+
+        The next think block may start inside this delta, and a partial
+        tag at the end is held back until it is decided.
+        """
+        open_at = self._pending.find(self.OPEN)
+        if open_at > 0:
+            return open_at
+        return len(self._pending) - self._held_back(self._pending, self.OPEN)
+
+    @classmethod
+    def _tag_state(cls, text: str, tag: str) -> str:
+        """``complete``, ``partial`` or ``none``: whether text begins tag."""
+        n = min(len(text), len(tag))
+        if text[:n] != tag[:n]:
+            return "none"
+        return "complete" if len(text) >= len(tag) else "partial"
+
+    @classmethod
+    def _held_back(cls, text: str, tag: str) -> int:
+        """How many trailing characters of text might start tag."""
+        for n in range(min(len(text), len(tag) - 1), 0, -1):
+            if tag.startswith(text[-n:]):
+                return n
+        return 0
 
 
 class OpenAICompatProvider:
@@ -168,9 +296,12 @@ class OpenAICompatProvider:
 
     def _consume(self, response, should_cancel) -> Iterator[dict]:
         text_parts: list[str] = []
+        thinking_parts: list[str] = []
+        raw_parts: list[str] = []
         tool_calls: dict[int, dict] = {}
         usage = None
         finish_reason = None
+        splitter = _ThinkSplitter()
 
         try:
             for raw_line in response:
@@ -203,10 +334,22 @@ class OpenAICompatProvider:
                 if choice.get("finish_reason"):
                     finish_reason = choice["finish_reason"]
                 delta = choice.get("delta") or {}
+                # Some models keep the thinking in its own field.
+                reasoning = delta.get("reasoning_content")
+                if reasoning:
+                    thinking_parts.append(reasoning)
+                    yield {"type": "thinking_delta", "text": reasoning}
                 content = delta.get("content")
                 if content:
-                    text_parts.append(content)
-                    yield {"type": "text_delta", "text": content}
+                    raw_parts.append(content)
+                    # Others wrap it in <think> tags inside the content.
+                    thinking, answer = splitter.feed(content)
+                    if thinking:
+                        thinking_parts.append(thinking)
+                        yield {"type": "thinking_delta", "text": thinking}
+                    if answer:
+                        text_parts.append(answer)
+                        yield {"type": "text_delta", "text": answer}
                 for tc in delta.get("tool_calls") or []:
                     index = tc.get("index", 0)
                     slot = tool_calls.setdefault(
@@ -226,6 +369,16 @@ class OpenAICompatProvider:
                 response.close()
             except Exception:
                 pass
+
+        # Whatever the splitter was still holding (a trailing partial tag,
+        # an unclosed think block) belongs to the stream just as much.
+        tail_thinking, tail_answer = splitter.finish()
+        if tail_thinking:
+            thinking_parts.append(tail_thinking)
+            yield {"type": "thinking_delta", "text": tail_thinking}
+        if tail_answer:
+            text_parts.append(tail_answer)
+            yield {"type": "text_delta", "text": tail_answer}
 
         calls: list[ToolCall] = []
         for index in sorted(tool_calls):
@@ -255,6 +408,8 @@ class OpenAICompatProvider:
             "type": "response",
             "response": LLMResponse(
                 text="".join(text_parts),
+                thinking="".join(thinking_parts).strip(),
+                raw_text="".join(raw_parts),
                 tool_calls=calls,
                 usage=usage,
                 finish_reason=finish_reason,
@@ -268,6 +423,7 @@ class FakeProvider:
     Script items (a plain string is shorthand for final text):
 
     * ``"final answer"`` / ``{"text": "..."}``
+    * ``{"thinking": "...", "text": "..."}``   reasoning around the answer
     * ``{"tool": "bash", "args": {...}}``           one tool call
     * ``{"tools": [{"tool": ..., "args": {...}}, ...]}`` several calls per turn
     * ``{"text": "...", "tool": ..., "args": {...}}``  text + one tool call
@@ -314,6 +470,11 @@ class FakeProvider:
             raise LLMError(item.get("message", "scripted LLM failure"))
 
         text = item.get("text", "")
+        thinking = item.get("thinking", "")
+        if thinking:
+            half = max(1, len(thinking) // 2)
+            yield {"type": "thinking_delta", "text": thinking[:half]}
+            yield {"type": "thinking_delta", "text": thinking[half:]}
         if text:
             half = max(1, len(text) // 2)
             yield {"type": "text_delta", "text": text[:half]}
@@ -329,6 +490,8 @@ class FakeProvider:
             "type": "response",
             "response": LLMResponse(
                 text=text,
+                thinking=thinking,
+                raw_text=text,
                 tool_calls=calls,
                 usage=Usage(input_tokens=11, output_tokens=7),
                 finish_reason="tool_calls" if calls else "stop",

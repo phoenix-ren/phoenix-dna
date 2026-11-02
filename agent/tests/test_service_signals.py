@@ -18,6 +18,9 @@ class FakeService:
     def RunFinished(self, *args):
         self.calls.append(("RunFinished", args))
 
+    def ThinkingDelta(self, *args):
+        self.calls.append(("ThinkingDelta", args))
+
     def TranscriptCleaned(self, *args):
         self.calls.append(("TranscriptCleaned", args))
 
@@ -55,6 +58,15 @@ def test_cleanup_event_defaults_blank_fields():
     bridge = SignalBridge({"transcript_cleaned": service.TranscriptCleaned})
     bridge.dispatch({"kind": "cleanup_finished"})
     assert service.calls == [("TranscriptCleaned", ("", "", "", ""))]
+
+
+def test_thinking_event_maps_to_thinking_delta():
+    service = FakeService()
+    bridge = SignalBridge({"thinking_delta": service.ThinkingDelta})
+    bridge.dispatch(
+        events.make(events.THINKING_DELTA, run_id="run_1", text="Let me look.")
+    )
+    assert service.calls == [("ThinkingDelta", ("run_1", "Let me look."))]
 
 
 def test_unknown_event_kind_is_ignored():

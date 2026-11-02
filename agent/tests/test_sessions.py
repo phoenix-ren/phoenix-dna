@@ -143,6 +143,40 @@ def test_tool_call_message_roundtrip(tmp_path):
     assert replay == [message]
 
 
+def test_stored_transcript_text_carries_no_thinking(tmp_path):
+    """The searchable content is the answer; message_json keeps the raw."""
+    store = SessionStore(tmp_path / "users")
+    manager = SessionManager(store)
+    conv = manager.get("user", "thinkest")
+    manager.append(
+        conv,
+        {
+            "role": "assistant",
+            "content": "<think>Pondering.</think>The answer.",
+        },
+    )
+
+    # the transcript the frontends show: the answer only
+    messages = store.session_messages(_local_username(), conv.id)
+    assert messages[-1]["content"] == "The answer."
+    # the replayable message keeps the reasoning
+    fresh = SessionManager(SessionStore(tmp_path / "users"))
+    replay = fresh.get("user", "thinkest").messages
+    assert replay[-1]["content"] == "<think>Pondering.</think>The answer."
+
+
+def test_stored_transcript_text_drops_unclosed_thinking(tmp_path):
+    store = SessionStore(tmp_path / "users")
+    manager = SessionManager(store)
+    conv = manager.get("user", "thinkest")
+    manager.append(
+        conv,
+        {"role": "assistant", "content": "Answer first. <think>cut off mid"},
+    )
+    messages = store.session_messages(_local_username(), conv.id)
+    assert messages[-1]["content"] == "Answer first."
+
+
 def test_legacy_jsonl_import(tmp_path):
     legacy = tmp_path / "sessions"
     for mode, sid, contents in (

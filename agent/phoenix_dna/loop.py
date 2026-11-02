@@ -118,6 +118,14 @@ class AgentLoop:
                                 events.TEXT_DELTA, run_id=self.run_id, text=item["text"]
                             )
                         )
+                    elif item.get("type") == "thinking_delta":
+                        self._emit(
+                            events.make(
+                                events.THINKING_DELTA,
+                                run_id=self.run_id,
+                                text=item["text"],
+                            )
+                        )
                     elif item.get("type") == "response":
                         response = item["response"]
                 if response is None:  # pragma: no cover - providers must send one
@@ -177,7 +185,10 @@ class AgentLoop:
 
     @staticmethod
     def _assistant_message(response) -> dict:
-        message = {"role": "assistant", "content": response.text or ""}
+        # The history carries the content as the model sent it, thinking
+        # included: the model reads its own past reasoning. Frontends get
+        # the answer separately (final_text is response.text).
+        message = {"role": "assistant", "content": response.raw_text or response.text}
         if response.tool_calls:
             message["tool_calls"] = [call.to_openai() for call in response.tool_calls]
         return message

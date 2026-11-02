@@ -16,7 +16,8 @@ from phoenix_dna.sessions import SessionManager, SessionStore
 
 
 def make_loop(
-    config, home_dir, script, mode=Mode.USER, cache=None, sudo_bin=None, **loop_kw
+    config, home_dir, script, mode=Mode.USER, cache=None, sudo_bin=None,
+    provider=None, **loop_kw
 ):
     profile = MODE_PROFILES[mode]
     cfg = dataclasses.replace(config, sudo_bin=sudo_bin or config.sudo_bin)
@@ -24,7 +25,7 @@ def make_loop(
     manager = SessionManager(SessionStore(config.data_dir / "sessions"))
     conversation = manager.get(mode.value)
     events, sink = [], (lambda e: events.append(e))
-    provider = FakeProvider(script)
+    provider = provider or FakeProvider(script)
     loop = AgentLoop(
         run_id="run_test",
         mode_name=mode.value,
@@ -111,6 +112,64 @@ def test_missing_required_argument(config, home_dir):
     assert summary["status"] == "completed"
     failed = [e for e in events if e["kind"] == "tool_call_finished"][0]
     assert "missing required argument" in failed["output"]
+
+
+def test_thinking_streams_separate_from_the_answer(config, home_dir):
+    # A reasoning run with no tool calls: the thinking must never land in
+    # the answer (this is the "one wall of text" the results pane had).
+    script = [{"thinking": "Let me think about it.", "text": "The answer."}]
+    loop, events, conv, _m = make_loop(config, home_dir, script)
+    summary = loop.run("hello")
+
+    assert summary["status"] == "completed"
+    assert summary["final_text"] == "The answer."
+
+    thinking = "".join(
+        e["text"] for e in events if e["kind"] == "thinking_delta"
+    )
+    assert thinking == "Let me think about it."
+    assert "thinking_delta" in kinds(events)
+    # and the answer deltas carry none of it
+    answer = "".join(e["text"] for e in events if e["kind"] == "text_delta")
+    assert "Let me think" not in answer
+
+
+class _ThinkingRawProvider:
+    """One turn whose content carries a <think> block, like MiniMax's."""
+
+    def stream(self, messages, tools, should_cancel=None):
+        from phoenix_dna.provider import LLMResponse, Usage
+
+        yield {"type": "thinking_delta", "text": "Pondering."}
+        yield {"type": "text_delta", "text": "The answer."}
+        yield {
+            "type": "response",
+            "response": LLMResponse(
+                text="The answer.",
+                thinking="Pondering.",
+                raw_text="<think>Pondering.</think>The answer.",
+                usage=Usage(input_tokens=1, output_tokens=1),
+                finish_reason="stop",
+            ),
+        }
+
+
+def test_history_keeps_the_thinking_the_answer_does_not(config, home_dir):
+    # The model reads its own past reasoning, so the raw content (tags
+    # included) goes into the conversation; the run's final text is the
+    # answer alone.
+    loop, events, conv, _m = make_loop(
+        config, home_dir, [], provider=_ThinkingRawProvider()
+    )
+    summary = loop.run("hello")
+
+    assert summary["final_text"] == "The answer."
+    assistant = [m for m in conv.messages if m["role"] == "assistant"]
+    assert assistant[-1]["content"] == "<think>Pondering.</think>The answer."
+    # and none of the streamed answer deltas carried the thinking
+    assert "".join(
+        e["text"] for e in events if e["kind"] == "text_delta"
+    ) == "The answer."
 
 
 class _BrokenArgsProvider:

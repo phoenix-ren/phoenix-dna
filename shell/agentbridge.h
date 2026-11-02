@@ -49,7 +49,8 @@
  * SubmitPrompt(prompt, mode, session_id) sends a generated query to it.
  * RunStarted clears the slate, TextDelta streams the answer into the
  * \a conversation model as it is generated (activityStarted fires once, at
- * the run's first output — the cue to open the results pane), ToolCall*
+ * the run's first output — the cue to open the results pane), ThinkingDelta
+ * streams the model's reasoning into the row's thinking, ToolCall*
  * accumulate the row's tool log, and RunFinished(run_id, status,
  * final_text, turns, tokens_in, tokens_out) completes the run's row.
  *
@@ -133,11 +134,11 @@ public:
      * One row per prompt/answer pair; sendPrompt() queues the prompt text
      * and RunStarted pairs the queue's head with the run that just began
      * (the daemon executes prompts in submission order), opening a new
-     * row. TextDelta streams into the row's answer, ToolCall* into its
-     * tool log — and the text streamed before them into its thinking, for
-     * the agent was working rather than answering — and RunFinished
-     * finalizes it. Rows are appended, never cleared, so follow-on
-     * questions flow downwards. */
+     * row. TextDelta streams into the row's answer, ThinkingDelta into
+     * its thinking, ToolCall* into its tool log — and the text streamed
+     * before them into its thinking too, for the agent was working
+     * rather than answering — and RunFinished finalizes it. Rows are
+     * appended, never cleared, so follow-on questions flow downwards. */
     Q_PROPERTY(ConversationModel *conversation READ conversation CONSTANT)
 
     /*! \brief The title of the session the widget is currently in.
@@ -347,6 +348,10 @@ private Q_SLOTS:
     /*! \brief TextDelta: stream the answer into the current row (throttled). */
     void onTextDelta(const QString &runId, const QString &text);
 
+    /*! \brief ThinkingDelta: stream the agent's working notes into the
+     *  current row's thinking (throttled). */
+    void onThinkingDelta(const QString &runId, const QString &text);
+
     /*! \brief ToolCallStarted: move the text streamed so far into the
      *  row's thinking (the agent was working, not answering) and append
      *  the call's entry head (tool + args). */
@@ -416,7 +421,8 @@ private:
     static QString senderNameForMode(const QString &mode);
 
 private Q_SLOTS:
-    /*! \brief Moves buffered text deltas into the current row's answer. */
+    /*! \brief Moves the buffered text and thinking deltas into the
+     *  current row (the throttle's flush). */
     void flushDeltas();
 
 private:
@@ -433,9 +439,10 @@ private:
     // The pane's history: one row per run, appended per RunStarted.
     ConversationModel m_conversation;
     // Streaming state: whether the active run has produced content yet,
-    // and the not-yet-flushed text deltas (see m_deltaTimer).
+    // and the not-yet-flushed text and thinking deltas (see m_deltaTimer).
     bool m_streaming = false;
     QString m_pendingDelta;
+    QString m_pendingThinking;
     QTimer m_deltaTimer;
     // Prompts sent whose runs have not begun yet, each with the daemon
     // mode name at submit time (the sender attribution of the exchange:
