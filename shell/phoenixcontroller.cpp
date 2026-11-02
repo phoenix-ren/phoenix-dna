@@ -346,10 +346,9 @@ void PhoenixController::openSession(const QString &sessionId)
 
 void PhoenixController::openSessionResults(const QString &sessionId,
                                            const QString &mode,
-                                           const QString &title,
-                                           int queryIndex)
+                                           const QString &title)
 {
-    m_agent->openStoredSession(searchUser(), sessionId, mode, title, queryIndex);
+    m_agent->openStoredSession(searchUser(), sessionId, mode, title);
 }
 
 void PhoenixController::submitText(const QString &text, bool newSession)

@@ -247,10 +247,9 @@ public:
     /*! \brief Opens a stored session in the results pane.
      *
      * The session's messages are fetched from the daemon and loaded into
-     * the conversation model — up to and including the answer of the
-     * query at \a queryIndex — so the pane shows the conversation the
-     * user clicked into. The session id is adopted as well: a follow-on
-     * typed in the pane continues that very session.
+     * the conversation model, so the pane shows the conversation the user
+     * opened. The session id is adopted as well: a follow-on typed in
+     * the pane continues that very session.
      *
      * \a mode is the session's mode ("root", "user" or "web"): it names
      * the sender of the session's queries. \a title is the name the
@@ -259,8 +258,7 @@ public:
     Q_INVOKABLE void openStoredSession(const QString &user,
                                        const QString &sessionId,
                                        const QString &mode,
-                                       const QString &title,
-                                       int queryIndex);
+                                       const QString &title);
 
 Q_SIGNALS:
     void availabilityChanged();
@@ -376,13 +374,11 @@ private:
      *
      * The messages are the daemon's transcript of the session (role,
      * content): every user message opens an exchange, the assistant
-     * messages that follow are its answer. The history stops after the
-     * answer of the query at \a queryIndex, so the pane shows the
-     * conversation the user clicked into.
+     * messages that follow are its answer.
      *
      * \a mode names the sender of the queries ("root", the login name
      * or "anon"). */
-    void loadStoredSession(const QVariantList &messages, const QString &mode, int queryIndex);
+    void loadStoredSession(const QVariantList &messages, const QString &mode);
 
     /*! \brief The sender attribution for a prompt submitted in \a mode:
      *  "root" in root mode, "anon" in web mode, the local user's login

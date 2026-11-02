@@ -88,8 +88,9 @@ PlasmoidItem {
             resultsWindow.showResult();
         }
 
-        // A session the user clicked in the session search: its history
-        // is in the conversation model now, so the pane opens on it.
+        // A session the user opened from the session search: its history
+        // is in the conversation model now, so the results window opens
+        // on it.
         function onStoredSessionOpened() {
             resultsWindow.showResult();
         }
@@ -250,6 +251,9 @@ PlasmoidItem {
     PhoenixSearch.SessionSearchOverlay {
         id: sessionSearch
 
+        // No anchor: the search is a workspace of its own, centred on
+        // the display - not a popup next to the widget.
+
         // The user whose history is searched: root mode browses root's
         // sessions, every other mode the local user's.
         user: Phoenix.PhoenixController.searchUser
@@ -269,13 +273,13 @@ PlasmoidItem {
             Phoenix.PhoenixController.openSession(sessionId);
         }
 
-        // A clicked query opens the results pane on that session, so the
-        // conversation can be continued there. The search gives way to
-        // the pane: it is where the follow-on is typed.
-        onQueryActivated: (sessionId, mode, title, index) => {
+        // A double-clicked session opens the results window on it, so
+        // the conversation can be continued there. The search gives way
+        // to the window: it is where the follow-on is typed.
+        onSessionActivated: (sessionId, mode, title) => {
             sessionSearch.dismiss();
             Phoenix.PhoenixController.openSessionResults(
-                sessionId, mode, title, index);
+                sessionId, mode, title);
         }
 
         // The panel's search button is a toggle: it shows the search

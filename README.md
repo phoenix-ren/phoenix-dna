@@ -14,8 +14,9 @@ modes, streams progress back, and renders the result in a fully-fledged results 
 
 The panel's search button (or Meta+Alt+`) opens the session search: the
 user's previous sessions on the left, under the name the daemon gave them,
-and the selected session's queries and responses on the right. Clicking a
-query opens it in the results window, where the conversation can be continued.
+and the selected session's queries and responses on the right. Double-clicking
+a session opens it in the results window, where the conversation can be
+continued.
 
 ## Layout
 

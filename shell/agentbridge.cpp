@@ -306,8 +306,7 @@ void AgentBridge::requestSessionTranscript(const QString &user, const QString &s
 void AgentBridge::openStoredSession(const QString &user,
                                     const QString &sessionId,
                                     const QString &mode,
-                                    const QString &title,
-                                    int queryIndex)
+                                    const QString &title)
 {
     // The widget follows this session from now on: a follow-on typed in
     // the results pane continues that very conversation.
@@ -329,7 +328,7 @@ void AgentBridge::openStoredSession(const QString &user,
     auto *watcher =
         new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
-            [this, request, mode, queryIndex](QDBusPendingCallWatcher *watcher) {
+            [this, request, mode](QDBusPendingCallWatcher *watcher) {
                 const QDBusReply<QString> reply = *watcher;
                 watcher->deleteLater();
                 if (!reply.isValid()) {
@@ -340,37 +339,22 @@ void AgentBridge::openStoredSession(const QString &user,
                     // Another session was opened meanwhile.
                     return;
                 }
-                loadStoredSession(parseJsonArray(reply.value()), mode, queryIndex);
+                loadStoredSession(parseJsonArray(reply.value()), mode);
                 Q_EMIT storedSessionOpened();
             });
 }
 
-void AgentBridge::loadStoredSession(const QVariantList &messages,
-                                    const QString &mode,
-                                    int queryIndex)
+void AgentBridge::loadStoredSession(const QVariantList &messages, const QString &mode)
 {
-    // The history of the pane: the session's exchanges, up to and
-    // including the answer of the query the user clicked.
+    // The history of the pane: the session's exchanges, oldest first.
     m_conversation.reset();
-
-    // The last message of the clicked exchange: the assistant's answers
-    // that follow the query belong to it, the next query starts a new
-    // exchange.
-    int last = qBound(0, queryIndex, messages.size() - 1);
-    for (int i = last + 1; i < messages.size(); ++i) {
-        if (messages.at(i).toMap().value(QStringLiteral("role")).toString() ==
-            QLatin1String("user")) {
-            break;
-        }
-        last = i;
-    }
 
     const QString sender = senderNameForMode(mode);
     QString prompt;
     QString answer;
     bool open = false;
-    for (int i = 0; i <= last; ++i) {
-        const QVariantMap message = messages.at(i).toMap();
+    for (const QVariant &entry : messages) {
+        const QVariantMap message = entry.toMap();
         const QString role = message.value(QStringLiteral("role")).toString();
         const QString content = message.value(QStringLiteral("content")).toString();
         if (role == QLatin1String("user")) {
