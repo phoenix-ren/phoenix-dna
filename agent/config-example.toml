@@ -1,0 +1,19 @@
+# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-License-Identifier: BSD-2-Clause
+
+# Phoenix AI agent daemon - example configuration.
+# Copy to ~/.config/phoenix.ai/agent.toml and edit.
+# API keys do NOT go here; put them in ~/.config/phoenix.ai/keys.json or env vars.
+
+[agent]
+# provider = "minimax"            # or "fake" for a canned-response test provider
+# model = "MiniMax-Text-01"
+# llm_base_url = "https://api.minimax.io/v1"
+# request_timeout = 120
+# max_turns = 24
+# credential_ttl_seconds = 900    # how long a cached sudo password is reused
+# bash_default_timeout = 60
+# bash_max_timeout = 600
+# max_output_chars = 20000
+# sudo_bin = "/usr/bin/sudo"
+# kdialog_bin = "/usr/bin/kdialog"

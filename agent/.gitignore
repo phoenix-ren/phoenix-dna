@@ -1,0 +1,10 @@
+# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-License-Identifier: BSD-2-Clause
+
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/

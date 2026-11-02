@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-License-Identifier: BSD-2-Clause
+
+# Files that cannot carry SPDX headers inline: binary assets, and the KPackage
+# metadata (JSON has no comment syntax -- its licence is declared in the
+# "KPlugin"."License" key instead).
+
+version = 1
+
+[[annotations]]
+path = [
+    "audio_prompt_samples/**",
+    "live.png",
+    "shell/metadata.json",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Phoenix AI contributors"
+SPDX-License-Identifier = "BSD-2-Clause"

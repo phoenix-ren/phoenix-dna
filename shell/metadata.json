@@ -1,0 +1,20 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "phoenix@example.com",
+                "Name": "Phoenix AI contributors"
+            }
+        ],
+        "Category": "Utilities",
+        "Description": "Voice-first AI agent for the Plasma panel",
+        "EnabledByDefault": true,
+        "Icon": "applications-system",
+        "License": "BSD-2-Clause",
+        "Name": "Phoenix AI",
+        "Version": "0.1.0",
+        "Website": "https://example.com/phoenixai"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

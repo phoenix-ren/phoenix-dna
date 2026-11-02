@@ -1,0 +1,23 @@
+# SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+# SPDX-License-Identifier: BSD-2-Clause
+
+# CMake / KDE build output
+build/
+cmake-build-*/
+*.cmake.user
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+
+# Logs and runtime noise
+*.log
+/design_docs/

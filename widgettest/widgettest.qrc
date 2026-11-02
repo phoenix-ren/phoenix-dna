@@ -1,0 +1,10 @@
+<!--
+SPDX-FileCopyrightText: 2026 Phoenix AI contributors
+SPDX-License-Identifier: BSD-2-Clause
+-->
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <qresource prefix="/widgettest">
+        <file>qml/main.qml</file>
+    </qresource>
+</RCC>
