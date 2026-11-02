@@ -244,6 +244,24 @@ public:
      */
     Q_INVOKABLE void requestSessionTranscript(const QString &user, const QString &sessionId);
 
+    /*! \brief Opens a stored session in the results pane.
+     *
+     * The session's messages are fetched from the daemon and loaded into
+     * the conversation model — up to and including the answer of the
+     * query at \a queryIndex — so the pane shows the conversation the
+     * user clicked into. The session id is adopted as well: a follow-on
+     * typed in the pane continues that very session.
+     *
+     * \a mode is the session's mode ("root", "user" or "web"): it names
+     * the sender of the session's queries. \a title is the name the
+     * pane's header shows.
+     */
+    Q_INVOKABLE void openStoredSession(const QString &user,
+                                       const QString &sessionId,
+                                       const QString &mode,
+                                       const QString &title,
+                                       int queryIndex);
+
 Q_SIGNALS:
     void availabilityChanged();
     void partialTranscriptChanged();
@@ -256,6 +274,10 @@ Q_SIGNALS:
 
     /*! \brief Emitted when the selected session's messages changed. */
     void sessionMessagesChanged();
+
+    /*! \brief Emitted when a stored session was loaded into the
+     *  conversation model — the cue for the results pane to open on it. */
+    void storedSessionOpened();
 
     /*! \brief Emitted once per run, on its first streamed content.
      *
@@ -349,6 +371,19 @@ private:
     /*! \brief Emits activityStarted() once, at the run's first content. */
     void beginStreaming();
 
+    /*! \brief Loads a stored session's exchanges into the conversation
+     *  model.
+     *
+     * The messages are the daemon's transcript of the session (role,
+     * content): every user message opens an exchange, the assistant
+     * messages that follow are its answer. The history stops after the
+     * answer of the query at \a queryIndex, so the pane shows the
+     * conversation the user clicked into.
+     *
+     * \a mode names the sender of the queries ("root", the login name
+     * or "anon"). */
+    void loadStoredSession(const QVariantList &messages, const QString &mode, int queryIndex);
+
     /*! \brief The sender attribution for a prompt submitted in \a mode:
      *  "root" in root mode, "anon" in web mode, the local user's login
      *  name otherwise. */
@@ -412,4 +447,6 @@ private:
     // shows the results of a superseded query.
     quint64 m_searchRequest = 0;
     quint64 m_transcriptRequest = 0;
+    // The same, for the session the results pane is opened on.
+    quint64 m_storedRequest = 0;
 };

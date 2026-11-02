@@ -302,6 +302,102 @@ void AgentBridge::requestSessionTranscript(const QString &user, const QString &s
                 Q_EMIT sessionMessagesChanged();
             });
 }
+
+void AgentBridge::openStoredSession(const QString &user,
+                                    const QString &sessionId,
+                                    const QString &mode,
+                                    const QString &title,
+                                    int queryIndex)
+{
+    // The widget follows this session from now on: a follow-on typed in
+    // the results pane continues that very conversation.
+    m_sessionId = sessionId;
+    if (m_sessionTitle != title) {
+        m_sessionTitle = title;
+        Q_EMIT sessionTitleChanged();
+    }
+
+    // The transcript of the session, fetched like the search overlay's
+    // own copy - but into the conversation model this time, so the
+    // results pane can show it.
+    const quint64 request = ++m_storedRequest;
+
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("GetSessionTranscript"));
+    message << user << sessionId;
+
+    auto *watcher =
+        new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, request, mode, queryIndex](QDBusPendingCallWatcher *watcher) {
+                const QDBusReply<QString> reply = *watcher;
+                watcher->deleteLater();
+                if (!reply.isValid()) {
+                    qWarning() << "stored session failed:" << reply.error().message();
+                    return;
+                }
+                if (request != m_storedRequest) {
+                    // Another session was opened meanwhile.
+                    return;
+                }
+                loadStoredSession(parseJsonArray(reply.value()), mode, queryIndex);
+                Q_EMIT storedSessionOpened();
+            });
+}
+
+void AgentBridge::loadStoredSession(const QVariantList &messages,
+                                    const QString &mode,
+                                    int queryIndex)
+{
+    // The history of the pane: the session's exchanges, up to and
+    // including the answer of the query the user clicked.
+    m_conversation.reset();
+
+    // The last message of the clicked exchange: the assistant's answers
+    // that follow the query belong to it, the next query starts a new
+    // exchange.
+    int last = qBound(0, queryIndex, messages.size() - 1);
+    for (int i = last + 1; i < messages.size(); ++i) {
+        if (messages.at(i).toMap().value(QStringLiteral("role")).toString() ==
+            QLatin1String("user")) {
+            break;
+        }
+        last = i;
+    }
+
+    const QString sender = senderNameForMode(mode);
+    QString prompt;
+    QString answer;
+    bool open = false;
+    for (int i = 0; i <= last; ++i) {
+        const QVariantMap message = messages.at(i).toMap();
+        const QString role = message.value(QStringLiteral("role")).toString();
+        const QString content = message.value(QStringLiteral("content")).toString();
+        if (role == QLatin1String("user")) {
+            if (open) {
+                m_conversation.beginExchange(prompt, sender);
+                m_conversation.setResult(answer);
+                m_conversation.finishExchange();
+            }
+            prompt = content;
+            answer.clear();
+            open = true;
+        } else if (role == QLatin1String("assistant") && !content.isEmpty()) {
+            // A run with tool calls leaves empty assistant messages
+            // behind; only the text counts as the answer.
+            if (!answer.isEmpty()) {
+                answer += QStringLiteral("\n\n");
+            }
+            answer += content;
+        }
+    }
+    if (open) {
+        m_conversation.beginExchange(prompt, sender);
+        m_conversation.setResult(answer);
+        m_conversation.finishExchange();
+    }
+}
+
 void AgentBridge::onServiceOwnerChanged(const QString &service,
                                         const QString &oldOwner,
                                         const QString &newOwner)

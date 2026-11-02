@@ -182,6 +182,7 @@ Item {
         // ---- Far right: the search button -----------------------------------
         // Opens the session search: the user's previous sessions on the
         // left, the selected one's queries and responses on the right.
+        // A toggle: pressing it while the search is up closes it again.
         PC3.ToolButton {
             id: searchButton
             objectName: "searchButton"
@@ -193,7 +194,11 @@ Item {
             icon.width: Kirigami.Units.iconSizes.small
             icon.height: Kirigami.Units.iconSizes.small
 
-            onClicked: Phoenix.PhoenixController.showSessionSearch()
+            // The search is open while the button is pressed.
+            checked: Phoenix.PhoenixController.sessionSearchOpen
+            icon.color: checked ? Kirigami.Theme.highlightColor : "white"
+
+            onClicked: Phoenix.PhoenixController.toggleSessionSearch()
 
             PC3.ToolTip {
                 // As with the record button, the global hotkey is named

@@ -13,6 +13,11 @@ agent daemon over D-Bus. The daemon runs an LLM tool loop in one of three
 modes, streams progress back, and renders the result in the panel or in the
 overlay/pane.
 
+The panel's search button (or Meta+Alt+`) opens the session search: the
+user's previous sessions on the left, under the name the daemon gave them,
+and the selected session's queries and responses on the right. Clicking a
+query opens it in the results pane, where the conversation can be continued.
+
 ## Layout
 
 | Path         | Contents                                                        |

@@ -49,6 +49,13 @@ class PhoenixController : public QObject
     Q_PROPERTY(QString recordShortcut READ recordShortcut NOTIFY recordShortcutChanged)
     Q_PROPERTY(QString searchShortcut READ searchShortcut NOTIFY searchShortcutChanged)
 
+    /*! \brief Whether the session search is on screen.
+     *
+     * The panel's search button shows it as pressed while it is, so the
+     * button is a toggle: pressing it opens the search, pressing it
+     * again closes it. */
+    Q_PROPERTY(bool sessionSearchOpen READ sessionSearchOpen NOTIFY sessionSearchOpenChanged)
+
     /*! \brief The user whose session history the search browses.
      *
      * "root" in root mode (the daemon files root sessions under their
@@ -98,6 +105,9 @@ public:
     /*! \brief The user whose sessions the search lists. */
     QString searchUser() const;
 
+    /*! \brief Whether the session search is on screen. */
+    bool sessionSearchOpen() const { return m_sessionSearchOpen; }
+
     /*! \brief The files attached to the prompt being composed. */
     PromptAttachments *attachments() const { return m_attachments; }
 
@@ -142,6 +152,17 @@ public:
      * selected session's queries and responses on the right. */
     Q_INVOKABLE void showSessionSearch();
 
+    /*! \brief Opens the session search, or closes it when it is open.
+     *
+     * What the panel's search button (and its global hotkey) do. */
+    Q_INVOKABLE void toggleSessionSearch();
+
+    /*! \brief Remembers whether the session search is on screen.
+     *
+     * The shell tells the controller when the overlay opened or closed,
+     * so the panel's search button can show it as pressed. */
+    Q_INVOKABLE void setSessionSearchOpen(bool open);
+
     /*! \brief Searches the user's sessions for a query.
      *
      * The daemon matches the query fuzzily against the sessions' summary
@@ -151,6 +172,22 @@ public:
 
     /*! \brief Shows the queries and responses of one session. */
     Q_INVOKABLE void openSession(const QString &sessionId);
+
+    /*! \brief Opens a stored session in the results pane.
+     *
+     * The session's history is loaded into the conversation model - up to
+     * and including the answer of the query the user clicked in the
+     * session search - and the pane is opened on it. The widget follows
+     * that session from then on, so a follow-on typed in the pane
+     * continues that very conversation.
+     *
+     * \a mode is the session's mode ("root", "user" or "web"), which
+     * names the sender of its queries, and \a title the name the pane's
+     * header shows. */
+    Q_INVOKABLE void openSessionResults(const QString &sessionId,
+                                        const QString &mode,
+                                        const QString &title,
+                                        int queryIndex);
 
     /*! \brief Sends the given text to the agent.
      *
@@ -170,6 +207,7 @@ Q_SIGNALS:
     void recordShortcutChanged();
     void searchShortcutChanged();
     void searchUserChanged();
+    void sessionSearchOpenChanged();
 
     /*! \brief Emitted when the dictation overlay should be shown. */
     void dictationOverlayRequested();
@@ -179,6 +217,9 @@ Q_SIGNALS:
 
     /*! \brief Emitted when the session search should be shown. */
     void sessionSearchRequested();
+
+    /*! \brief Emitted when the session search should be closed. */
+    void sessionSearchCloseRequested();
 
 private:
     void setRecording(bool recording);
@@ -196,6 +237,9 @@ private:
     QAction *m_searchShortcut = nullptr;
     bool m_recording = false;
     bool m_transcribing = false;
+    // Whether the session search is on screen: the panel's search
+    // button is a toggle, and this is its state.
+    bool m_sessionSearchOpen = false;
     int m_mode = static_cast<int>(AgentMode::Mode::User);
     QString m_partialTranscript;
     QString m_statusMessage;

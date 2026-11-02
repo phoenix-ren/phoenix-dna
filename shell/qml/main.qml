@@ -61,9 +61,14 @@ PlasmoidItem {
 
         // The search button (or its global hotkey) asks for the session
         // search: the user's previous sessions on the left, the selected
-        // one's queries and responses on the right.
+        // one's queries and responses on the right. The button is a
+        // toggle: asking again while the search is up closes it.
         function onSessionSearchRequested() {
             sessionSearch.open();
+        }
+
+        function onSessionSearchCloseRequested() {
+            sessionSearch.dismiss();
         }
     }
 
@@ -80,6 +85,12 @@ PlasmoidItem {
         }
 
         function onResultReady() {
+            resultsPane.showResult();
+        }
+
+        // A session the user clicked in the session search: its history
+        // is in the conversation model now, so the pane opens on it.
+        function onStoredSessionOpened() {
             resultsPane.showResult();
         }
     }
@@ -258,6 +269,20 @@ PlasmoidItem {
         onSessionSelected: (sessionId) => {
             Phoenix.PhoenixController.openSession(sessionId);
         }
+
+        // A clicked query opens the results pane on that session, so the
+        // conversation can be continued there. The search gives way to
+        // the pane: it is where the follow-on is typed.
+        onQueryActivated: (sessionId, mode, title, index) => {
+            sessionSearch.dismiss();
+            Phoenix.PhoenixController.openSessionResults(
+                sessionId, mode, title, index);
+        }
+
+        // The panel's search button is a toggle: it shows the search
+        // while it is pressed.
+        onOpened: Phoenix.PhoenixController.setSessionSearchOpen(true);
+        onDismissed: Phoenix.PhoenixController.setSessionSearchOpen(false);
     }
 
     compactRepresentation: Phoenix.CompactRepresentation {

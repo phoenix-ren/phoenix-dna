@@ -61,13 +61,41 @@ PlasmaCore.Dialog {
     // and asks for the full list of sessions.
     signal opened()
 
+    // Emitted when the user clicks a query in the transcript: the shell
+    // opens the results pane on that query, so the conversation can
+    // continue there.
+    signal queryActivated(string sessionId, string mode, string title, int index)
+
     // The session the right pane shows, and its place in the list.
     property string currentSessionId: ""
     property int currentIndex: -1
 
+    // The selected session's mode and its name: the mode names the
+    // sender of its queries, the name is what the results pane's header
+    // shows when the session is opened there.
+    readonly property string currentMode: currentIndex >= 0
+        && currentIndex < summaries.length
+        ? (summaries[currentIndex].mode || "")
+        : ""
+    readonly property string currentTitle: currentIndex >= 0
+        && currentIndex < summaries.length
+        ? (summaries[currentIndex].title || summaries[currentIndex].summary || "")
+        : ""
+
     // While the query field is cleared on opening, its text change must
     // not trigger a second search.
     property bool clearingQuery: false
+
+    // ---- The window's size and place ------------------------------------
+    // The search is a workspace, not a tooltip: it takes 60% of the
+    // display's width and 80% of its height - the area the plasma
+    // panels leave free - and never less than 800x600.
+    readonly property real minimumWidth: 800
+    readonly property real minimumHeight: 600
+    readonly property real searchWidth: Math.max(
+        minimumWidth, Math.round(Screen.desktopAvailableWidth * 0.6))
+    readonly property real searchHeight: Math.max(
+        minimumHeight, Math.round(Screen.desktopAvailableHeight * 0.8))
 
     location: PlasmaCore.Types.Floating
     type: PlasmaCore.Dialog.WindowType.DialogWindow
@@ -112,7 +140,25 @@ PlasmaCore.Dialog {
     function open() {
         visible = true
         opacity = 1
+        placeOnDisplay()
         opened()
+        // The compositor places the window itself, so the position is
+        // applied again a tick later - it then wins over the placement
+        // the compositor chose.
+        Qt.callLater(placeOnDisplay)
+    }
+
+    // Puts the window in the middle of the display, at its full size.
+    //
+    // The size follows the area the plasma panels leave free (so the
+    // window never hides under them), the place the screen itself: the
+    // available area's origin is not exposed to QML, and a window of
+    // that size fits between the panels wherever it is centred.
+    function placeOnDisplay() {
+        width = searchWidth
+        height = searchHeight
+        x = Screen.virtualX + Math.round((Screen.width - width) / 2)
+        y = Screen.virtualY + Math.round((Screen.height - height) / 2)
     }
 
     function dismiss() {
@@ -241,8 +287,8 @@ PlasmaCore.Dialog {
             }
         }
 
-        implicitWidth: Kirigami.Units.gridUnit * 44
-        implicitHeight: Kirigami.Units.gridUnit * 22
+        implicitWidth: searchOverlay.searchWidth
+        implicitHeight: searchOverlay.searchHeight
 
         // The dark, semi-transparent backdrop. Deliberately fixed rather
         // than theme-derived: it must be dark whichever theme runs, and
@@ -331,7 +377,10 @@ PlasmaCore.Dialog {
 
                 // ---- Left: the sessions --------------------------------
                 Rectangle {
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 15
+                    // A quarter of the window, but never narrower than
+                    // the names need to be readable.
+                    Layout.preferredWidth: Math.max(
+                        Kirigami.Units.gridUnit * 15, searchOverlay.width * 0.25)
                     Layout.minimumWidth: Kirigami.Units.gridUnit * 8
                     Layout.fillHeight: true
                     radius: Kirigami.Units.smallSpacing
@@ -465,12 +514,13 @@ PlasmaCore.Dialog {
                                     id: message
 
                                     required property var modelData
+                                    required property int index
 
                                     Layout.fillWidth: true
                                     spacing: 0
 
-                                    // The query the user asked, as a chat
-                                    // bubble on the right; the agent's
+                                    // The queries the user asked, as chat
+                                    // bubbles on the right; the agent's
                                     // answers flow below them on the left.
                                     readonly property bool fromUser:
                                         modelData.role === "user"
@@ -478,6 +528,9 @@ PlasmaCore.Dialog {
                                         modelData.content || ""
 
                                     Rectangle {
+                                        id: queryBubble
+                                        objectName: "queryBubble"
+
                                         Layout.alignment: Qt.AlignRight
                                         Layout.maximumWidth:
                                             transcriptColumn.width * 0.85
@@ -491,7 +544,12 @@ PlasmaCore.Dialog {
                                         radius: Kirigami.Units.smallSpacing * 2
                                         color: Qt.rgba(1, 1, 1, 0.08)
                                         border.width: 1
-                                        border.color: Qt.rgba(1, 1, 1, 0.14)
+                                        // A query opens the conversation it
+                                        // belongs to: the border says so
+                                        // while the mouse is on it.
+                                        border.color: bubbleMouse.containsMouse
+                                            ? Qt.rgba(1, 1, 1, 0.45)
+                                            : Qt.rgba(1, 1, 1, 0.14)
 
                                         Kirigami.SelectableLabel {
                                             id: queryLabel
@@ -503,6 +561,26 @@ PlasmaCore.Dialog {
                                             textFormat: TextEdit.PlainText
                                             wrapMode: Text.WordWrap
                                             color: "#e8e8e8"
+                                        }
+
+                                        MouseArea {
+                                            id: bubbleMouse
+
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+
+                                            onClicked: {
+                                                searchOverlay.queryActivated(
+                                                    searchOverlay.currentSessionId,
+                                                    searchOverlay.currentMode,
+                                                    searchOverlay.currentTitle,
+                                                    message.index)
+                                            }
+
+                                            PC3.ToolTip {
+                                                text: i18n("Open this query in the conversation")
+                                            }
                                         }
                                     }
 
