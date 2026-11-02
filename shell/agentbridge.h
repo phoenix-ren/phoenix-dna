@@ -89,6 +89,15 @@
  * The tool log is Markdown (each tool call's arguments and output in
  * fenced code blocks), which the results pane renders under the answer —
  * that is what makes a failed run debuggable from the pane.
+ *
+ * Session search: the widget can browse the history the daemon keeps in
+ * its per-user SQLite store. SearchSessions(user, query) answers with the
+ * user's sessions whose summary name matches the query — the match is
+ * fuzzy, so every further character narrows the list down — and
+ * GetSessionTranscript(user, session_id) answers with one session's
+ * queries and responses. Both answers arrive asynchronously, and one
+ * that belongs to a superseded request is dropped: the list never shows
+ * the results of an older query.
  */
 class AgentBridge : public QObject
 {
@@ -133,6 +142,23 @@ public:
      * pane shows its default heading instead. */
     Q_PROPERTY(QString sessionTitle READ sessionTitle NOTIFY sessionTitleChanged)
 
+    /*! \brief The sessions the session search lists.
+     *
+     * One entry per session of the searched user: its id, mode, title,
+     * the summary name it is listed under, a preview of its first
+     * query, its timestamps and how many messages it holds. The daemon
+     * narrows the list down to the sessions whose name matches the
+     * query; a stale answer (one that arrives after a newer search was
+     * started) is dropped. */
+    Q_PROPERTY(QVariantList sessionSummaries READ sessionSummaries NOTIFY sessionSummariesChanged)
+
+    /*! \brief The queries and responses of the selected session.
+     *
+     * One entry per message: its role ("user" or "assistant"), its
+     * content and the timestamp it was stored with. Replaced when
+     * another session's transcript arrives. */
+    Q_PROPERTY(QVariantList sessionMessages READ sessionMessages NOTIFY sessionMessagesChanged)
+
     bool isAvailable() const { return m_available; }
     QString partialTranscript() const { return m_partialTranscript; }
     QString finalTranscript() const { return m_finalTranscript; }
@@ -146,7 +172,14 @@ public:
 
     QString sessionTitle() const { return m_sessionTitle; }
 
+    QVariantList sessionSummaries() const { return m_sessionSummaries; }
+    QVariantList sessionMessages() const { return m_sessionMessages; }
+
     QString proposedAction() const { return m_proposedAction; }
+
+    /*! \brief The local user's login name (USER environment variable,
+     *  falling back to the passwd database). */
+    static QString localUserName();
 
     /*! \brief Asks the agent service to begin capturing and transcribing. */
     Q_INVOKABLE void startDictation();
@@ -193,12 +226,36 @@ public:
      * to. */
     Q_INVOKABLE void requestTranscriptCleanup(const QString &text);
 
+    /*! \brief Asks the daemon for the sessions matching a query.
+     *
+     * SearchSessions(user, query) answers with the user's sessions
+     * whose summary name matches the query — the match is fuzzy, so
+     * every further character narrows the list down. The answer arrives
+     * asynchronously; a reply that belongs to a superseded request is
+     * dropped, so the list never shows the results of an older query.
+     */
+    Q_INVOKABLE void requestSessionSearch(const QString &user, const QString &query);
+
+    /*! \brief Asks the daemon for one session's queries and responses.
+     *
+     * GetSessionTranscript(user, session_id) answers with the session's
+     * messages; like the search, the answer arrives asynchronously and a
+     * superseded one is dropped.
+     */
+    Q_INVOKABLE void requestSessionTranscript(const QString &user, const QString &sessionId);
+
 Q_SIGNALS:
     void availabilityChanged();
     void partialTranscriptChanged();
     void finalTranscriptChanged();
     void agentMessageChanged();
     void proposedActionChanged();
+
+    /*! \brief Emitted when the searched sessions changed. */
+    void sessionSummariesChanged();
+
+    /*! \brief Emitted when the selected session's messages changed. */
+    void sessionMessagesChanged();
 
     /*! \brief Emitted once per run, on its first streamed content.
      *
@@ -297,10 +354,6 @@ private:
      *  name otherwise. */
     static QString senderNameForMode(const QString &mode);
 
-    /*! \brief The local user's login name (USER environment variable,
-     *  falling back to the passwd database). */
-    static QString localUserName();
-
 private Q_SLOTS:
     /*! \brief Moves buffered text deltas into the current row's answer. */
     void flushDeltas();
@@ -350,4 +403,13 @@ private:
     // to). A new request supersedes the previous one.
     QString m_pendingCleanupId;
     QString m_pendingCleanupSource;
+    // The sessions the session search lists, and the messages of the
+    // selected one.
+    QVariantList m_sessionSummaries;
+    QVariantList m_sessionMessages;
+    // The counters of the outstanding session-search requests: a reply
+    // that belongs to an older request is dropped, so the list never
+    // shows the results of a superseded query.
+    quint64 m_searchRequest = 0;
+    quint64 m_transcriptRequest = 0;
 };

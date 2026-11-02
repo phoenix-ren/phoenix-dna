@@ -36,6 +36,19 @@ const QString kWatchedInterface = QStringLiteral("org.freedesktop.DBus");
 // Per-tool-call output cap for the pane's activity log: enough to see why a
 // command failed without the log dwarfing the answer it belongs to.
 const int kToolLogOutputLimit = 2400;
+
+// Parses a JSON array into a variant list; an unparsable payload yields an
+// empty list (the daemon always answers with an array, so a malformed one
+// means the daemon is not the one this bridge expects).
+QVariantList parseJsonArray(const QString &payload)
+{
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(payload.toUtf8(), &error);
+    if (error.error != QJsonParseError::NoError || !document.isArray()) {
+        return QVariantList();
+    }
+    return document.array().toVariantList();
+}
 } // namespace
 
 AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
@@ -231,6 +244,64 @@ void AgentBridge::setAvailable(bool available)
     Q_EMIT availabilityChanged();
 }
 
+void AgentBridge::requestSessionSearch(const QString &user, const QString &query)
+{
+    // SearchSessions(user, query) -> JSON array of session summaries. The
+    // daemon matches the query fuzzily against the sessions' names and
+    // answers with the ones that still match.
+    const quint64 request = ++m_searchRequest;
+
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("SearchSessions"));
+    message << user << query;
+
+    auto *watcher =
+        new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, request](QDBusPendingCallWatcher *watcher) {
+                const QDBusReply<QString> reply = *watcher;
+                watcher->deleteLater();
+                if (!reply.isValid()) {
+                    qWarning() << "session search failed:" << reply.error().message();
+                    return;
+                }
+                if (request != m_searchRequest) {
+                    // A newer search was started meanwhile: this answer
+                    // belongs to a query the user has already replaced.
+                    return;
+                }
+                m_sessionSummaries = parseJsonArray(reply.value());
+                Q_EMIT sessionSummariesChanged();
+            });
+}
+
+void AgentBridge::requestSessionTranscript(const QString &user, const QString &sessionId)
+{
+    // GetSessionTranscript(user, session_id) -> JSON array of messages.
+    const quint64 request = ++m_transcriptRequest;
+
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("GetSessionTranscript"));
+    message << user << sessionId;
+
+    auto *watcher =
+        new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, request](QDBusPendingCallWatcher *watcher) {
+                const QDBusReply<QString> reply = *watcher;
+                watcher->deleteLater();
+                if (!reply.isValid()) {
+                    qWarning() << "session transcript failed:" << reply.error().message();
+                    return;
+                }
+                if (request != m_transcriptRequest) {
+                    // Another session was selected meanwhile.
+                    return;
+                }
+                m_sessionMessages = parseJsonArray(reply.value());
+                Q_EMIT sessionMessagesChanged();
+            });
+}
 void AgentBridge::onServiceOwnerChanged(const QString &service,
                                         const QString &oldOwner,
                                         const QString &newOwner)

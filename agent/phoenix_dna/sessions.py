@@ -40,7 +40,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from uuid import uuid4
 
+from .search import summary_name
+
 log = logging.getLogger("phoenix.sessions")
+
+#: How long the preview of a session's first query may get.
+_PREVIEW_LENGTH = 120
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
@@ -111,6 +116,18 @@ def _local_username() -> str:
         return "anon"
 
 
+def valid_user(user: str) -> str:
+    """The user name, checked: it must be a plain directory name.
+
+    The user names the database file, so a name with a path separator in
+    it would read (or write) outside the users directory.
+    """
+    name = (user or "").strip()
+    if not name or name.startswith(".") or "/" in name or "\\" in name:
+        raise ValueError(f"invalid user name {user!r}")
+    return name
+
+
 class SessionStore:
     """SQLite-backed sessions, one database file per user."""
 
@@ -134,7 +151,7 @@ class SessionStore:
         return "root" if mode == "root" else self.local_user
 
     def db_path(self, user: str) -> Path:
-        return self.users_dir / user / "sessions.db"
+        return self.users_dir / valid_user(user) / "sessions.db"
 
     # -- messages -----------------------------------------------------------
 
@@ -282,6 +299,73 @@ class SessionStore:
                 "SELECT title FROM sessions WHERE id = ?", (session_id,)
             ).fetchone()
         return str(row[0]) if row is not None else ""
+
+    # -- session search --------------------------------------------------------
+
+    def list_sessions(self, user: str) -> list[dict]:
+        """Every session of a user, newest first.
+
+        One entry per session: its id, mode, title, the summary name it
+        is listed under (the title, or its first query when the session
+        was never named), a preview of that first query, its timestamps
+        and how many messages it holds. This is what the widget's session
+        search shows on the left.
+        """
+        with self._lock:
+            db = self._db(user)
+            rows = db.execute(
+                "SELECT s.id AS id, s.mode AS mode, s.title AS title, "
+                "       s.created_at AS created_at, s.updated_at AS updated_at, "
+                "       (SELECT m.content FROM messages m "
+                "         WHERE m.session_id = s.id AND m.role = 'user' "
+                "         ORDER BY m.seq LIMIT 1) AS first_query, "
+                "       (SELECT COUNT(*) FROM messages m "
+                "         WHERE m.session_id = s.id) AS message_count "
+                "FROM sessions s WHERE s.user = ? "
+                "ORDER BY s.updated_at DESC",
+                (user,),
+            ).fetchall()
+
+        sessions = []
+        for row in rows:
+            first_query = str(row["first_query"] or "")
+            sessions.append(
+                {
+                    "id": str(row["id"]),
+                    "mode": str(row["mode"]),
+                    "title": str(row["title"] or ""),
+                    "summary": summary_name(str(row["title"] or ""), first_query),
+                    "preview": " ".join(first_query.split())[:_PREVIEW_LENGTH],
+                    "createdAt": str(row["created_at"]),
+                    "updatedAt": str(row["updated_at"]),
+                    "messageCount": int(row["message_count"]),
+                }
+            )
+        return sessions
+
+    def session_messages(self, user: str, session_id: str) -> list[dict]:
+        """The session's queries and responses, oldest first.
+
+        Only the user and assistant messages: the tool results in between
+        are the agent's business, not the conversation the user had with
+        it.
+        """
+        with self._lock:
+            db = self._db(user)
+            rows = db.execute(
+                "SELECT ts, role, content FROM messages "
+                "WHERE session_id = ? AND role IN ('user', 'assistant') "
+                "ORDER BY seq",
+                (session_id,),
+            ).fetchall()
+        return [
+            {
+                "ts": str(row["ts"]),
+                "role": str(row["role"]),
+                "content": str(row["content"]),
+            }
+            for row in rows
+        ]
 
     # -- legacy JSONL import --------------------------------------------------
 

@@ -9,9 +9,10 @@ import org.kde.plasma.plasmoid
 // mode enum, and the QML types defined alongside them.
 import plasma.applet.org.phoenixdna.agent as Phoenix
 
-// Components 2 and 3 are separate QML modules, installed independently.
+// Components 2, 3 and 4 are separate QML modules, installed independently.
 import org.phoenixdna.overlay as PhoenixOverlay
 import org.phoenixdna.pane as PhoenixPane
+import org.phoenixdna.search as PhoenixSearch
 
 /*
  * Component 1 — the panel widget.
@@ -20,8 +21,9 @@ import org.phoenixdna.pane as PhoenixPane
  * button on the left, the waveform in the middle and the record button on the
  * right.
  *
- * The overlay (component 2) and the results pane (component 3) are separate
- * QML modules; they are instantiated lazily and only when needed.
+ * The overlay (component 2), the results pane (component 3) and the session
+ * search (component 4) are separate QML modules; they are instantiated
+ * lazily and only when needed.
  */
 PlasmoidItem {
     id: root
@@ -55,6 +57,13 @@ PlasmoidItem {
 
         function onConversationPaneRequested() {
             resultsPane.toggle();
+        }
+
+        // The search button (or its global hotkey) asks for the session
+        // search: the user's previous sessions on the left, the selected
+        // one's queries and responses on the right.
+        function onSessionSearchRequested() {
+            sessionSearch.open();
         }
     }
 
@@ -216,6 +225,38 @@ PlasmoidItem {
             dictationOverlay.statusMessage = Phoenix.PhoenixController.statusMessage;
             dictationOverlay.inputAnchor = root;
             dictationOverlay.visible = true;
+        }
+    }
+
+    // Component 4 — the session search.
+    //
+    // A transparent overlay window with two sub-panes: the sessions of
+    // the current user on the left, the selected session's queries and
+    // responses on the right. The list is filtered by the daemon: it
+    // matches the query fuzzily against the sessions' summary names, so
+    // every further character drops the sessions that no longer match.
+    PhoenixSearch.SessionSearchOverlay {
+        id: sessionSearch
+
+        anchor: root
+
+        // The user whose history is searched: root mode browses root's
+        // sessions, every other mode the local user's.
+        user: Phoenix.PhoenixController.searchUser
+
+        // The daemon's answers: the matching sessions, and the messages
+        // of the selected one.
+        summaries: Phoenix.PhoenixController.agent.sessionSummaries
+        messages: Phoenix.PhoenixController.agent.sessionMessages
+
+        // The query goes to the daemon, which owns the sessions.
+        onQueryChanged: (query) => {
+            Phoenix.PhoenixController.searchSessions(query);
+        }
+
+        // The selected session's transcript is fetched on demand.
+        onSessionSelected: (sessionId) => {
+            Phoenix.PhoenixController.openSession(sessionId);
         }
     }
 

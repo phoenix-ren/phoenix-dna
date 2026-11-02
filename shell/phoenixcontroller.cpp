@@ -126,6 +126,26 @@ PhoenixController::PhoenixController(QObject *parent)
                     Q_EMIT recordShortcutChanged();
                 }
             });
+
+    // The session search has a system-wide companion too, so the history
+    // can be reached from any application: Meta+Alt+` by default. It is
+    // bound the same way as the record hotkey — a first-run default the
+    // user can re-bind in System Settings.
+    m_searchShortcut = new QAction(this);
+    m_searchShortcut->setObjectName(QStringLiteral("search-sessions"));
+    m_searchShortcut->setText(i18n("Search Sessions"));
+    m_searchShortcut->setProperty("componentName", QStringLiteral("org.phoenixdna.agent"));
+    m_searchShortcut->setProperty("componentDisplayName", QStringLiteral("Phoenix DNA"));
+    const QList<QKeySequence> searchHotkey{QKeySequence(QStringLiteral("Meta+Alt+`"))};
+    KGlobalAccel::self()->setDefaultShortcut(m_searchShortcut, searchHotkey);
+    KGlobalAccel::self()->setShortcut(m_searchShortcut, searchHotkey);
+    connect(m_searchShortcut, &QAction::triggered, this, &PhoenixController::showSessionSearch);
+    connect(KGlobalAccel::self(), &KGlobalAccel::globalShortcutChanged, this,
+            [this](QAction *action, const QKeySequence &) {
+                if (action == m_searchShortcut) {
+                    Q_EMIT searchShortcutChanged();
+                }
+            });
 }
 
 PhoenixController::~PhoenixController() = default;
@@ -151,6 +171,10 @@ void PhoenixController::setMode(int mode)
     // The daemon learns the mode over D-Bus: selecting root makes it show
     // the KDE password dialog right away instead of mid-first-prompt.
     m_agent->setMode(AgentMode::modeName(static_cast<AgentMode::Mode>(m_mode)));
+
+    // The sessions the search lists belong to the mode's user: root-mode
+    // runs are filed under "root", everything else under the login name.
+    Q_EMIT searchUserChanged();
 
     Q_EMIT modeChanged();
 }
@@ -250,6 +274,29 @@ QString PhoenixController::recordShortcut() const
     return QString();
 }
 
+QString PhoenixController::searchShortcut() const
+{
+    // The live binding of the session search, like the record hotkey.
+    const QList<QKeySequence> shortcuts = KGlobalAccel::self()->shortcut(m_searchShortcut);
+    for (const QKeySequence &shortcut : shortcuts) {
+        if (!shortcut.isEmpty()) {
+            return shortcut.toString(QKeySequence::NativeText);
+        }
+    }
+    return QString();
+}
+
+QString PhoenixController::searchUser() const
+{
+    // The daemon files sessions per user: root-mode runs belong to
+    // "root", everything else (user and web mode) to the local login
+    // name. The search follows the mode the widget is in.
+    if (m_mode == static_cast<int>(AgentMode::Mode::Root)) {
+        return QStringLiteral("root");
+    }
+    return AgentBridge::localUserName();
+}
+
 void PhoenixController::showDictationOverlay()
 {
     Q_EMIT dictationOverlayRequested();
@@ -258,6 +305,23 @@ void PhoenixController::showDictationOverlay()
 void PhoenixController::toggleConversationPane()
 {
     Q_EMIT conversationPaneRequested();
+}
+
+void PhoenixController::showSessionSearch()
+{
+    Q_EMIT sessionSearchRequested();
+}
+
+void PhoenixController::searchSessions(const QString &query)
+{
+    // The daemon does the matching: it knows the session names and can
+    // answer with the sessions that still match the query.
+    m_agent->requestSessionSearch(searchUser(), query);
+}
+
+void PhoenixController::openSession(const QString &sessionId)
+{
+    m_agent->requestSessionTranscript(searchUser(), sessionId);
 }
 
 void PhoenixController::submitText(const QString &text, bool newSession)

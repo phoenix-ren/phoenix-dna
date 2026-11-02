@@ -233,3 +233,59 @@ def test_run_started_carries_session_id(client):
     assert seen["run_id"] == run_id
     assert seen["mode"] == "web"
     assert seen["session_id"]
+
+
+def test_search_sessions_over_dbus(client):
+    """The sessions of a user are listed, and the query narrows them down."""
+    bus, iface = client
+    from phoenix_dna.sessions import _local_username
+
+    user = _local_username()
+    finished = threading.Event()
+    bus.add_signal_receiver(
+        lambda *_a: finished.set(), signal_name="RunFinished", dbus_interface=None
+    )
+    iface.SubmitPrompt("how much disk is left?", "user", "")
+    assert finished.wait(15)
+
+    sessions = json.loads(str(iface.SearchSessions(user, "")))
+    assert isinstance(sessions, list)
+    summaries = [s["summary"] for s in sessions]
+    assert any("how much disk is left?" in summary for summary in summaries)
+
+    # The query is matched fuzzily against the summary names.
+    matches = json.loads(str(iface.SearchSessions(user, "disk")))
+    assert matches
+    assert all("disk" in s["summary"].lower() for s in matches)
+    assert json.loads(str(iface.SearchSessions(user, "zzz"))) == []
+
+
+def test_session_transcript_over_dbus(client):
+    """One session's queries and responses travel over D-Bus."""
+    bus, iface = client
+    from phoenix_dna.sessions import _local_username
+
+    user = _local_username()
+    finished = threading.Event()
+    bus.add_signal_receiver(
+        lambda *_a: finished.set(), signal_name="RunFinished", dbus_interface=None
+    )
+    iface.SubmitPrompt("transcript probe", "user", "")
+    assert finished.wait(15)
+
+    sessions = json.loads(str(iface.SearchSessions(user, "transcript")))
+    assert sessions
+    session = sessions[0]
+
+    messages = json.loads(str(iface.GetSessionTranscript(user, session["id"])))
+    assert [m["role"] for m in messages] == ["user", "assistant"]
+    assert messages[0]["content"] == "transcript probe"
+    assert messages[1]["content"] == "D-Bus fake answer, 42."
+
+
+def test_search_rejects_an_invalid_user(client):
+    import dbus
+
+    _bus, iface = client
+    with pytest.raises(dbus.exceptions.DBusException, match="invalid user"):
+        iface.SearchSessions("../etc", "")

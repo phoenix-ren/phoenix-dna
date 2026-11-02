@@ -47,6 +47,13 @@ class PhoenixController : public QObject
     Q_PROPERTY(bool transcribing READ isTranscribing NOTIFY transcribingChanged)
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
     Q_PROPERTY(QString recordShortcut READ recordShortcut NOTIFY recordShortcutChanged)
+    Q_PROPERTY(QString searchShortcut READ searchShortcut NOTIFY searchShortcutChanged)
+
+    /*! \brief The user whose session history the search browses.
+     *
+     * "root" in root mode (the daemon files root sessions under their
+     * own database), the local login name otherwise. */
+    Q_PROPERTY(QString searchUser READ searchUser NOTIFY searchUserChanged)
 
     /*! \brief The files attached to the prompt that is being composed.
      *
@@ -82,6 +89,14 @@ public:
     /*! \brief The bound global record hotkey ("Meta+Alt+Space" unless the
      *  user re-bound it in System Settings). Empty when none is bound. */
     QString recordShortcut() const;
+
+    /*! \brief The bound global session-search hotkey ("Meta+Alt+`" unless
+     *  the user re-bound it in System Settings). Empty when none is
+     *  bound. */
+    QString searchShortcut() const;
+
+    /*! \brief The user whose sessions the search lists. */
+    QString searchUser() const;
 
     /*! \brief The files attached to the prompt being composed. */
     PromptAttachments *attachments() const { return m_attachments; }
@@ -121,6 +136,22 @@ public:
     /*! \brief Shows or hides the conversation pane. */
     Q_INVOKABLE void toggleConversationPane();
 
+    /*! \brief Shows the session search overlay.
+     *
+     * The overlay lists the user's previous sessions on the left and the
+     * selected session's queries and responses on the right. */
+    Q_INVOKABLE void showSessionSearch();
+
+    /*! \brief Searches the user's sessions for a query.
+     *
+     * The daemon matches the query fuzzily against the sessions' summary
+     * names and answers with the sessions that still match; the search
+     * overlay lists them. */
+    Q_INVOKABLE void searchSessions(const QString &query);
+
+    /*! \brief Shows the queries and responses of one session. */
+    Q_INVOKABLE void openSession(const QString &sessionId);
+
     /*! \brief Sends the given text to the agent.
      *
      * With \a newSession (record button on the desktop pane: the query
@@ -137,12 +168,17 @@ Q_SIGNALS:
     void transcribingChanged();
     void statusMessageChanged();
     void recordShortcutChanged();
+    void searchShortcutChanged();
+    void searchUserChanged();
 
     /*! \brief Emitted when the dictation overlay should be shown. */
     void dictationOverlayRequested();
 
     /*! \brief Emitted when the conversation pane should be toggled. */
     void conversationPaneRequested();
+
+    /*! \brief Emitted when the session search should be shown. */
+    void sessionSearchRequested();
 
 private:
     void setRecording(bool recording);
@@ -157,6 +193,7 @@ private:
     PromptAttachments *m_attachments = nullptr;
     WindowScreenshotPicker *m_screenshotPicker = nullptr;
     QAction *m_toggleShortcut = nullptr;
+    QAction *m_searchShortcut = nullptr;
     bool m_recording = false;
     bool m_transcribing = false;
     int m_mode = static_cast<int>(AgentMode::Mode::User);

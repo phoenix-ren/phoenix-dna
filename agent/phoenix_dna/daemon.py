@@ -44,6 +44,7 @@ from .prompts import (
     load_context_file,
 )
 from .provider import LLMProvider, build_provider
+from .search import match_sessions
 from .sessions import SessionManager, SessionStore
 
 log = logging.getLogger("phoenix.daemon")
@@ -319,6 +320,23 @@ class AgentDaemon:
                 "current_run_id": self._current.run_id if self._current else "",
                 "queue_length": len(self._pending),
             }
+
+    # -- session search ------------------------------------------------------
+
+    def search_sessions(self, user: str, query: str = "") -> list[dict]:
+        """The user's sessions whose summary name matches the query.
+
+        Every session of the user, newest first, narrowed down to the
+        ones whose name matches the query: the match is fuzzy, so "dt"
+        finds "Disk tuning" and every further character drops the
+        sessions that no longer match.
+        """
+        sessions = self._sessions.store.list_sessions(user)
+        return match_sessions(query, sessions)
+
+    def session_transcript(self, user: str, session_id: str) -> list[dict]:
+        """The queries and responses of one session, oldest first."""
+        return self._sessions.store.session_messages(user, session_id)
 
     def shutdown(self, timeout: float = 2.0) -> None:
         with self._cond:

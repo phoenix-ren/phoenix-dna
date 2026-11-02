@@ -251,6 +251,41 @@ if dbus is not None:
                 for p in self._daemon.modes()
             ]
 
+        @dbus.service.method(INTERFACE, in_signature="ss", out_signature="s")
+        def SearchSessions(self, user, query):
+            """The user's sessions whose summary name matches the query.
+
+            Returns a JSON array of session summaries: ``id``, ``mode``,
+            ``title``, ``summary`` (the name the session is listed
+            under), ``preview``, ``createdAt``, ``updatedAt`` and
+            ``messageCount``. The query is matched fuzzily against the
+            summary names; an empty query lists every session of the
+            user, newest first.
+            """
+            try:
+                sessions = self._daemon.search_sessions(str(user), str(query))
+            except ValueError as exc:
+                raise dbus.exceptions.DBusException(
+                    f"{_ERROR}.InvalidArgument", str(exc)
+                )
+            return json.dumps(sessions, ensure_ascii=False)
+
+        @dbus.service.method(INTERFACE, in_signature="ss", out_signature="s")
+        def GetSessionTranscript(self, user, session_id):
+            """One session's queries and responses, as a JSON array.
+
+            Every entry carries the message's ``role`` (``user`` or
+            ``assistant``), its ``content`` and the ``ts`` it was stored
+            with.
+            """
+            try:
+                messages = self._daemon.session_transcript(str(user), str(session_id))
+            except ValueError as exc:
+                raise dbus.exceptions.DBusException(
+                    f"{_ERROR}.InvalidArgument", str(exc)
+                )
+            return json.dumps(messages, ensure_ascii=False)
+
         @dbus.service.method(INTERFACE, in_signature="", out_signature="(ssu)")
         def GetState(self):
             state = self._daemon.state()
