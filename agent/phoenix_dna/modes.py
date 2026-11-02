@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
-"""Operating modes: root / user / web.
+"""Operating modes: root / user.
 
 Each mode fixes the working directory, the toolset and whether bash runs
-under sudo.
+under sudo. Both modes carry the web search tools; they are only
+registered when their API keys are configured.
 """
 
 from __future__ import annotations
@@ -23,7 +24,6 @@ from .tools.shell import BashTool
 class Mode(str, Enum):
     ROOT = "root"
     USER = "user"
-    WEB = "web"
 
 
 @dataclass(frozen=True)
@@ -36,10 +36,13 @@ class ModeProfile:
     def working_dir(self, config: Config, home_dir: Path | None = None) -> Path:
         if self.mode is Mode.ROOT:
             return Path("/")
-        if self.mode is Mode.USER:
-            return home_dir if home_dir is not None else Path.home()
-        return config.data_dir / "scratch" / "web"  # hidden scratch dir
+        return home_dir if home_dir is not None else Path.home()
 
+
+#: The tools every mode shares: the filesystem quartet plus the web
+#: search pair. The search tools drop out at build time when their API
+#: keys are not configured.
+_COMMON_TOOLS = ("bash", "read", "write", "edit", "ls", "tavily_search", "exa_search")
 
 MODE_PROFILES: dict[Mode, ModeProfile] = {
     Mode.ROOT: ModeProfile(
@@ -48,25 +51,17 @@ MODE_PROFILES: dict[Mode, ModeProfile] = {
             "System administration with root privileges; commands run via "
             "sudo. Working directory: /"
         ),
-        tool_names=("bash", "read", "write", "edit", "ls"),
+        tool_names=_COMMON_TOOLS,
         use_sudo=True,
     ),
     Mode.USER: ModeProfile(
         mode=Mode.USER,
         description=(
-            "Everyday tasks on this machine as the regular user. "
-            "Working directory: your home directory."
+            "Everyday tasks on this machine as the regular user, plus "
+            "questions that need a web lookup. Working directory: your "
+            "home directory."
         ),
-        tool_names=("bash", "read", "write", "edit", "ls"),
-        use_sudo=False,
-    ),
-    Mode.WEB: ModeProfile(
-        mode=Mode.WEB,
-        description=(
-            "General-knowledge questions and web research. No personal file "
-            "access; a private scratch directory is used for calculations."
-        ),
-        tool_names=("bash", "tavily_search", "exa_search"),
+        tool_names=_COMMON_TOOLS,
         use_sudo=False,
     ),
 }
@@ -82,11 +77,11 @@ def build_toolset(
     """Instantiate the tools for a mode run.
 
     ``credential_cache`` is required for root mode (bash runs under sudo) and
-    must be None otherwise. Search tools are only registered when their API
-    keys are configured.
+    must be None otherwise. Search tools are registered in every mode, but
+    only when their API keys are configured.
     """
     working_dir = profile.working_dir(config, home_dir=home_dir)
-    working_dir.mkdir(parents=True, exist_ok=True)  # relevant for web scratch
+    working_dir.mkdir(parents=True, exist_ok=True)  # / and ~ exist; cheap insurance
 
     if profile.use_sudo and credential_cache is None:
         raise ValueError("root mode requires a credential cache")

@@ -3,7 +3,7 @@
 
 """The bash tool.
 
-* user/web modes: run ``bash -c <command>`` directly in the mode's working dir.
+* user mode: run ``bash -c <command>`` directly in the mode's working dir.
 * root mode: wrap in ``sudo -S -p '' -- bash -c <command>`` and feed the
   password (obtained/cached via :mod:`phoenix_dna.privileges`) on stdin.
 
@@ -44,7 +44,7 @@ _INTERACTIVE_FAILURE_MARKERS = (
 _INTERACTIVE_HINT = (
     "hint: this command failed because it asked for confirmation on stdin, "
     "which is closed and nobody can answer it; re-run with a non-interactive "
-    "flag (e.g. dnf -y, flatpak install -y)"
+    "flag (e.g. dnf -y, apt-get -y, flatpak install -y)"
 )
 
 
@@ -91,8 +91,8 @@ class BashTool:
             "Execute a bash command in the working directory and return "
             "stdout, stderr and the exit code. There is no terminal: stdin "
             "is closed and nobody can answer prompts, so use non-interactive "
-            "flags (dnf -y, flatpak install -y, ...) and pass an explicit "
-            "timeout for slow commands like package installs."
+            "flags (dnf -y, apt-get -y, flatpak install -y, ...) and pass an "
+            "explicit timeout for slow commands like package installs."
         ),
         parameters={
             "type": "object",

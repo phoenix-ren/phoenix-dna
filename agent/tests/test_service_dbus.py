@@ -108,7 +108,7 @@ def test_ping_and_version(client):
 def test_get_modes(client):
     _bus, iface = client
     modes = iface.GetModes()
-    assert [m[0] for m in modes] == ["root", "user", "web"]
+    assert [m[0] for m in modes] == ["root", "user"]
     assert all(isinstance(m[1], str) and m[1] for m in modes)
     assert modes[0][2] == "/"  # root working dir
 
@@ -198,7 +198,7 @@ def test_submit_prompt_with_attachments(client, tmp_path):
 def test_set_mode_round_trip(client):
     _bus, iface = client
     assert iface.SetMode("root") == "root"
-    assert iface.SetMode(" WEB ") == "web"  # normalized like SubmitPrompt
+    assert iface.SetMode(" USER ") == "user"  # normalized like SubmitPrompt
 
 
 def test_set_mode_invalid_raises_dbus_error(client):
@@ -228,10 +228,10 @@ def test_run_started_carries_session_id(client):
     bus.add_signal_receiver(
         on_finished, signal_name="RunFinished", dbus_interface=INTERFACE
     )
-    run_id = str(iface.SubmitPrompt("session probe", "web", ""))
+    run_id = str(iface.SubmitPrompt("session probe", "user", ""))
     assert done.wait(15)
     assert seen["run_id"] == run_id
-    assert seen["mode"] == "web"
+    assert seen["mode"] == "user"
     assert seen["session_id"]
 
 

@@ -12,7 +12,7 @@ session bus.
 
 Architecture in one line: **LLM + system prompt + tools, in a loop** (the
 minimal-agent design validated by pi and friends — see
-`../design_docs/CODING_AGENT_ANALYSIS.md`), wrapped in a daemon with three operating modes.
+`../design_docs/CODING_AGENT_ANALYSIS.md`), wrapped in a daemon with two operating modes.
 
 ```
 plasmoid (C++/QML)  ──D-Bus──▶  phoenix-dna-agent (this daemon)
@@ -27,17 +27,19 @@ plasmoid (C++/QML)  ──D-Bus──▶  phoenix-dna-agent (this daemon)
 
 | Mode | Auth | Working dir | Tools | Purpose |
 |---|---|---|---|---|
-| `root` | KDE password dialog (`kdialog`), cached 15 min | `/` | bash (via `sudo`), read, write, edit, ls | system administration; one password covers multiple prompts |
-| `user` | none | `~` | bash, read, write, edit, ls | everyday desktop tasks |
-| `web` | none | hidden scratch dir (`~/.local/state/phoenix-dna/scratch/web`) | bash (scratch only), tavily_search, exa_search | general-knowledge questions and web research |
+| `root` | KDE password dialog (`kdialog`), cached 15 min | `/` | bash (via `sudo`), read, write, edit, ls, tavily_search, exa_search | system administration; one password covers multiple prompts |
+| `user` | none | `~` | bash, read, write, edit, ls, tavily_search, exa_search | everyday desktop tasks and questions that need a web lookup |
 
 The mode also selects the system prompt (e.g. root mode instructs the model to
-inspect before changing and never reboot unasked; web mode tells it to compute
-date arithmetic with `date`/`python3` instead of guessing). Shared by all
-modes: commands run without a terminal and stdin is closed, so the prompt (and
-the bash tool's description) demand non-interactive flags (`dnf -y`,
-`flatpak install -y`); when a command still fails from asking a question on
-stdin, the bash tool appends a hint so the next attempt fixes itself.
+inspect before changing and never reboot unasked). The search tools are
+registered in both modes whenever their API keys are configured, and the
+prompt then tells the model to reach for them on anything that depends on
+current or specific facts (so it never answers "I cannot search the web").
+Shared by both modes: commands run without a terminal and stdin is closed, so
+the prompt (and the bash tool's description) demand non-interactive flags
+(`dnf -y`, `apt-get -y`, `flatpak install -y`); when a command still fails
+from asking a question on stdin, the bash tool appends a hint so the next
+attempt fixes itself.
 
 ## D-Bus API
 
@@ -52,7 +54,7 @@ interface `dna.phoenix.Agent`.
 | `SubmitPromptWithAttachments` | `ssss → s` | `(prompt, mode, session_id, attachments)` → `run_id`. The same, plus the files the user attached to the prompt: a JSON array of `{"name", "path", "mimeType"}` objects. The daemon copies them into `<data_dir>/attachments/<run_id>/`, inlines the images when the model can see them and extracts the text of PDFs — see `phoenix_dna/attachments.py`. |
 | `Cancel` | `s → b` | Cancel a running prompt (kills its process group) or remove a queued one. |
 | `SetMode` | `s → s` | `(mode)` → normalized name. Records the widget's mode selection. Selecting `root` shows the KDE password dialog immediately (off the main loop; the credential is cached as usual), switching away from `root` drops the cached password. The plasmoid calls this whenever its mode buttons change state. |
-| `GetModes` | ` → a(sss)` | `(name, description, working_dir)` for root/user/web. |
+| `GetModes` | ` → a(sss)` | `(name, description, working_dir)` for root/user. |
 | `GetState` | ` → (ssu)` | `(state, current_run_id, queue_length)`; state is `idle` or `running`. |
 | `SearchSessions` | `ss → s` | `(user, query)` → JSON array of the user's sessions whose summary name matches the query. The match is fuzzy — every character of the query must occur in the name, in order — so typing narrows the list down; an empty query lists every session, newest first. Each entry carries `id`, `mode`, `title`, `summary` (the name the session is listed under: the title, or the first query when the session was never named), `preview`, `createdAt`, `updatedAt` and `messageCount`. |
 | `GetSessionTranscript` | `ss → s` | `(user, session_id)` → JSON array of the session's messages: `role` (`user` or `assistant`), `content` and `ts`. |
@@ -87,16 +89,18 @@ environment → `~/.config/phoenix-dna/keys.json` (mode 0600) for keys, and
 | Key / setting | Env var | Purpose |
 |---|---|---|
 | `minimax_api_key` | `MINIMAX_API_KEY` | LLM (`https://api.minimax.io/v1`, model `MiniMax-Text-01`) |
-| `tavily_api_key` | `TAVILY_API_KEY` | web-mode search (tool omitted if unset) |
-| `exa_api_key` | `EXA_API_KEY` | web-mode search (tool omitted if unset) |
+| `tavily_api_key` | `TAVILY_API_KEY` | web search in every mode (tool omitted if unset) |
+| `exa_api_key` | `EXA_API_KEY` | web search in every mode (tool omitted if unset) |
 | `stt_provider`, `openai_api_key` | `PHOENIX_STT_PROVIDER`, `OPENAI_API_KEY` | the plasmoid's speech-to-text: provider (`minimax` default) and its key — read by the widget, not the daemon |
 | `model`, `llm_base_url`, `max_turns`, `credential_ttl_seconds`, bash timeouts … | `PHOENIX_MODEL`, `PHOENIX_BASE_URL`, … | see `config-example.toml` |
 
 Optional `~/.config/phoenix-dna/PHOENIX.md` (or `AGENTS.md`) is appended to the
 system prompt as extra user instructions.
 
-State lives under `~/.local/state/phoenix-dna/`: `sessions/<mode>/<id>.jsonl`
-(append-only transcripts) and `scratch/web/`.
+State lives under `~/.local/state/phoenix-dna/`: `users/<user>/sessions.db`
+(the per-user SQLite history; `sessions/<mode>/<id>.jsonl` is the legacy
+append-only store, imported once), `attachments/<run_id>/` (the files staged
+for a prompt) and `repl_history`.
 
 ## Running
 
@@ -154,12 +158,12 @@ exercising the agent without the plasmoid:
 
 ```sh
 ./.venv/bin/python -m phoenix_dna.repl                  # embedded daemon, real MiniMax
-./.venv/bin/python -m phoenix_dna.repl --mode web       # start in web mode
+./.venv/bin/python -m phoenix_dna.repl --mode root      # start in root mode
 ./.venv/bin/python -m phoenix_dna.repl --provider fake  # no API key needed
 ./.venv/bin/python -m phoenix_dna.repl --dbus           # drive a running daemon via D-Bus
 ```
 
-Commands: `/mode root|user|web`, `/new` (fresh session), `/session`, `/modes`,
+Commands: `/mode root|user`, `/new` (fresh session), `/session`, `/modes`,
 `/state`, `/help`, `/quit`. Plain text is submitted in the current mode;
 follow-ups continue the same session; **Ctrl+C while a run is active cancels
 it**; root mode pops the real kdialog password prompt (cached for 15 min).
@@ -169,14 +173,14 @@ it**; root mode pops the real kdialog password prompt (cached for 15 min).
 in `<data_dir>/repl_history` (`--history FILE` to override, `--no-history` to
 disable; blank lines and consecutive duplicates are not recorded). **TAB**
 completes slash commands (`/mo<TAB>` → `/mode`, `/modes`), the `/mode`
-argument (`/mode we<TAB>` → `web`), and file paths — including `~` expansion
+argument (`/mode us<TAB>` → `user`), and file paths — including `~` expansion
 and a trailing `/` on directories (`read ~/Doc<TAB>`).
 
-Live example (real MiniMax, web mode):
+Live example (real MiniMax, user mode):
 
 ```
-phoenix:web> How many days until the 5th of November next year? ...
-── run run_f688b923bdb3 · web · session c3e3e33918ea
+phoenix:user> How many days until the 5th of November next year? ...
+── run run_f688b923bdb3 · user · session c3e3e33918ea
   ⚒ bash {"command": "date -d '2027-11-05' +%j; date +%j"}
   ✓ 309 ⎪ 305 ⎪ [exit 0]
 The 5th of November next year is 4 days away from today.

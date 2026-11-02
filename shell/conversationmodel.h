@@ -21,7 +21,7 @@
  * - \c prompt    the user's prompt (plain text, empty for runs not started
  *                from this widget)
  * - \c sender    who issued the prompt: "root" in root mode, the local
- *                user's login name in user mode, "anon" in web mode; empty
+ *                user's login name in user mode; empty
  *                for runs not started from this widget
  * - \c result    the answer so far (Markdown; still streaming while
  *                \c running)
@@ -65,7 +65,7 @@ public:
     void reset();
 
     /*! \brief Starts a new exchange: appends a row with the given prompt
-     *  and its sender ("root", the login name, or "anon"). */
+     *  and its sender ("root" or the login name). */
     void beginExchange(const QString &prompt, const QString &sender);
 
     /*! \brief Appends streamed answer text to the current exchange. */

@@ -110,8 +110,7 @@ class AgentDaemon:
         )
         self._password_provider = password_provider  # None -> KDialog lazily
         self._emitter = emitter or (lambda event: None)
-        # One SQLite database per user (root / the local login name; the
-        # anonymous web mode files into the local user's database). The
+        # One SQLite database per user (root / the local login name). The
         # legacy JSONL store, if present, is imported into it once.
         self._sessions = SessionManager(
             SessionStore(config.data_dir / "users", config.data_dir / "sessions")
@@ -413,7 +412,9 @@ class AgentDaemon:
         tools = build_toolset(profile, self.config, credential_cache=credential_cache)
         conversation = self._sessions.get(job.mode.value, job.session_id)
         system_prompt = build_system_prompt(
-            profile, extra_context=load_context_file(self.config)
+            profile,
+            tool_names=tuple(tools),
+            extra_context=load_context_file(self.config),
         )
 
         # The files the user attached to the prompt are copied into the

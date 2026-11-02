@@ -41,24 +41,25 @@ MODE user - everyday assistant.
   user's home directory (~).
 - You may read and edit files, run applications, and use standard CLI tools
   (systemctl --user, nmcli, kdialog, flatpak, git, ...).""",
-    Mode.WEB: """\
-MODE web - general knowledge and research.
-- Answer general-purpose questions. You do not have access to the user's
-  personal files in this mode.
-- Use the search tools (tavily_search, exa_search) for anything that depends
-  on current or specific facts, and cite the source URLs.
-- For exact date arithmetic or calculations, compute them with the bash tool
-  (date, python3) instead of guessing. The working directory is a private
-  empty scratch directory.""",
 }
+
+#: Appended to the mode block when at least one search tool is actually
+#: registered. The prompt must not advertise tools the run does not have:
+#: the model would otherwise refuse ("I cannot search the web") exactly
+#: like it did before the tools were wired into these modes.
+_SEARCH_LINE = (
+    "- Web search tools ({names}) are available: use them for anything "
+    "that depends on current or specific facts, and cite the source URLs."
+)
 
 _STYLE = """\
 Tool use:
 - Call tools one step at a time and reason about each result before the next.
 - Commands run without a terminal and stdin is closed: nobody can answer
   interactive prompts, so a command that asks a question just fails. Always
-  use non-interactive flags (dnf -y, flatpak install -y, pip --no-input,
-  ...) and pass an explicit timeout for slow commands like package installs.
+  use non-interactive flags (dnf -y, apt-get -y, flatpak install -y,
+  pip --no-input, ...) and pass an explicit timeout for slow commands like
+  package installs.
 - Tool errors are normal: read the message and adjust, do not repeat a
   failing call unchanged.
 - When the task is done, reply with the final answer only - no preamble.
@@ -121,12 +122,27 @@ def build_title_messages(exchanges: list[tuple[str, str]]) -> list[dict]:
     ]
 
 
-def build_system_prompt(profile: ModeProfile, extra_context: str | None = None) -> str:
+def build_system_prompt(
+    profile: ModeProfile,
+    extra_context: str | None = None,
+    tool_names: tuple[str, ...] | list[str] = (),
+) -> str:
+    """Assemble the system prompt for a mode run.
+
+    ``tool_names`` are the tools actually registered for the run (the
+    daemon passes the built toolset's keys): the search line is appended
+    only when a search tool is among them, so the prompt never advertises
+    a tool the model cannot call.
+    """
     now = _dt.datetime.now().strftime("%A, %Y-%m-%d %H:%M")
+    mode_block = _MODE_BLOCKS[profile.mode]
+    search_names = [n for n in tool_names if n in ("tavily_search", "exa_search")]
+    if search_names:
+        mode_block += "\n" + _SEARCH_LINE.format(names=", ".join(search_names))
     parts = [
         _IDENTITY,
         "",
-        _MODE_BLOCKS[profile.mode],
+        mode_block,
         "",
         _STYLE.format(now=now),
     ]

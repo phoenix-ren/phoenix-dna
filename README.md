@@ -9,7 +9,7 @@ A voice-first desktop AI agent for KDE Plasma 6, packaged as a plasmoid
 (panel widget) plus a Python D-Bus daemon.
 
 The plasmoid captures speech, transcribes it, and forwards the text to the
-agent daemon over D-Bus. The daemon runs an LLM tool loop in one of three
+agent daemon over D-Bus. The daemon runs an LLM tool loop in one of two
 modes, streams progress back, and renders the result in a fully-fledged results window.
 
 The panel's search button (or Meta+Alt+`) opens the session search: the

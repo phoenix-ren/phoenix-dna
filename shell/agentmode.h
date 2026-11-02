@@ -16,12 +16,11 @@
  * \li \c Root — escalates through the agent daemon (KDE password dialog,
  *     sudo); working directory is /.
  * \li \c User — no escalation, working directory is the user's home.
- * \li \c Web — no filesystem context at all; for general knowledge queries.
  * \endlist
  *
  * The mode values are exposed to QML through this Q_NAMESPACE: QML reads
- * them as \c AgentMode.Root, \c AgentMode.User and \c AgentMode.Web. The
- * enum here stays the single source of truth for both C++ and QML.
+ * them as \c AgentMode.Root and \c AgentMode.User. The enum here stays
+ * the single source of truth for both C++ and QML.
  *
  * \note This must be a namespace, not a QObject class: a QML_ANONYMOUS or
  * QML_UNCREATABLE type cannot resolve \c Type.Value enum lookups from QML,
@@ -37,7 +36,6 @@ enum Mode
 {
     Root = 0, ///< Elevated via KAuth; working directory "/".
     User = 1, ///< Unprivileged; working directory "~".
-    Web = 2, ///< No directory context; general queries.
 };
 Q_ENUM_NS(Mode)
 

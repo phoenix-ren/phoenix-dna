@@ -17,9 +17,6 @@ QString workingDirectory(Mode mode)
     case User:
         // Everyday personal work operates in the user's home.
         return QDir::homePath();
-    case Web:
-        // General queries have no filesystem context at all.
-        return QString();
     }
     return QString();
 }
@@ -39,8 +36,6 @@ QString iconName(Mode mode)
     case User:
         // The home icon is the universal shorthand for the user's context.
         return QStringLiteral("go-home-symbolic");
-    case Web:
-        return QStringLiteral("globe-symbolic");
     }
     return QString();
 }
@@ -54,8 +49,6 @@ QString modeName(Mode mode)
         return QStringLiteral("root");
     case User:
         return QStringLiteral("user");
-    case Web:
-        return QStringLiteral("web");
     }
     return QString();
 }
@@ -67,8 +60,6 @@ QString displayName(Mode mode)
         return QStringLiteral("Root");
     case User:
         return QStringLiteral("User");
-    case Web:
-        return QStringLiteral("Web");
     }
     return QString();
 }

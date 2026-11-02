@@ -589,13 +589,10 @@ void AgentBridge::onToolCallFinished(const QString &runId,
 QString AgentBridge::senderNameForMode(const QString &mode)
 {
     // The pane's bubbles point at whoever (or what) issued the prompt:
-    // root prompts come from "root", web prompts are anonymous, and user
-    // prompts carry the actual login name.
+    // root prompts come from "root", user prompts carry the actual login
+    // name.
     if (mode == QLatin1String("root")) {
         return QStringLiteral("root");
-    }
-    if (mode == QLatin1String("web")) {
-        return QStringLiteral("anon");
     }
     return localUserName();
 }

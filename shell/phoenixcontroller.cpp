@@ -335,8 +335,8 @@ QString PhoenixController::searchShortcut() const
 QString PhoenixController::searchUser() const
 {
     // The daemon files sessions per user: root-mode runs belong to
-    // "root", everything else (user and web mode) to the local login
-    // name. The search follows the mode the widget is in.
+    // "root", everything else (user mode) to the local login name.
+    // The search follows the mode the widget is in.
     if (m_mode == static_cast<int>(AgentMode::Mode::Root)) {
         return QStringLiteral("root");
     }

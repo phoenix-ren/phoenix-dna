@@ -146,10 +146,10 @@ def test_wait_for_run_returns_only_the_matching_finish():
 
 
 def test_dbus_signal_to_event():
-    assert dbus_signal_to_event("RunStarted", "r1", "web", "s9") == {
+    assert dbus_signal_to_event("RunStarted", "r1", "user", "s9") == {
         "kind": "run_started",
         "run_id": "r1",
-        "mode": "web",
+        "mode": "user",
         "session_id": "s9",
     }
     assert dbus_signal_to_event("TextDelta", "r1", "chunk") == {
