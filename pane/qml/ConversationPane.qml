@@ -4,6 +4,8 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
+import QtCore
+import Qt.labs.settings as LabsSettings
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
@@ -32,7 +34,12 @@ import org.kde.kirigami as Kirigami
  *
  * The pane is user-sizable: the right and bottom edges (and the bottom-
  * right corner) drag-resize it, and the header has a maximize/restore
- * button next to the close button.
+ * button next to the close button. The header itself drags the window:
+ * once moved, the pane pops up at that position from then on — persisted
+ * (with the dragged size) across plasmashell restarts in the XDG state
+ * directory, so the user arranges it once and finds it where they left it.
+ * While never moved, the pane keeps floating next to the widget that
+ * triggered it.
  *
  * The shell binds the conversation model and the dictation state
  * (transcript/listening/transcribing/statusMessage); the pane itself is
@@ -92,6 +99,14 @@ PlasmaCore.Dialog {
     property real userWidth: 0
     property real userHeight: 0
 
+    // ---- User position ---------------------------------------------------
+    // Where the user dragged the pane to (-1 = never moved: the Dialog
+    // floats next to the anchor item). Once set, this position wins for
+    // every future show and is persisted across restarts (see the
+    // geometry store inside the content item).
+    property real userX: -1
+    property real userY: -1
+
     // Whether the pane currently fills the screen (the header's maximize
     // button toggles this; the pre-maximize size is kept for restore).
     property bool maximized: false
@@ -101,6 +116,61 @@ PlasmaCore.Dialog {
 
     readonly property real minPaneWidth: Kirigami.Units.gridUnit * 12
     readonly property real minPaneHeight: Kirigami.Units.gridUnit * 8
+
+    // Restores the remembered geometry once, when the pane is created; the
+    // dragged size feeds the same userWidth/userHeight the resize handles
+    // use, the dragged position the same userX/userY the header drag does.
+    Component.onCompleted: {
+        userX = geometryStore.paneX
+        userY = geometryStore.paneY
+        if (geometryStore.paneWidth > 0) {
+            userWidth = geometryStore.paneWidth
+        }
+        if (geometryStore.paneHeight > 0) {
+            userHeight = geometryStore.paneHeight
+        }
+    }
+
+    // Keeps part of the pane on screen however far the user drags it.
+    function clampX(x) {
+        return Math.max(
+            -(conversationPane.width - Kirigami.Units.gridUnit * 4),
+            Math.min(Screen.width - Kirigami.Units.gridUnit * 4, x))
+    }
+
+    function clampY(y) {
+        return Math.max(
+            0,
+            Math.min(Screen.desktopAvailableHeight - minPaneHeight, y))
+    }
+
+    // Puts the window at the user's remembered position; a no-op while the
+    // pane has never been moved (the Dialog then keeps its own placement
+    // next to the anchor item). Called right after the window becomes
+    // visible — also via callLater, so it wins over the Dialog's own
+    // placement pass, which may run a frame later.
+    function applyPosition() {
+        if (userX < 0 || userY < 0) {
+            return
+        }
+        conversationPane.x = clampX(userX)
+        conversationPane.y = clampY(userY)
+    }
+
+    // Remembers the current position for this and every future show.
+    function savePosition() {
+        userX = conversationPane.x
+        userY = conversationPane.y
+        geometryStore.paneX = Math.round(userX)
+        geometryStore.paneY = Math.round(userY)
+    }
+
+    // Remembers the current size for future sessions (sizes persist within
+    // a session anyway, through userWidth/userHeight).
+    function saveSize() {
+        geometryStore.paneWidth = Math.round(conversationPane.width)
+        geometryStore.paneHeight = Math.round(conversationPane.height)
+    }
 
     location: PlasmaCore.Types.Floating
     type: PlasmaCore.Dialog.WindowType.DialogWindow
@@ -151,6 +221,10 @@ PlasmaCore.Dialog {
         scroller.pinnedToBottom = true
         visible = true
         opacity = 1
+        // The user's remembered position (if any) wins over the Dialog's
+        // own placement next to the anchor item.
+        applyPosition()
+        Qt.callLater(applyPosition)
     }
 
     // Opens the pane for a streaming run: the run's text and tool log
@@ -160,6 +234,8 @@ PlasmaCore.Dialog {
         scroller.pinnedToBottom = true
         visible = true
         opacity = 1
+        applyPosition()
+        Qt.callLater(applyPosition)
     }
 
     // Manual toggle, e.g. from the applet: bring the conversation back up,
@@ -204,7 +280,8 @@ PlasmaCore.Dialog {
 
     // Maximize fills the screen's available area; restore returns to the
     // size the pane had before (the dragged size if the user had set one,
-    // otherwise the automatic content-driven sizing).
+    // otherwise the automatic content-driven sizing) — and, if the pane had
+    // been moved, back to the remembered position.
     function toggleMaximized() {
         if (!maximized) {
             normalWidth = conversationPane.width
@@ -220,6 +297,9 @@ PlasmaCore.Dialog {
                 userWidth = normalWidth
                 userHeight = normalHeight
             }
+            applySize()
+            applyPosition()
+            return
         }
         applySize()
     }
@@ -235,6 +315,23 @@ PlasmaCore.Dialog {
 
         focus: true
         Keys.onEscapePressed: conversationPane.dismiss()
+
+        // The dragged geometry, persisted across plasmashell restarts in an
+        // INI file under the XDG state directory. Property writes sync to
+        // disk lazily, so the writes on drag release are cheap. Declared
+        // inside the content item on purpose: the Dialog's default property
+        // is mainItem, so a bare child object would clobber it.
+        LabsSettings.Settings {
+            id: geometryStore
+
+            category: "Geometry"
+            fileName: StandardPaths.writableLocation(StandardPaths.GenericStateLocation)
+                + "/phoenix-dna/pane-geometry.ini"
+            property int paneX: -1
+            property int paneY: -1
+            property real paneWidth: 0
+            property real paneHeight: 0
+        }
 
         implicitWidth: conversationPane.maximized
             ? Screen.width - 2 * Kirigami.Units.gridUnit
@@ -290,6 +387,7 @@ PlasmaCore.Dialog {
             }
 
             RowLayout {
+                id: headerRow
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.smallSpacing
 
@@ -299,12 +397,56 @@ PlasmaCore.Dialog {
                     source: "dialog-information"
                 }
 
-                Kirigami.Heading {
+                // The title area is the move handle: dragging it moves the
+                // whole window. The delta is computed in global screen
+                // coordinates from the press-time anchor — the same scheme
+                // as the resize handles — because the window's own origin
+                // moves under the cursor as the Dialog applies the move
+                // asynchronously on Wayland.
+                Item {
                     Layout.fillWidth: true
-                    // KF6 6.31 has no Kirigami.Heading.Level enum; levels are plain ints.
-                    level: 3
-                    text: i18n("Conversation")
-                    color: "#f2f2f2"
+                    implicitHeight: paneHeading.implicitHeight
+
+                    Kirigami.Heading {
+                        id: paneHeading
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        // KF6 6.31 has no Kirigami.Heading.Level enum; levels are plain ints.
+                        level: 3
+                        text: i18n("Conversation")
+                        color: "#f2f2f2"
+                    }
+
+                    MouseArea {
+                        objectName: "moveHeader"
+
+                        anchors.fill: parent
+                        enabled: !conversationPane.maximized
+                        cursorShape: Qt.SizeAllCursor
+
+                        property point pressGlobal: Qt.point(0, 0)
+                        property point startPos: Qt.point(0, 0)
+                        property bool moved: false
+
+                        onPressed: (mouse) => {
+                            pressGlobal = mapToGlobal(mouse.x, mouse.y)
+                            startPos = Qt.point(conversationPane.x, conversationPane.y)
+                            moved = false
+                        }
+                        onPositionChanged: (mouse) => {
+                            if (!pressed) {
+                                return
+                            }
+                            const global = mapToGlobal(mouse.x, mouse.y)
+                            conversationPane.x = conversationPane.clampX(startPos.x + global.x - pressGlobal.x)
+                            conversationPane.y = conversationPane.clampY(startPos.y + global.y - pressGlobal.y)
+                            moved = true
+                        }
+                        onReleased: if (moved) {
+                            conversationPane.savePosition()
+                        }
+                    }
                 }
 
                 // The pane persists until closed by hand; maximize makes
@@ -804,6 +946,7 @@ PlasmaCore.Dialog {
                              startWidth + global.x - pressGlobal.x))
                 conversationPane.applySize()
             }
+            onReleased: conversationPane.saveSize()
         }
 
         MouseArea {
@@ -833,6 +976,7 @@ PlasmaCore.Dialog {
                              startHeight + global.y - pressGlobal.y))
                 conversationPane.applySize()
             }
+            onReleased: conversationPane.saveSize()
         }
 
         MouseArea {
@@ -867,6 +1011,7 @@ PlasmaCore.Dialog {
                              startHeight + global.y - pressGlobal.y))
                 conversationPane.applySize()
             }
+            onReleased: conversationPane.saveSize()
         }
     }
 }
