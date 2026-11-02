@@ -69,6 +69,11 @@ PlasmaCore.Dialog {
     property string currentSessionId: ""
     property int currentIndex: -1
 
+    // The gap between two paragraphs of the agent's Markdown, which Qt
+    // renders with none at all (see MarkdownDocument.spaceParagraphs).
+    readonly property real paragraphSpacing:
+        Math.round(Qt.application.font.pixelSize * 0.45)
+
     // While the query field is cleared on opening, its text change must
     // not trigger a second search.
     property bool clearingQuery: false
@@ -393,6 +398,9 @@ PlasmaCore.Dialog {
                         model: searchOverlay.summaries
                         boundsBehavior: Flickable.StopAtBounds
 
+                        // The scrollbar for a long session list.
+                        PC3.ScrollBar.vertical: PC3.ScrollBar {}
+
                         // The selection is the overlay's: the list only
                         // shows it (and scrolls to it).
                         delegate: Rectangle {
@@ -505,6 +513,9 @@ PlasmaCore.Dialog {
                         contentWidth: width
                         contentHeight: transcriptColumn.implicitHeight
 
+                        // The scrollbar for a long conversation.
+                        PC3.ScrollBar.vertical: PC3.ScrollBar {}
+
                         ColumnLayout {
                             id: transcriptColumn
 
@@ -586,12 +597,17 @@ PlasmaCore.Dialog {
                                         Layout.fillWidth: true
                                         visible: !message.fromUser
 
-                                        text: message.contentText
+                                        // The agent's answers arrive as
+                                        // Markdown with LaTeX math.
+                                        text: MarkdownDocument.renderMath(message.contentText)
                                         // The agent answers in Markdown;
                                         // the query was plain speech.
                                         textFormat: TextEdit.MarkdownText
                                         wrapMode: Text.WordWrap
                                         color: PhoenixTheme.primaryTextColor
+                                        onTextChanged: MarkdownDocument.spaceParagraphs(
+                                            textDocument,
+                                            searchOverlay.paragraphSpacing)
                                     }                                }
                             }
                         }
