@@ -9,6 +9,7 @@
 
 #include "agentmode.h"
 #include "promptattachments.h"
+#include "windowscreenshotpicker.h"
 
 #include <QUrl>
 
@@ -54,6 +55,9 @@ class PhoenixController : public QObject
      * the prompt the next one submits. */
     Q_PROPERTY(PromptAttachments *attachments READ attachments CONSTANT)
 
+    /*! \brief The picker that photographs a window of the desktop. */
+    Q_PROPERTY(WindowScreenshotPicker *screenshotPicker READ screenshotPicker CONSTANT)
+
 public:
     explicit PhoenixController(QObject *parent = nullptr);
     ~PhoenixController() override;
@@ -91,6 +95,16 @@ public:
 
     /*! \brief Removes the attachment at \a index from the prompt. */
     Q_INVOKABLE void removeAttachment(int index);
+
+    /*! \brief The picker that photographs a window of the desktop. */
+    WindowScreenshotPicker *screenshotPicker() const { return m_screenshotPicker; }
+
+    /*! \brief Starts the window picker: the user clicks a window of the
+     *  desktop and its picture is attached to the prompt.
+     *
+     * The same thing the global shortcut does; the buttons call it so the
+     * feature is discoverable. */
+    Q_INVOKABLE void startScreenshot();
 
     /*! \brief The icon representing the given mode. */
     Q_INVOKABLE QString modeIconName(int mode) const;
@@ -141,6 +155,7 @@ private:
     ClipRecorder *m_clipRecorder = nullptr;
     Transcriber *m_transcriber = nullptr;
     PromptAttachments *m_attachments = nullptr;
+    WindowScreenshotPicker *m_screenshotPicker = nullptr;
     QAction *m_toggleShortcut = nullptr;
     bool m_recording = false;
     bool m_transcribing = false;

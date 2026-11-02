@@ -33,6 +33,10 @@ plasma_add_applet(org.phoenixdna.agent
         cliprecorder.h
         promptattachments.cpp
         promptattachments.h
+        pickerhoverservice.cpp
+        pickerhoverservice.h
+        windowscreenshotpicker.cpp
+        windowscreenshotpicker.h
         transcriber.cpp
         transcriber.h
         agentmode.cpp

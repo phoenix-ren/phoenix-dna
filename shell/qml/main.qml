@@ -126,6 +126,12 @@ PlasmoidItem {
         onAttachmentAdded: (file) => Phoenix.PhoenixController.addAttachment(file)
         onAttachmentRemoved: (index) => Phoenix.PhoenixController.removeAttachment(index)
 
+        // The window picker: it photographs a window of the desktop and
+        // attaches the picture to this prompt.
+        screenshotPicking: Phoenix.PhoenixController.screenshotPicker.picking
+        screenshotShortcut: Phoenix.PhoenixController.screenshotPicker.shortcut
+        onScreenshotRequested: Phoenix.PhoenixController.startScreenshot()
+
         // Closing abandons the dictation; nothing is sent.
         onClosed: {
             dictationOverlay.visible = false;
@@ -170,6 +176,12 @@ PlasmoidItem {
 
         onAttachmentAdded: (file) => Phoenix.PhoenixController.addAttachment(file)
         onAttachmentRemoved: (index) => Phoenix.PhoenixController.removeAttachment(index)
+
+        // The window picker: it photographs a window of the desktop and
+        // attaches the picture to this follow-up.
+        screenshotPicking: Phoenix.PhoenixController.screenshotPicker.picking
+        screenshotShortcut: Phoenix.PhoenixController.screenshotPicker.shortcut
+        onScreenshotRequested: Phoenix.PhoenixController.startScreenshot()
 
         // The daemon names the session after every completed run (and
         // renames it when follow-ons reshape the conversation); the
