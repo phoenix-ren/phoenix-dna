@@ -84,8 +84,14 @@ public:
     /*! \brief Shows or hides the conversation pane. */
     Q_INVOKABLE void toggleConversationPane();
 
-    /*! \brief Sends the given text to the agent as if it had been dictated. */
-    Q_INVOKABLE void submitText(const QString &text);
+    /*! \brief Sends the given text to the agent.
+     *
+     * With \a newSession (record button on the desktop pane: the query
+     * starts a fresh conversation) the daemon opens a new session and the
+     * pane's history restarts; without it the query continues the
+     * conversation on screen (follow-ons from the pane's input bar or its
+     * record button). */
+    Q_INVOKABLE void submitText(const QString &text, bool newSession);
 
 Q_SIGNALS:
     void modeChanged();

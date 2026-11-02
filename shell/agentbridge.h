@@ -72,7 +72,11 @@
  * following SubmitPrompt, so follow-on queries — typed or dictated from the
  * results pane — continue that history. The id is dropped when the mode
  * changes: sessions are filed per mode by the daemon, and a root follow-on
- * must not land in the user session.
+ * must not land in the user session. Submitting with the new-session intent
+ * (sendPrompt(prompt, true), wired to the panel's record button — a fresh
+ * conversation starts there) also drops the id *and* restarts the pane's
+ * history when the run begins, so earlier, unrelated conversations never
+ * bleed into a new one; prompts from the pane keep the id and append.
  *
  * The tool log is Markdown (each tool call's arguments and output in
  * fenced code blocks), which the results pane renders under the answer —
@@ -146,12 +150,13 @@ public:
 
     /*! \brief Sends a prompt to the live agent daemon.
      *
-     * Spoken with the widget's currently selected mode and the session id
-     * of the conversation this widget's last run ran in: follow-on queries
-     * — from the results pane's input bar, or the dictation overlay —
-     * continue that history. An empty id (nothing started yet, or the mode
-     * just changed) makes the daemon begin a fresh conversation. */
-    Q_INVOKABLE void sendPrompt(const QString &prompt);
+     * With \a newSession the widget's remembered session id is dropped, so
+     * the daemon starts a fresh conversation (and the pane's history
+     * restarts at the run's first output); otherwise the prompt continues
+     * the conversation of the widget's latest run. An empty id either way
+     * (nothing started yet, or the mode just changed) makes the daemon
+     * begin a fresh conversation. */
+    Q_INVOKABLE void sendPrompt(const QString &prompt, bool newSession);
 
     /*! \brief Asks the daemon to clean up a finished transcript.
      *
@@ -286,13 +291,16 @@ private:
     QTimer m_deltaTimer;
     // Prompts sent whose runs have not begun yet, each with the daemon
     // mode name at submit time (the sender attribution of the exchange:
-    // the mode can change before the daemon starts the queued prompt).
-    // FIFO: the daemon executes prompts in submission order, so
-    // RunStarted pairs the queue's head with the row it opens.
+    // the mode can change before the daemon starts the queued prompt) and
+    // whether it was submitted as a *new* session — those restart the
+    // pane's history at RunStarted. FIFO: the daemon executes prompts in
+    // submission order, so RunStarted pairs the queue's head with the row
+    // it opens.
     struct QueuedPrompt
     {
         QString text;
         QString mode;
+        bool newSession = false;
     };
     QList<QueuedPrompt> m_pendingPrompts;
     // The session id reported by RunStarted for the latest run this widget

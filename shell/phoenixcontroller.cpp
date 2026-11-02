@@ -245,7 +245,7 @@ void PhoenixController::toggleConversationPane()
     Q_EMIT conversationPaneRequested();
 }
 
-void PhoenixController::submitText(const QString &text)
+void PhoenixController::submitText(const QString &text, bool newSession)
 {
     if (text.isEmpty()) {
         return;
@@ -264,5 +264,5 @@ void PhoenixController::submitText(const QString &text)
     // The query is generated and on its way; the pane no longer opens here.
     // It appears by itself when the daemon's answer arrives — see
     // AgentBridge::onRunFinished().
-    m_agent->sendPrompt(text);
+    m_agent->sendPrompt(text, newSession);
 }

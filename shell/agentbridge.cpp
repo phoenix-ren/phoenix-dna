@@ -147,15 +147,20 @@ void AgentBridge::setMode(const QString &mode)
     QDBusConnection::sessionBus().asyncCall(message);
 }
 
-void AgentBridge::sendPrompt(const QString &prompt)
+void AgentBridge::sendPrompt(const QString &prompt, bool newSession)
 {
     // SubmitPrompt(prompt, mode, session_id): the session id continues the
-    // conversation of the widget's latest run (empty starts a fresh one —
-    // the daemon does not continue anything on an empty id by itself). The
-    // text and the mode are remembered so RunStarted can pair them with
-    // the run they begin (queued prompts begin in submission order) — the
-    // mode is what names the exchange's sender in the pane's history.
-    m_pendingPrompts.append({prompt, m_modeName});
+    // conversation of the widget's latest run — unless the prompt starts a
+    // new session (record button on the desktop pane): the id is dropped,
+    // so the daemon opens a fresh conversation. The text, mode and intent
+    // are remembered so RunStarted can pair them with the run they begin
+    // (queued prompts begin in submission order) — the mode names the
+    // exchange's sender in the pane's history, the intent decides whether
+    // that history restarts.
+    if (newSession) {
+        m_sessionId.clear();
+    }
+    m_pendingPrompts.append({prompt, m_modeName, newSession});
     QDBusMessage message = QDBusMessage::createMethodCall(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("SubmitPrompt"));
     message << prompt << m_modeName << m_sessionId;
@@ -290,20 +295,25 @@ void AgentBridge::onRunStarted(const QString &runId, const QString &mode, const 
     Q_UNUSED(runId)
     Q_UNUSED(mode)
 
-    // A fresh run opens a new row in the pane's history; the previous rows
-    // keep their results, so follow-on questions flow downwards. The
-    // daemon runs one prompt at a time, so no run-id matching is needed
-    // here. A run that consumed one of our queued prompts is one we
-    // started: its prompt pairs with the row, and its session id is the
-    // conversation every following sendPrompt() continues. Runs begun
-    // elsewhere (e.g. the REPL) do not adopt their session — the widget
-    // keeps following its own thread.
+    // A fresh run opens a row in the pane's history. A run submitted as a
+    // *new session* (record button on the desktop pane) first drops the
+    // history: earlier, unrelated conversations must not bleed into the
+    // new one. Follow-on runs (record button or input field in the pane)
+    // append below the existing rows instead. The daemon runs one prompt
+    // at a time, so no run-id matching is needed here. A run that consumed
+    // one of our queued prompts is one we started: its prompt pairs with
+    // the row, and its session id is the conversation every following
+    // sendPrompt() continues. Runs begun elsewhere (e.g. the REPL) do not
+    // adopt their session — the widget keeps following its own thread.
     const bool ours = !m_pendingPrompts.isEmpty();
     m_streaming = false;
     m_deltaTimer.stop();
     m_pendingDelta.clear();
     if (ours) {
         const QueuedPrompt queued = m_pendingPrompts.takeFirst();
+        if (queued.newSession) {
+            m_conversation.reset();
+        }
         m_conversation.beginExchange(queued.text, senderNameForMode(queued.mode));
     } else {
         m_conversation.beginExchange(QString(), QString());
