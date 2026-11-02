@@ -767,6 +767,16 @@ PlasmaCore.Dialog {
         // Frameless window, so the edges carry invisible drag strips: right
         // and bottom resize, the corner does both. They are only needed in
         // the normal state (maximized fills the screen already).
+        //
+        // All three compute the drag delta in *global* screen coordinates,
+        // captured once at press time. Item-relative deltas cannot work
+        // here: the handle moves with the window between the pointer event
+        // and the Dialog applying the resize (window geometry lands
+        // asynchronously on Wayland), so a bottom-right drag would measure
+        // the window's own motion against itself — the drag cancels itself
+        // (no height gain) and resizes jaggedly, bouncing back as the
+        // geometry catches up. Global deltas are anchored to the screen and
+        // immune to all of it.
         MouseArea {
             objectName: "resizeRight"
 
@@ -777,20 +787,22 @@ PlasmaCore.Dialog {
             width: Kirigami.Units.largeSpacing
             cursorShape: Qt.SizeHorCursor
 
-            property real pressX: 0
+            property point pressGlobal: Qt.point(0, 0)
             property real startWidth: 0
 
             onPressed: (mouse) => {
-                pressX = mouse.x
-                startWidth = content.width
+                pressGlobal = mapToGlobal(mouse.x, mouse.y)
+                startWidth = conversationPane.width
             }
             onPositionChanged: (mouse) => {
-                if (pressed) {
-                    conversationPane.userWidth = Math.max(conversationPane.minPaneWidth,
-                        Math.min(Screen.width - 2 * Kirigami.Units.gridUnit,
-                                 startWidth + mouse.x - pressX))
-                    conversationPane.applySize()
+                if (!pressed) {
+                    return
                 }
+                const global = mapToGlobal(mouse.x, mouse.y)
+                conversationPane.userWidth = Math.max(conversationPane.minPaneWidth,
+                    Math.min(Screen.width - 2 * Kirigami.Units.gridUnit,
+                             startWidth + global.x - pressGlobal.x))
+                conversationPane.applySize()
             }
         }
 
@@ -804,20 +816,22 @@ PlasmaCore.Dialog {
             height: Kirigami.Units.largeSpacing
             cursorShape: Qt.SizeVerCursor
 
-            property real pressY: 0
+            property point pressGlobal: Qt.point(0, 0)
             property real startHeight: 0
 
             onPressed: (mouse) => {
-                pressY = mouse.y
-                startHeight = content.height
+                pressGlobal = mapToGlobal(mouse.x, mouse.y)
+                startHeight = conversationPane.height
             }
             onPositionChanged: (mouse) => {
-                if (pressed) {
-                    conversationPane.userHeight = Math.max(conversationPane.minPaneHeight,
-                        Math.min(Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit,
-                                 startHeight + mouse.y - pressY))
-                    conversationPane.applySize()
+                if (!pressed) {
+                    return
                 }
+                const global = mapToGlobal(mouse.x, mouse.y)
+                conversationPane.userHeight = Math.max(conversationPane.minPaneHeight,
+                    Math.min(Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit,
+                             startHeight + global.y - pressGlobal.y))
+                conversationPane.applySize()
             }
         }
 
@@ -831,27 +845,27 @@ PlasmaCore.Dialog {
             height: Kirigami.Units.gridUnit
             cursorShape: Qt.SizeFDiagCursor
 
-            property real pressX: 0
-            property real pressY: 0
+            property point pressGlobal: Qt.point(0, 0)
             property real startWidth: 0
             property real startHeight: 0
 
             onPressed: (mouse) => {
-                pressX = mouse.x
-                pressY = mouse.y
-                startWidth = content.width
-                startHeight = content.height
+                pressGlobal = mapToGlobal(mouse.x, mouse.y)
+                startWidth = conversationPane.width
+                startHeight = conversationPane.height
             }
             onPositionChanged: (mouse) => {
-                if (pressed) {
-                    conversationPane.userWidth = Math.max(conversationPane.minPaneWidth,
-                        Math.min(Screen.width - 2 * Kirigami.Units.gridUnit,
-                                 startWidth + mouse.x - pressX))
-                    conversationPane.userHeight = Math.max(conversationPane.minPaneHeight,
-                        Math.min(Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit,
-                                 startHeight + mouse.y - pressY))
-                    conversationPane.applySize()
+                if (!pressed) {
+                    return
                 }
+                const global = mapToGlobal(mouse.x, mouse.y)
+                conversationPane.userWidth = Math.max(conversationPane.minPaneWidth,
+                    Math.min(Screen.width - 2 * Kirigami.Units.gridUnit,
+                             startWidth + global.x - pressGlobal.x))
+                conversationPane.userHeight = Math.max(conversationPane.minPaneHeight,
+                    Math.min(Screen.desktopAvailableHeight - 2 * Kirigami.Units.gridUnit,
+                             startHeight + global.y - pressGlobal.y))
+                conversationPane.applySize()
             }
         }
     }
