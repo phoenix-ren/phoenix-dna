@@ -27,7 +27,7 @@ continued.
 | `resultswindow/` | Fully-fledged results window for conversation output        |
 | `search/`    | Session search: the previous sessions, listed by name           |
 | `settingswindow/` | Settings window: appearance, API keys and global shortcuts |
-| `theme/`     | Shared colour-scheme singleton every window is themed through   |
+| `theme/`     | Shared colour-scheme singleton and Markdown presentation helpers |
 | `waveform/`  | Offline `.wav` → `.png` waveform renderer                       |
 | `widgettest/`| Developer testbench that hosts the widget in a plain window      |
 | `agent/`     | Python agent daemon (`phoenix-dna-agent`), a D-Bus service          |

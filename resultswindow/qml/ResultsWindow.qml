@@ -49,13 +49,13 @@ import org.phoenixdna.theme
  * (transcript/listening/transcribing/statusMessage); the window itself is
  * purely presentational.
  *
- * What the window shows is weighted: the agent's answer is the point of
- * the run, so it is the only part rendered at full size, in a card of
- * its own. The two things that surround it — the notes the agent wrote
- * while it worked, and the log of the tools it called — are context:
- * they are dimmed, set in a smaller type and folded away by default,
- * one click each away. An answer the user has to dig for is an answer
- * they miss.
+ * What the window shows is ordered by time and weighted by size: the
+ * trail streams in first — the notes the agent wrote while it worked,
+ * then the log of the tools it called — dimmed, set in a smaller type
+ * and folded away by default, one click each away; the answer lands
+ * last, the one part rendered at full size, in a card of its own. An
+ * answer the user has to dig for is an answer they miss, and a trail
+ * that claims the answer's place buries it.
  */
 Window {
     id: resultsWindow
@@ -119,6 +119,11 @@ Window {
     // daemon (and re-generated on every follow-on). It rides the window
     // title, so the taskbar entry names the conversation too.
     property string sessionTitle: ""
+
+    // The gap between two paragraphs of the agent's Markdown, which Qt
+    // renders with none at all (see MarkdownDocument.spaceParagraphs).
+    readonly property real paragraphSpacing:
+        Math.round(Qt.application.font.pixelSize * 0.45)
 
     // The header of a folded-away section: the thinking notes and the
     // tool log are context, not the answer, and they start folded —
@@ -343,6 +348,9 @@ Window {
                 contentHeight: column.implicitHeight
                 clip: true
 
+                // The scrollbar for a conversation longer than the pane.
+                PC3.ScrollBar.vertical: PC3.ScrollBar {}
+
                 // Terminal behaviour: keep the newest exchange in view —
                 // the conversation flows downwards. Scrolling up to read
                 // older results unpins; showLive()/showResult() re-pin.
@@ -444,6 +452,11 @@ Window {
                                         textFormat: TextEdit.PlainText
                                         wrapMode: Text.WordWrap
                                         color: PhoenixTheme.textColor
+                                        // Breathing room between the
+                                        // paragraphs of a long dictation.
+                                        onTextChanged: MarkdownDocument.spaceParagraphs(
+                                            textDocument,
+                                            resultsWindow.paragraphSpacing)
                                     }
                                 }
 
@@ -499,11 +512,105 @@ Window {
                                 }
                             }
 
-                            // The agent's answer, on the left: the one
-                            // thing the window exists to show, so it is
-                            // the only part rendered at full size — in a
-                            // card of its own, with the mirrored tail and
-                            // the attribution below it.
+                            // What the agent said while it worked: the
+                            // notes it wrote before it reached for a
+                            // tool. The trail of the run, not its
+                            // outcome — dimmed, in a smaller type and
+                            // folded away, one click from view. It
+                            // streams in above the answer it produced.
+                            ColumnLayout {
+                                id: thinkingSection
+                                objectName: "thinkingSection"
+
+                                // Whether the notes are shown: folded by
+                                // default, for the answer's sake.
+                                property bool expanded: false
+
+                                visible: exchange.thinking.length > 0
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
+
+                                SectionHeader {
+                                    Layout.fillWidth: true
+                                    title: i18n("Thinking")
+                                    expanded: thinkingSection.expanded
+                                    onToggled: thinkingSection.expanded = !thinkingSection.expanded
+                                }
+
+                                Kirigami.SelectableLabel {
+                                    id: thinkingLabel
+                                    objectName: "thinkingLabel"
+
+                                    Layout.fillWidth: true
+                                    visible: thinkingSection.expanded
+
+                                    text: MarkdownDocument.renderMath(exchange.thinking)
+                                    textFormat: TextEdit.MarkdownText
+                                    wrapMode: Text.WordWrap
+                                    color: PhoenixTheme.secondaryTextColor
+                                    // Smaller than the answer: context,
+                                    // not the result.
+                                    font.pixelSize: Math.round(
+                                        Qt.application.font.pixelSize * 0.85)
+                                    onTextChanged: MarkdownDocument.spaceParagraphs(
+                                        textDocument, resultsWindow.paragraphSpacing)
+                                }
+                            }
+
+                            // What the agent actually did in this run:
+                            // every tool call with its command and output.
+                            // The evidence for the answer, not the answer
+                            // itself — so it is dimmed and folded away
+                            // like the notes above, and streams in above
+                            // the answer it produced. Only present when
+                            // something ran (plain answers often have no
+                            // tool calls at all).
+                            ColumnLayout {
+                                id: toolSection
+                                objectName: "toolSection"
+
+                                // Whether the log is shown: folded by
+                                // default, for the answer's sake.
+                                property bool expanded: false
+
+                                visible: exchange.toolLog.length > 0
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
+
+                                SectionHeader {
+                                    Layout.fillWidth: true
+                                    title: i18n("Tool activity (%1)", exchange.toolCount)
+                                    expanded: toolSection.expanded
+                                    onToggled: toolSection.expanded = !toolSection.expanded
+                                }
+
+                                Kirigami.SelectableLabel {
+                                    id: toolLabel
+                                    objectName: "toolLabel"
+
+                                    Layout.fillWidth: true
+                                    visible: toolSection.expanded
+
+                                    text: MarkdownDocument.renderMath(exchange.toolLog)
+                                    textFormat: TextEdit.MarkdownText
+                                    wrapMode: Text.WordWrap
+                                    color: PhoenixTheme.secondaryTextColor
+                                    // Smaller than the answer, and in the
+                                    // plain type: a log to read when
+                                    // wanted, not text to read past.
+                                    font.pixelSize: Math.round(
+                                        Qt.application.font.pixelSize * 0.85)
+                                    onTextChanged: MarkdownDocument.spaceParagraphs(
+                                        textDocument, resultsWindow.paragraphSpacing)
+                                }
+                            }
+
+                            // The agent's answer, last in the exchange:
+                            // the one thing the window exists to show,
+                            // so it is the only part rendered at full
+                            // size — in a card of its own, with the
+                            // mirrored tail and the attribution below
+                            // it.
                             // Rendered as Markdown: the agent mostly
                             // answers in plain sentences, but code and
                             // lists do occur.
@@ -516,7 +623,7 @@ Window {
                                 // The answer itself, in a card: bigger
                                 // than the rest of the window, brighter,
                                 // and set off from the notes and the log
-                                // that follow it.
+                                // that precede it.
                                 Rectangle {
                                     id: answerCard
                                     objectName: "answerCard"
@@ -557,7 +664,10 @@ Window {
                                         anchors.fill: parent
                                         anchors.margins: answerCard.padding
 
-                                        text: exchange.result
+                                        // The answer, with its LaTeX
+                                        // math rendered into Unicode
+                                        // before Qt's Markdown pass.
+                                        text: MarkdownDocument.renderMath(exchange.result)
                                         textFormat: TextEdit.MarkdownText
                                         wrapMode: Text.WordWrap
                                         color: PhoenixTheme.primaryTextColor
@@ -566,6 +676,13 @@ Window {
                                         // user came for.
                                         font.pixelSize: Math.round(
                                             Qt.application.font.pixelSize * 1.12)
+                                        // Re-space on every change: the
+                                        // answer streams in as deltas,
+                                        // each rebuilding the document
+                                        // and resetting the margins.
+                                        onTextChanged: MarkdownDocument.spaceParagraphs(
+                                            textDocument,
+                                            resultsWindow.paragraphSpacing)
                                     }
                                 }
 
@@ -628,93 +745,6 @@ Window {
                                                 Qt.application.font.pixelSize * 0.8))
                                         color: PhoenixTheme.secondaryTextColor
                                     }
-                                }
-                            }
-
-                            // What the agent said while it worked: the
-                            // notes it wrote before it reached for a
-                            // tool. The trail of the run, not its
-                            // outcome — dimmed, in a smaller type and
-                            // folded away, one click from view.
-                            ColumnLayout {
-                                id: thinkingSection
-                                objectName: "thinkingSection"
-
-                                // Whether the notes are shown: folded by
-                                // default, for the answer's sake.
-                                property bool expanded: false
-
-                                visible: exchange.thinking.length > 0
-                                Layout.fillWidth: true
-                                spacing: Kirigami.Units.smallSpacing
-
-                                SectionHeader {
-                                    Layout.fillWidth: true
-                                    title: i18n("Thinking")
-                                    expanded: thinkingSection.expanded
-                                    onToggled: thinkingSection.expanded = !thinkingSection.expanded
-                                }
-
-                                Kirigami.SelectableLabel {
-                                    id: thinkingLabel
-                                    objectName: "thinkingLabel"
-
-                                    Layout.fillWidth: true
-                                    visible: thinkingSection.expanded
-
-                                    text: exchange.thinking
-                                    textFormat: TextEdit.MarkdownText
-                                    wrapMode: Text.WordWrap
-                                    color: PhoenixTheme.secondaryTextColor
-                                    // Smaller than the answer: context,
-                                    // not the result.
-                                    font.pixelSize: Math.round(
-                                        Qt.application.font.pixelSize * 0.85)
-                                }
-                            }
-
-                            // What the agent actually did in this run:
-                            // every tool call with its command and output.
-                            // The evidence for the answer, not the answer
-                            // itself — so it is dimmed and folded away
-                            // like the notes above. Only present when
-                            // something ran (plain answers often have no
-                            // tool calls at all).
-                            ColumnLayout {
-                                id: toolSection
-                                objectName: "toolSection"
-
-                                // Whether the log is shown: folded by
-                                // default, for the answer's sake.
-                                property bool expanded: false
-
-                                visible: exchange.toolLog.length > 0
-                                Layout.fillWidth: true
-                                spacing: Kirigami.Units.smallSpacing
-
-                                SectionHeader {
-                                    Layout.fillWidth: true
-                                    title: i18n("Tool activity (%1)", exchange.toolCount)
-                                    expanded: toolSection.expanded
-                                    onToggled: toolSection.expanded = !toolSection.expanded
-                                }
-
-                                Kirigami.SelectableLabel {
-                                    id: toolLabel
-                                    objectName: "toolLabel"
-
-                                    Layout.fillWidth: true
-                                    visible: toolSection.expanded
-
-                                    text: exchange.toolLog
-                                    textFormat: TextEdit.MarkdownText
-                                    wrapMode: Text.WordWrap
-                                    color: PhoenixTheme.secondaryTextColor
-                                    // Smaller than the answer, and in the
-                                    // plain type: a log to read when
-                                    // wanted, not text to read past.
-                                    font.pixelSize: Math.round(
-                                        Qt.application.font.pixelSize * 0.85)
                                 }
                             }
                         }
