@@ -425,6 +425,7 @@ Window {
                             // view — no retry storm.
                             property int pdfToken: -1
                             property url answerPdf
+                            property string pdfFailedReason: ""
 
                             readonly property bool wantsPdf: !running
                                 && result.length > 0
@@ -432,7 +433,14 @@ Window {
                                 && LatexRenderer.available
                                 && LatexRenderer.containsLatex(result)
 
+                            // Every settling path leads to the request:
+                            // the final text and the finished flag may
+                            // arrive in either order (and a reopened
+                            // window starts with both already set), so
+                            // the guard above — not the caller — decides
+                            // whether a request goes out.
                             onRunningChanged: maybeRenderPdf()
+                            onResultChanged: maybeRenderPdf()
                             Component.onCompleted: maybeRenderPdf()
 
                             function maybeRenderPdf() {
@@ -452,11 +460,12 @@ Window {
                                     }
                                 }
 
-                                function onFailed(token) {
+                                function onFailed(token, reason) {
                                     // -2: requested, failed, never again
                                     // for this result.
                                     if (token === exchange.pdfToken) {
                                         exchange.pdfToken = -2
+                                        exchange.pdfFailedReason = reason
                                     }
                                 }
                             }
@@ -779,6 +788,22 @@ Window {
                                         visible: answerCard.showPdf
                                         document: answerPdfDocument
                                     }
+                                }
+
+                                // When a compile fails, the verbatim view
+                                // stays — and says why, so a broken
+                                // formula or a missing TeX engine is
+                                // diagnosable instead of mysterious.
+                                Kirigami.SelectableLabel {
+                                    Layout.fillWidth: true
+                                    visible: exchange.pdfFailedReason.length > 0
+                                    wrapMode: Text.WordWrap
+                                    text: i18n("Math not rendered: %1",
+                                               exchange.pdfFailedReason)
+                                    color: PhoenixTheme.secondaryTextColor
+                                    font.pixelSize: Math.max(
+                                        9, Math.round(
+                                            Qt.application.font.pixelSize * 0.8))
                                 }
 
                                 // The mirrored pointy edge, at the
