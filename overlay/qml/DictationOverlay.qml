@@ -7,6 +7,7 @@ import QtQuick.Layouts
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
+import org.phoenixdna.theme
 
 /*
  * The dictation overlay.
@@ -187,9 +188,9 @@ PlasmaCore.Dialog {
                         implicitHeight: chipRow.implicitHeight + 2 * Kirigami.Units.smallSpacing
 
                         radius: Kirigami.Units.smallSpacing
-                        color: Qt.rgba(1, 1, 1, 0.08)
+                        color: PhoenixTheme.chipFill
                         border.width: 1
-                        border.color: Qt.rgba(1, 1, 1, 0.16)
+                        border.color: PhoenixTheme.chipBorderColor
 
                         RowLayout {
                             id: chipRow
@@ -207,7 +208,10 @@ PlasmaCore.Dialog {
                             Text {
                                 text: attachmentChip.modelData.name
                                 elide: Text.ElideMiddle
-                                color: Kirigami.Theme.textColor
+                                // The chip is painted by the app palette
+                                // (it must stay readable on it), so its
+                                // text is too.
+                                color: PhoenixTheme.textColor
                                 Layout.maximumWidth: Kirigami.Units.gridUnit * 8
                             }
 

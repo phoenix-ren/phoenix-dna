@@ -16,6 +16,12 @@ include(KDEInstallDirs)
 include(KDECMakeSettings)
 include(KDECompilerSettings NO_POLICY_SCOPE)
 
+# The QML module helpers (ecm_add_qml_module and friends). They come in
+# implicitly with plasma_add_applet otherwise, which only worked because
+# shell/ happened to be the first subdirectory; the standalone modules
+# need them regardless of ordering.
+include(ECMQmlModule)
+
 find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS
     Core
     Gui
@@ -59,6 +65,7 @@ endfunction()
 
 # All components of the widget live in this repository and are built
 # together against one install prefix.
+add_subdirectory(theme)
 add_subdirectory(shell)
 add_subdirectory(overlay)
 add_subdirectory(resultswindow)

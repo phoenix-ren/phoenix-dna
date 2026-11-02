@@ -7,11 +7,16 @@ import QtQuick.Layouts
 import QtCore
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
+import org.phoenixdna.theme
 
 /*
  * The settings window — the widget's configuration dialog.
  *
- * Two groups:
+ * Three groups:
+ *
+ *   * Appearance — the colour scheme of the app's own windows: follow
+ *     the system, or force light or dark. The choice applies to every
+ *     window the moment it is made, through the shared theme singleton.
  *
  *   * API keys — the LLM key (the agent daemon's MiniMax key) and the
  *     speech-to-text key, with the speech-to-text provider chosen here
@@ -26,7 +31,7 @@ import org.kde.kirigami as Kirigami
  *
  * Like the results window, this is a fully-fledged decorated toplevel
  * (compositor-owned geometry, size persisted in the XDG state directory)
- * on the app's dark backdrop, and it is purely presentational: the shell
+ * on the app's own backdrop, and it is purely presentational: the shell
  * binds the state (current keys, current bindings, the store's status
  * line) and routes the interaction signals to the controller's settings
  * store, which owns the files and the KGlobalAccel actions.
@@ -35,6 +40,10 @@ Window {
     id: window
 
     // ---- Bound state (the shell owns all of it) --------------------------
+    // The colour scheme of the app's windows: "system" (the default),
+    // "light" or "dark".
+    property string theme: "system"
+
     // The live global bindings, in native notation ("" when unbound).
     property string recordShortcut: ""
     property string searchShortcut: ""
@@ -64,6 +73,7 @@ Window {
     property bool statusIsError: false
 
     // ---- Interaction (the shell routes these to the store) ---------------
+    signal themeChangeRequested(string theme)
     signal llmKeySaveRequested(string key)
     signal sttKeySaveRequested(string key)
     signal sttProviderChangeRequested(string provider)
@@ -102,6 +112,7 @@ Window {
             llmKeyFieldEdit.text = window.llmApiKey
             sttKeyFieldEdit.text = window.sttApiKey
             sttProviderCombo.currentIndex = window.sttProvider === "openai" ? 1 : 0
+            themeCombo.currentIndex = window.themeIndex(window.theme)
         }
     }
 
@@ -109,6 +120,13 @@ Window {
     onSttApiKeyChanged: sttKeyFieldEdit.text = window.sttApiKey
     onSttProviderChanged: sttProviderCombo.currentIndex =
         window.sttProvider === "openai" ? 1 : 0
+    onThemeChanged: themeCombo.currentIndex = window.themeIndex(window.theme)
+
+    // The combo's row for a scheme value ("system" → 0, "light" → 1,
+    // "dark" → 2), kept in one place for the two pushes above.
+    function themeIndex(theme) {
+        return theme === "light" ? 1 : theme === "dark" ? 2 : 0
+    }
 
     // Closing from the title bar hides instead of destroying: the shell
     // owns the window's lifetime.
@@ -144,12 +162,13 @@ Window {
         // the button consumes the event before it can arrive here).
         Keys.onEscapePressed: window.close()
 
-        // The dark, semi-transparent backdrop, as the results window:
-        // fixed rather than theme-derived, so the light text on it is
-        // fixed too.
+        // The semi-transparent backdrop, as the results window: painted
+        // by the window itself after the chosen colour scheme, so the
+        // text on it is fixed with it. The PC3 controls keep following
+        // the Plasma theme, which "system" (the default) agrees with.
         Rectangle {
             anchors.fill: parent
-            color: Qt.rgba(0.07, 0.07, 0.09, 0.93)
+            color: PhoenixTheme.backgroundColor
         }
 
         ColumnLayout {
@@ -177,17 +196,63 @@ Window {
                     width: scroller.width
                     spacing: Kirigami.Units.smallSpacing
 
+                    // ---- Appearance ---------------------------------------
+                    Kirigami.Heading {
+                        level: 2
+                        text: i18n("Appearance")
+                        color: PhoenixTheme.headingTextColor
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PC3.Label {
+                            text: i18n("Color scheme")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.ComboBox {
+                            id: themeCombo
+
+                            model: [i18n("Follow system"), i18n("Light"), i18n("Dark")]
+
+                            // Choosing a scheme is a change like any
+                            // other: the window reports it, the store
+                            // writes it, and the shell pushes the
+                            // refreshed value into the theme singleton
+                            // every window reads — so this very window
+                            // (and the others, open or not) recolour
+                            // the moment the choice is made.
+                            onActivated: (index) =>
+                                window.themeChangeRequested(
+                                    ["system", "light", "dark"][index])
+                        }
+                    }
+
+                    HintLabel {
+                        Layout.fillWidth: true
+                        text: i18n("Applies to this window, the conversation "
+                            + "window and the session search. The panel widget "
+                            + "itself keeps matching the panel it lives in.")
+                    }
+
+                    Kirigami.Separator {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Kirigami.Units.smallSpacing
+                    }
+
                     // ---- API keys ---------------------------------------
                     Kirigami.Heading {
                         level: 2
                         text: i18n("API keys")
-                        color: "#f2f2f2"
+                        color: PhoenixTheme.headingTextColor
                     }
 
                     Kirigami.Heading {
                         level: 5
                         text: i18n("LLM (MiniMax)")
-                        color: "#cfcfcf"
+                        color: PhoenixTheme.subheadingTextColor
                     }
 
                     RowLayout {
@@ -239,7 +304,7 @@ Window {
                     HintLabel {
                         Layout.fillWidth: true
                         visible: window.llmKeyFromEnvironment
-                        color: "#f67400"
+                        color: PhoenixTheme.warningColor
                         text: i18n("An API key environment variable is set and takes "
                             + "precedence over the stored key.")
                     }
@@ -253,7 +318,7 @@ Window {
                     Kirigami.Heading {
                         level: 5
                         text: i18n("Speech-to-text")
-                        color: "#cfcfcf"
+                        color: PhoenixTheme.subheadingTextColor
                     }
 
                     RowLayout {
@@ -262,7 +327,7 @@ Window {
 
                         PC3.Label {
                             text: i18n("Provider")
-                            color: "#e8e8e8"
+                            color: PhoenixTheme.textColor
                         }
 
                         PC3.ComboBox {
@@ -329,7 +394,7 @@ Window {
                     HintLabel {
                         Layout.fillWidth: true
                         visible: window.sttKeyFromEnvironment
-                        color: "#f67400"
+                        color: PhoenixTheme.warningColor
                         text: i18n("An API key environment variable is set and takes "
                             + "precedence over the stored key.")
                     }
@@ -343,7 +408,7 @@ Window {
                     Kirigami.Heading {
                         level: 2
                         text: i18n("Global shortcuts")
-                        color: "#f2f2f2"
+                        color: PhoenixTheme.headingTextColor
                     }
 
                     HintLabel {
@@ -378,7 +443,7 @@ Window {
 
                             PC3.Label {
                                 text: shortcutRow.modelData.label
-                                color: "#e8e8e8"
+                                color: PhoenixTheme.textColor
                                 Layout.fillWidth: true
                             }
 
@@ -416,10 +481,10 @@ Window {
                 visible: window.statusMessage.length > 0
                 wrapMode: Text.WordWrap
                 text: window.statusMessage
-                // Fixed rather than theme-derived: it sits on the
-                // window's own dark backdrop. Complaints red, successes
+                // The palette's own semantics: complaints red, successes
                 // green.
-                color: window.statusIsError ? "#f66151" : "#57e389"
+                color: window.statusIsError ? PhoenixTheme.errorColor
+                                            : PhoenixTheme.successColor
             }
         }
     }
@@ -428,7 +493,7 @@ Window {
     // of the results window.
     component HintLabel: PC3.Label {
         wrapMode: Text.WordWrap
-        color: "#9a9a9a"
+        color: PhoenixTheme.secondaryTextColor
         font.pixelSize: Math.max(9, Math.round(Qt.application.font.pixelSize * 0.8))
     }
 }

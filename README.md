@@ -26,7 +26,8 @@ continued.
 | `overlay/`   | Dictation overlay shown while recording                         |
 | `resultswindow/` | Fully-fledged results window for conversation output        |
 | `search/`    | Session search: the previous sessions, listed by name           |
-| `settingswindow/` | Settings window: API keys and global shortcuts             |
+| `settingswindow/` | Settings window: appearance, API keys and global shortcuts |
+| `theme/`     | Shared colour-scheme singleton every window is themed through   |
 | `waveform/`  | Offline `.wav` → `.png` waveform renderer                       |
 | `widgettest/`| Developer testbench that hosts the widget in a plain window      |
 | `agent/`     | Python agent daemon (`phoenix-dna-agent`), a D-Bus service          |
@@ -56,6 +57,13 @@ target window is looked up and the picture is taken.
 ## Settings
 
 The panel's gear button opens the settings window, which configures:
+
+* **Appearance** — the colour scheme of the app's windows: follow the
+  system (the default), or force light or dark. The choice is stored as
+  `ui_theme` in `~/.config/phoenix-dna/keys.json` and applies to the
+  conversation window, the session search, the settings window and the
+  dictation overlay the moment it is made; the panel widget itself keeps
+  matching the panel it lives on.
 
 * **API keys** — the LLM key (the agent daemon's MiniMax key) and the
   speech-to-text key, with the speech-to-text provider (MiniMax or OpenAI)

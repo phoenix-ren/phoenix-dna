@@ -93,7 +93,11 @@ Item {
                     icon.name: Phoenix.PhoenixController.modeIconName(modelData.mode)
                     icon.width: Kirigami.Units.iconSizes.small
                     icon.height: Kirigami.Units.iconSizes.small
-                    icon.color: active ? Kirigami.Theme.highlightColor : "white"
+                    // The inactive icons take the theme's text colour
+                    // rather than a fixed white: the panel they sit on
+                    // follows the Plasma theme, which may be light.
+                    icon.color: active ? Kirigami.Theme.highlightColor
+                                       : Kirigami.Theme.textColor
 
                     // The controller owns the state; the buttons only display
                     // it. `checked` paints the active mode as pressed/on.
@@ -140,7 +144,7 @@ Item {
             // While the picker waits for a click, the button says so.
             icon.color: Phoenix.PhoenixController.screenshotPicker.picking
                 ? Kirigami.Theme.highlightColor
-                : "white"
+                : Kirigami.Theme.textColor
 
             onClicked: Phoenix.PhoenixController.startScreenshot()
 
@@ -205,7 +209,8 @@ Item {
 
             // The search is open while the button is pressed.
             checked: Phoenix.PhoenixController.sessionSearchOpen
-            icon.color: checked ? Kirigami.Theme.highlightColor : "white"
+            icon.color: checked ? Kirigami.Theme.highlightColor
+                                : Kirigami.Theme.textColor
 
             onClicked: Phoenix.PhoenixController.toggleSessionSearch()
 

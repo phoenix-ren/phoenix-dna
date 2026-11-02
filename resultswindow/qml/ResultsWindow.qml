@@ -8,6 +8,7 @@ import QtQuick.Layouts
 import QtCore
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
+import org.phoenixdna.theme
 
 /*
  * The results window — the widget's conversation window.
@@ -155,7 +156,8 @@ Window {
                 source: sectionHeader.expanded ? "arrow-down" : "arrow-right"
                 // Brighter while the pointer is on the header: the
                 // section is one click away.
-                color: sectionHeader.hovered ? "#d0d0d0" : "#9a9a9a"
+                color: sectionHeader.hovered ? PhoenixTheme.hoveredTextColor
+                                             : PhoenixTheme.secondaryTextColor
             }
 
             Kirigami.Heading {
@@ -163,7 +165,8 @@ Window {
                 // KF6 6.31 has no Kirigami.Heading.Level enum; levels are plain ints.
                 level: 6
                 text: sectionHeader.title
-                color: sectionHeader.hovered ? "#d0d0d0" : "#9a9a9a"
+                color: sectionHeader.hovered ? PhoenixTheme.hoveredTextColor
+                                             : PhoenixTheme.secondaryTextColor
             }
         }
 
@@ -312,13 +315,13 @@ Window {
             onActivated: resultsWindow.submitted(resultsWindow.transcript)
         }
 
-        // The dark, semi-transparent backdrop. Deliberately fixed rather
-        // than theme-derived: it must be dark whichever theme runs, and so
-        // the text on it can be fixed light. Mostly opaque: readable over
-        // busy desktops, with just a hint of the desktop through it.
+        // The semi-transparent backdrop, painted after the chosen colour
+        // scheme (see PhoenixTheme): the text on it is fixed with it.
+        // Mostly opaque: readable over busy desktops, with just a hint of
+        // the desktop through it.
         Rectangle {
             anchors.fill: parent
-            color: Qt.rgba(0.07, 0.07, 0.09, 0.93)
+            color: PhoenixTheme.backgroundColor
         }
 
         ColumnLayout {
@@ -427,9 +430,9 @@ Window {
                                                     + 2 * Kirigami.Units.smallSpacing
 
                                     radius: Kirigami.Units.smallSpacing * 2
-                                    color: Qt.rgba(1, 1, 1, 0.08)
+                                    color: PhoenixTheme.bubbleFill
                                     border.width: 1
-                                    border.color: Qt.rgba(1, 1, 1, 0.14)
+                                    border.color: PhoenixTheme.bubbleBorderColor
 
                                     Kirigami.SelectableLabel {
                                         id: promptLabel
@@ -440,7 +443,7 @@ Window {
                                         text: exchange.prompt
                                         textFormat: TextEdit.PlainText
                                         wrapMode: Text.WordWrap
-                                        color: "#e8e8e8"
+                                        color: PhoenixTheme.textColor
                                     }
                                 }
 
@@ -492,7 +495,7 @@ Window {
                                     font.pixelSize: Math.max(
                                         9, Math.round(
                                             Qt.application.font.pixelSize * 0.8))
-                                    color: "#9a9a9a"
+                                    color: PhoenixTheme.secondaryTextColor
                                 }
                             }
 
@@ -543,9 +546,9 @@ Window {
                                         + 2 * answerCard.padding
 
                                     radius: Kirigami.Units.smallSpacing * 2
-                                    color: Qt.rgba(1, 1, 1, 0.06)
+                                    color: PhoenixTheme.cardFill
                                     border.width: 1
-                                    border.color: Qt.rgba(1, 1, 1, 0.10)
+                                    border.color: PhoenixTheme.cardBorderColor
 
                                     Kirigami.SelectableLabel {
                                         id: resultLabel
@@ -557,7 +560,7 @@ Window {
                                         text: exchange.result
                                         textFormat: TextEdit.MarkdownText
                                         wrapMode: Text.WordWrap
-                                        color: "#f7f7f7"
+                                        color: PhoenixTheme.primaryTextColor
                                         // Larger than the rest of the
                                         // window: this is the text the
                                         // user came for.
@@ -623,7 +626,7 @@ Window {
                                         font.pixelSize: Math.max(
                                             9, Math.round(
                                                 Qt.application.font.pixelSize * 0.8))
-                                        color: "#9a9a9a"
+                                        color: PhoenixTheme.secondaryTextColor
                                     }
                                 }
                             }
@@ -662,7 +665,7 @@ Window {
                                     text: exchange.thinking
                                     textFormat: TextEdit.MarkdownText
                                     wrapMode: Text.WordWrap
-                                    color: "#9a9a9a"
+                                    color: PhoenixTheme.secondaryTextColor
                                     // Smaller than the answer: context,
                                     // not the result.
                                     font.pixelSize: Math.round(
@@ -706,7 +709,7 @@ Window {
                                     text: exchange.toolLog
                                     textFormat: TextEdit.MarkdownText
                                     wrapMode: Text.WordWrap
-                                    color: "#9a9a9a"
+                                    color: PhoenixTheme.secondaryTextColor
                                     // Smaller than the answer, and in the
                                     // plain type: a log to read when
                                     // wanted, not text to read past.
@@ -772,9 +775,9 @@ Window {
                                 implicitHeight: chipRow.implicitHeight + 2 * Kirigami.Units.smallSpacing
 
                                 radius: Kirigami.Units.smallSpacing
-                                color: Qt.rgba(1, 1, 1, 0.08)
+                                color: PhoenixTheme.chipFill
                                 border.width: 1
-                                border.color: Qt.rgba(1, 1, 1, 0.16)
+                                border.color: PhoenixTheme.chipBorderColor
 
                                 RowLayout {
                                     id: chipRow
@@ -792,7 +795,7 @@ Window {
                                     Text {
                                         text: attachmentChip.modelData.name
                                         elide: Text.ElideMiddle
-                                        color: Kirigami.Theme.textColor
+                                        color: PhoenixTheme.textColor
                                         Layout.maximumWidth: Kirigami.Units.gridUnit * 8
                                     }
 
@@ -878,8 +881,8 @@ Window {
                             // While the picker waits for a click, the
                             // button says so.
                             icon.color: resultsWindow.screenshotPicking
-                                ? "#fcfcfc"
-                                : Kirigami.Theme.textColor
+                                ? PhoenixTheme.strongTextColor
+                                : PhoenixTheme.textColor
 
                             onClicked: resultsWindow.screenshotRequested()
 
@@ -959,10 +962,9 @@ Window {
                         visible: resultsWindow.statusMessage.length > 0
                         wrapMode: Text.WordWrap
                         text: resultsWindow.statusMessage
-                        // Fixed rather than theme-derived: it sits on the
-                        // window's own dark backdrop, which is dark
-                        // whichever theme runs.
-                        color: "#f66151"
+                        // The palette's error colour: it sits on the
+                        // window's own backdrop, whichever scheme runs.
+                        color: PhoenixTheme.errorColor
                     }
 
                     // The file picker for the "+" button. Every picked file is

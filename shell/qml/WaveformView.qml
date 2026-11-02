@@ -48,6 +48,18 @@ Item {
     // left-to-right, and once the ring wraps it scrolls, DAW-style.
     readonly property int capacity: model ? model.capacity : 0
 
+    // The mean band must stand out from the envelope whatever the panel's
+    // theme: lighten the base colour on a dark one, darken it on a light
+    // one — Qt.lighter() alone would wash the band out on a light panel,
+    // where the theme's text and highlight colours are already light.
+    function emphasized(baseColor, factor) {
+        const luminance = 0.299 * baseColor.r
+            + 0.587 * baseColor.g
+            + 0.114 * baseColor.b
+        return luminance > 0.5 ? Qt.darker(baseColor, factor)
+                               : Qt.lighter(baseColor, factor)
+    }
+
     Rectangle {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.verticalCenter: parent.verticalCenter
@@ -109,8 +121,8 @@ Item {
                 height: Math.max(1, Math.min(parent.height,
                     parent.meanLevel * 2 / root.levelScale * parent.height))
 
-                color: root.active ? Qt.lighter(Kirigami.Theme.highlightColor, 1.45)
-                                   : Qt.lighter(Kirigami.Theme.textColor, 1.6)
+                color: root.active ? root.emphasized(Kirigami.Theme.highlightColor, 1.45)
+                                   : root.emphasized(Kirigami.Theme.textColor, 1.6)
                 opacity: root.active ? 0.95 : 0.35
                 radius: 0
             }
