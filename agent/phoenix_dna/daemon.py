@@ -28,6 +28,11 @@ from pathlib import Path
 from uuid import uuid4
 
 from . import events
+from .attachments import (
+    parse_payload as parse_attachments,
+    stage as stage_attachments,
+    vision_enabled,
+)
 from .config import Config
 from .loop import AgentLoop
 from .modes import MODE_PROFILES, Mode, ModeProfile, build_toolset
@@ -71,6 +76,10 @@ class PendingPrompt:
     prompt: str
     mode: Mode
     session_id: str
+    #: The files the user attached to the prompt: the payload as the
+    #: widget sent it (a JSON array, or the JSON text of one). They are
+    #: staged into the daemon's attachment directory when the run starts.
+    attachments: object = None
 
 
 class AgentDaemon:
@@ -159,7 +168,13 @@ class AgentDaemon:
             self._root_cache.invalidate()
         return mode.value
 
-    def submit(self, prompt: str, mode_name: str, session_id: str = "") -> str:
+    def submit(
+        self,
+        prompt: str,
+        mode_name: str,
+        session_id: str = "",
+        attachments=None,
+    ) -> str:
         try:
             mode = Mode(mode_name.strip().lower())
         except ValueError:
@@ -173,6 +188,7 @@ class AgentDaemon:
             prompt=prompt,
             mode=mode,
             session_id=session_id.strip(),
+            attachments=attachments,
         )
         with self._cond:
             self._pending.append(job)
@@ -382,6 +398,14 @@ class AgentDaemon:
             profile, extra_context=load_context_file(self.config)
         )
 
+        # The files the user attached to the prompt are copied into the
+        # daemon's attachment directory: the agent's tools can read them,
+        # and they stay put for the whole run.
+        staged = stage_attachments(
+            parse_attachments(job.attachments),
+            self.config.data_dir / "attachments" / job.run_id,
+        )
+
         loop = AgentLoop(
             run_id=job.run_id,
             mode_name=job.mode.value,
@@ -393,8 +417,9 @@ class AgentDaemon:
             event_sink=self._emitter,
             max_turns=self.config.max_turns,
             cancel_event=cancel,
+            vision=vision_enabled(self.config),
         )
-        summary = loop.run(job.prompt)
+        summary = loop.run(job.prompt, staged)
 
         # A run that produced an answer advanced the conversation: its
         # title is regenerated from the session's new shape (async, on the

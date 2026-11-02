@@ -9,6 +9,7 @@
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusReply>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
@@ -156,7 +157,9 @@ void AgentBridge::setMode(const QString &mode)
     QDBusConnection::sessionBus().asyncCall(message);
 }
 
-void AgentBridge::sendPrompt(const QString &prompt, bool newSession)
+void AgentBridge::sendPrompt(const QString &prompt,
+                             bool newSession,
+                             const QVariantList &attachments)
 {
     // SubmitPrompt(prompt, mode, session_id): the session id continues the
     // conversation of the widget's latest run — unless the prompt starts a
@@ -170,9 +173,23 @@ void AgentBridge::sendPrompt(const QString &prompt, bool newSession)
         m_sessionId.clear();
     }
     m_pendingPrompts.append({prompt, m_modeName, newSession});
+
     QDBusMessage message = QDBusMessage::createMethodCall(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("SubmitPrompt"));
     message << prompt << m_modeName << m_sessionId;
+
+    if (!attachments.isEmpty()) {
+        // SubmitPromptWithAttachments(prompt, mode, session_id, attachments):
+        // the same call with the attached files as a JSON payload. Only
+        // used when there are attachments, so a daemon that predates the
+        // method still serves plain prompts.
+        const QJsonArray files = QJsonArray::fromVariantList(attachments);
+        const QByteArray payload = QJsonDocument(files).toJson(QJsonDocument::Compact);
+        message = QDBusMessage::createMethodCall(kDaemonService, kDaemonPath, kDaemonInterface,
+                                                 QStringLiteral("SubmitPromptWithAttachments"));
+        message << prompt << m_modeName << m_sessionId << QString::fromUtf8(payload);
+    }
+
     QDBusConnection::sessionBus().asyncCall(message);
 }
 

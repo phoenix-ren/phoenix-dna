@@ -3,6 +3,7 @@
 
 import QtQuick
 import QtQuick.Window
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtCore
 import Qt.labs.settings as LabsSettings
@@ -67,6 +68,18 @@ PlasmaCore.Dialog {
     property bool listening: false
     property bool transcribing: false
     property string statusMessage: ""
+
+    // The files attached to the prompt being composed: a list of maps with
+    // "name", "path", "mimeType" and "size" keys. Bound by the shell; the
+    // same list the dictation overlay shows, because both edit the same
+    // prompt.
+    property var attachments: []
+
+    // Emitted when the user picks a file to attach to the follow-up.
+    signal attachmentAdded(url file)
+
+    // Emitted when the user takes an attached file off the follow-up.
+    signal attachmentRemoved(int index)
 
     // Emitted when the pane goes away (close button, Esc, toggle()).
     signal dismissed()
@@ -218,6 +231,15 @@ PlasmaCore.Dialog {
         }
     }
 
+    // Puts the keyboard in the follow-up editor: the pane's reason to be
+    // open is a conversation, so a shown pane is ready to be typed into
+    // (and Shift+Enter submitted) without a click into the field first.
+    function focusInput() {
+        if (!followUpEdit.readOnly) {
+            followUpEdit.forceActiveFocus()
+        }
+    }
+
     // Shows a result: fades the pane in (or keeps it up) and pins the
     // scroll to the newest exchange — answers flow downwards, ChatGPT
     // style, so the newest content is what the user wants to see.
@@ -230,6 +252,7 @@ PlasmaCore.Dialog {
         // own placement next to the anchor item.
         applyPosition()
         Qt.callLater(applyPosition)
+        Qt.callLater(focusInput)
     }
 
     // Opens the pane for a streaming run: the run's text and tool log
@@ -241,6 +264,7 @@ PlasmaCore.Dialog {
         opacity = 1
         applyPosition()
         Qt.callLater(applyPosition)
+        Qt.callLater(focusInput)
     }
 
     // Manual toggle, e.g. from the applet: bring the conversation back up,
@@ -336,6 +360,19 @@ PlasmaCore.Dialog {
             property int paneY: -1
             property real paneWidth: 0
             property real paneHeight: 0
+        }
+
+        // Shift+Enter submits a follow-on from anywhere in the window: the
+        // shortcut lives on the window rather than on the editor, because
+        // keyboard focus often rests elsewhere (a just-shown pane, the
+        // send button) and a key handler on the editor would simply never
+        // fire. "Return" covers the main Enter key, "Enter" the numpad's.
+        // Plain Enter keeps inserting the line break — no shortcut for it.
+        Shortcut {
+            sequences: ["Shift+Return", "Shift+Enter"]
+            context: Qt.WindowShortcut
+            enabled: conversationPane.canSubmit
+            onActivated: conversationPane.submitted(conversationPane.transcript)
         }
 
         implicitWidth: conversationPane.maximized
@@ -790,6 +827,68 @@ PlasmaCore.Dialog {
                     anchors.fill: parent
                     spacing: Kirigami.Units.smallSpacing
 
+                    // The files attached to the follow-up: one chip per
+                    // file, each with a button that takes it off the list
+                    // again.
+                    Flow {
+                        id: attachmentFlow
+
+                        Layout.fillWidth: true
+                        visible: conversationPane.attachments.length > 0
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Repeater {
+                            id: attachmentRepeater
+                            objectName: "attachmentRepeater"
+
+                            model: conversationPane.attachments
+
+                            delegate: Rectangle {
+                                id: attachmentChip
+
+                                required property var modelData
+                                required property int index
+
+                                implicitWidth: chipRow.implicitWidth + 2 * Kirigami.Units.smallSpacing
+                                implicitHeight: chipRow.implicitHeight + 2 * Kirigami.Units.smallSpacing
+
+                                radius: Kirigami.Units.smallSpacing
+                                color: Qt.rgba(1, 1, 1, 0.08)
+                                border.width: 1
+                                border.color: Qt.rgba(1, 1, 1, 0.16)
+
+                                RowLayout {
+                                    id: chipRow
+
+                                    anchors.fill: parent
+                                    anchors.margins: Kirigami.Units.smallSpacing
+                                    spacing: Kirigami.Units.smallSpacing
+
+                                    Kirigami.Icon {
+                                        source: "mail-attachment"
+                                        width: 16
+                                        height: 16
+                                    }
+
+                                    Text {
+                                        text: attachmentChip.modelData.name
+                                        elide: Text.ElideMiddle
+                                        color: Kirigami.Theme.textColor
+                                        Layout.maximumWidth: Kirigami.Units.gridUnit * 8
+                                    }
+
+                                    PC3.ToolButton {
+                                        icon.name: "window-close"
+                                        icon.width: 12
+                                        icon.height: 12
+
+                                        onClicked: conversationPane.attachmentRemoved(attachmentChip.index)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.smallSpacing
@@ -823,6 +922,26 @@ PlasmaCore.Dialog {
                             Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
                             visible: conversationPane.transcribing
                             running: conversationPane.transcribing
+                        }
+
+                        // The button that attaches files to the follow-up,
+                        // on the left of the prompt field.
+                        PC3.ToolButton {
+                            id: addAttachmentButton
+                            objectName: "addAttachmentButton"
+
+                            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+                            icon.name: "list-add"
+                            icon.width: Kirigami.Units.iconSizes.small
+                            icon.height: Kirigami.Units.iconSizes.small
+
+                            onClicked: attachmentDialog.open()
+
+                            PC3.ToolTip {
+                                text: i18n("Attach a file to the prompt")
+                            }
                         }
 
                         // The transcript, editable so a dictated follow-on
@@ -864,21 +983,6 @@ PlasmaCore.Dialog {
                             onTextChanged: if (text !== conversationPane.transcript) {
                                 conversationPane.transcript = text
                             }
-
-                            // Same contract as the send button, from the
-                            // keyboard: Shift+Enter submits the follow-on,
-                            // Enter breaks the line (the editor is
-                            // multi-line). Any other key keeps the editor's
-                            // own behaviour — hence no blanket accept.
-                            Keys.onPressed: (event) => {
-                                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                                    && (event.modifiers & Qt.ShiftModifier)) {
-                                    if (conversationPane.canSubmit) {
-                                        conversationPane.submitted(conversationPane.transcript)
-                                    }
-                                    event.accepted = true
-                                }
-                            }
                         }
 
                         // One explicit send, no accidental submissions —
@@ -910,6 +1014,27 @@ PlasmaCore.Dialog {
                         // pane's own dark backdrop, which is dark whichever
                         // theme runs.
                         color: "#f66151"
+                    }
+                }
+
+                // The file picker for the "+" button. Every picked file is
+                // handed to the shell, which owns the attachment list.
+                FileDialog {
+                    id: attachmentDialog
+
+                    title: i18n("Attach files to the prompt")
+                    fileMode: FileDialog.OpenFiles
+                    nameFilters: [
+                        i18n("Images and documents"),
+                        "*.png *.jpg *.jpeg *.gif *.webp *.bmp *.tif *.tiff *.pdf *.txt *.md *.csv *.log *.json *.xml *.yaml *.yml",
+                        i18n("All files"),
+                        "*"
+                    ]
+
+                    onAccepted: {
+                        for (let i = 0; i < selectedFiles.length; ++i) {
+                            conversationPane.attachmentAdded(selectedFiles[i])
+                        }
                     }
                 }
             }

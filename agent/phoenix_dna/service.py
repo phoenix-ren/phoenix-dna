@@ -203,6 +203,24 @@ if dbus is not None:
                     f"{_ERROR}.InvalidArgument", str(exc)
                 )
 
+        @dbus.service.method(INTERFACE, in_signature="ssss", out_signature="s")
+        def SubmitPromptWithAttachments(self, prompt, mode, session_id, attachments):
+            """Submit a prompt together with the files attached to it.
+
+            ``attachments`` is a JSON array of ``{"name", "path",
+            "mimeType"}`` objects - the files the user added to the prompt
+            in the widget. The daemon copies them into its own attachment
+            directory and shows them to the model.
+            """
+            try:
+                return self._daemon.submit(
+                    str(prompt), str(mode), str(session_id), str(attachments)
+                )
+            except ValueError as exc:
+                raise dbus.exceptions.DBusException(
+                    f"{_ERROR}.InvalidArgument", str(exc)
+                )
+
         @dbus.service.method(INTERFACE, in_signature="s", out_signature="s")
         def SubmitTranscriptCleanup(self, text):
             """Queue the single-shot cleanup of a transcribed clip.

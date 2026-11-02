@@ -119,6 +119,13 @@ PlasmoidItem {
             dictationOverlay.followUp = false;
         }
 
+        // The files attached to the prompt: the overlay and the results
+        // pane edit the same prompt, so they show the same list.
+        attachments: Phoenix.PhoenixController.attachments.items
+
+        onAttachmentAdded: (file) => Phoenix.PhoenixController.addAttachment(file)
+        onAttachmentRemoved: (index) => Phoenix.PhoenixController.removeAttachment(index)
+
         // Closing abandons the dictation; nothing is sent.
         onClosed: {
             dictationOverlay.visible = false;
@@ -156,6 +163,13 @@ PlasmoidItem {
         listening: Phoenix.PhoenixController.recording
         transcribing: Phoenix.PhoenixController.transcribing
         statusMessage: Phoenix.PhoenixController.statusMessage
+
+        // The files attached to the prompt being composed - the same list
+        // the dictation overlay shows.
+        attachments: Phoenix.PhoenixController.attachments.items
+
+        onAttachmentAdded: (file) => Phoenix.PhoenixController.addAttachment(file)
+        onAttachmentRemoved: (index) => Phoenix.PhoenixController.removeAttachment(index)
 
         // The daemon names the session after every completed run (and
         // renames it when follow-ons reshape the conversation); the

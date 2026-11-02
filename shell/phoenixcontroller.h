@@ -8,6 +8,9 @@
 #include <QString>
 
 #include "agentmode.h"
+#include "promptattachments.h"
+
+#include <QUrl>
 
 class QAction;
 class AudioRingBuffer;
@@ -44,6 +47,13 @@ class PhoenixController : public QObject
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusMessageChanged)
     Q_PROPERTY(QString recordShortcut READ recordShortcut NOTIFY recordShortcutChanged)
 
+    /*! \brief The files attached to the prompt that is being composed.
+     *
+     * Shared by every prompt surface (the dictation overlay, the results
+     * pane's follow-up field), so a file added in one of them travels with
+     * the prompt the next one submits. */
+    Q_PROPERTY(PromptAttachments *attachments READ attachments CONSTANT)
+
 public:
     explicit PhoenixController(QObject *parent = nullptr);
     ~PhoenixController() override;
@@ -68,6 +78,19 @@ public:
     /*! \brief The bound global record hotkey ("Meta+Alt+Space" unless the
      *  user re-bound it in System Settings). Empty when none is bound. */
     QString recordShortcut() const;
+
+    /*! \brief The files attached to the prompt being composed. */
+    PromptAttachments *attachments() const { return m_attachments; }
+
+    /*! \brief Attaches the file behind \a url to the prompt.
+     *
+     * Returns false when the file cannot be attached (not a local file, not
+     * readable, already attached or too large); the reason is reported as a
+     * status message. */
+    Q_INVOKABLE bool addAttachment(const QUrl &url);
+
+    /*! \brief Removes the attachment at \a index from the prompt. */
+    Q_INVOKABLE void removeAttachment(int index);
 
     /*! \brief The icon representing the given mode. */
     Q_INVOKABLE QString modeIconName(int mode) const;
@@ -117,6 +140,7 @@ private:
     AudioCapture *m_capture = nullptr;
     ClipRecorder *m_clipRecorder = nullptr;
     Transcriber *m_transcriber = nullptr;
+    PromptAttachments *m_attachments = nullptr;
     QAction *m_toggleShortcut = nullptr;
     bool m_recording = false;
     bool m_transcribing = false;

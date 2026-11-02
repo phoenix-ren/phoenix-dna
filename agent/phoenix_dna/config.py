@@ -41,6 +41,11 @@ class Config:
     request_timeout: float = 120.0
     max_turns: int = 24
 
+    # Whether the model may be sent image parts. None means "decide from
+    # the model name" (see attachments.vision_enabled): a text-only model
+    # rejects a request that carries an image.
+    vision: bool | None = None
+
     # Dirs / state
     config_dir: Path = field(
         default_factory=lambda: Path("~/.config/phoenix-dna").expanduser()
@@ -93,6 +98,13 @@ def _apply_overrides(config: Config, overrides: dict) -> Config:
         try:
             if isinstance(current, bool):
                 value = bool(value)
+            elif current is None:
+                # A tri-state setting (e.g. "vision"): an empty value
+                # leaves the automatic behaviour in place.
+                if value in ("", None):
+                    value = None
+                else:
+                    value = str(value).strip().lower() in ("1", "true", "yes", "on")
             elif isinstance(current, int):
                 value = int(value)
             elif isinstance(current, float):
@@ -181,6 +193,7 @@ def describe(config: Config) -> str:
     lines = [
         f"provider        : {config.provider}",
         f"model           : {config.model}",
+        f"vision          : {config.vision if config.vision is not None else 'auto'}",
         f"llm_base_url    : {config.llm_base_url}",
         f"llm api key     : {mask(config.llm_api_key)}",
         f"tavily api key  : {mask(config.keys.get('tavily_api_key', ''))}",

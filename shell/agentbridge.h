@@ -7,6 +7,7 @@
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QVariantList>
 #include <QtQml/qqmlregistration.h>
 
 #include "conversationmodel.h"
@@ -173,8 +174,15 @@ public:
      * restarts at the run's first output); otherwise the prompt continues
      * the conversation of the widget's latest run. An empty id either way
      * (nothing started yet, or the mode just changed) makes the daemon
-     * begin a fresh conversation. */
-    Q_INVOKABLE void sendPrompt(const QString &prompt, bool newSession);
+     * begin a fresh conversation.
+     *
+     * \a attachments are the files the user attached to the prompt (see
+     * PromptAttachments). They are sent along as a JSON payload; a prompt
+     * without attachments takes the plain SubmitPrompt() route, so a daemon
+     * that does not know the newer method still works. */
+    Q_INVOKABLE void sendPrompt(const QString &prompt,
+                                bool newSession,
+                                const QVariantList &attachments = QVariantList());
 
     /*! \brief Asks the daemon to clean up a finished transcript.
      *

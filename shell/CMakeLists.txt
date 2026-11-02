@@ -31,6 +31,8 @@ plasma_add_applet(org.phoenixdna.agent
         conversationmodel.h
         cliprecorder.cpp
         cliprecorder.h
+        promptattachments.cpp
+        promptattachments.h
         transcriber.cpp
         transcriber.h
         agentmode.cpp

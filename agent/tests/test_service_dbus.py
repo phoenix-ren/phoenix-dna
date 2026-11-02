@@ -14,6 +14,7 @@ or hermetically:
 
 from __future__ import annotations
 
+import json
 import os
 import threading
 import time
@@ -148,6 +149,33 @@ def test_invalid_mode_raises_dbus_error(client):
     _bus, iface = client
     with pytest.raises(dbus.exceptions.DBusException, match="unknown mode"):
         iface.SubmitPrompt("hello", "bogus", "")
+
+
+def test_submit_prompt_with_attachments(client, tmp_path):
+    """The prompt and the files attached to it travel over D-Bus."""
+    bus, iface = client
+    from phoenix_dna.service import INTERFACE
+
+    image = tmp_path / "shot.png"
+    image.write_bytes(b"\x89PNG\r\n\x1a\n")
+    payload = json.dumps(
+        [{"name": "shot.png", "path": str(image), "mimeType": "image/png"}]
+    )
+
+    finished = threading.Event()
+
+    def on_finished(*_a):
+        finished.set()
+
+    bus.add_signal_receiver(
+        on_finished, signal_name="RunFinished", dbus_interface=INTERFACE
+    )
+
+    run_id = str(
+        iface.SubmitPromptWithAttachments("what is this?", "user", "", payload)
+    )
+    assert run_id.startswith("run_")
+    assert finished.wait(15), "RunFinished signal never arrived"
 
 
 def test_set_mode_round_trip(client):

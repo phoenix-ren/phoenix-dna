@@ -16,6 +16,7 @@ import logging
 import threading
 
 from . import events
+from .attachments import build_user_message
 from .provider import CancelledError, LLMError, LLMProvider, ToolSpec
 from .sessions import Conversation, SessionManager
 from .tools import Tool, ToolError, validate_required
@@ -37,6 +38,7 @@ class AgentLoop:
         event_sink,
         max_turns: int = 24,
         cancel_event: threading.Event | None = None,
+        vision: bool = False,
     ):
         self.run_id = run_id
         self.mode_name = mode_name
@@ -48,14 +50,21 @@ class AgentLoop:
         self._emit = event_sink
         self.max_turns = max_turns
         self._cancel = cancel_event or threading.Event()
+        # Whether the model may be sent image parts (see attachments.py).
+        self._vision = vision
 
     # -- public API -----------------------------------------------------------
 
     def cancel(self) -> None:
         self._cancel.set()
 
-    def run(self, prompt: str) -> dict:
-        """Run the loop to completion. Returns the run summary."""
+    def run(self, prompt: str, attachments: list | None = None) -> dict:
+        """Run the loop to completion. Returns the run summary.
+
+        ``attachments`` are the files the user added to the prompt; they
+        become part of the user message (inlined images, extracted PDF
+        text, and a list of the files for the agent to inspect).
+        """
         self._emit(
             events.make(
                 events.RUN_STARTED,
@@ -69,7 +78,10 @@ class AgentLoop:
             "run_started",
             {"run_id": self.run_id, "mode": self.mode_name},
         )
-        self._sessions.append(self._conversation, {"role": "user", "content": prompt})
+        self._sessions.append(
+            self._conversation,
+            build_user_message(prompt, list(attachments or []), vision=self._vision),
+        )
 
         tokens_in = tokens_out = 0
         turns = 0
