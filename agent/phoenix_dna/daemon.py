@@ -10,12 +10,15 @@ Responsibilities:
   not rejected);
 * own the root-mode sudo credential cache so authentication carries over
   across prompts ("multi-prompt root session");
+* clean up voice transcripts with a single LLM call on a separate auxiliary
+  pool, so a slow cleanup never delays the prompt queue;
 * forward every agent event to ``emitter`` (called from the worker thread -
 * the D-Bus layer marshals events onto the main loop).
 """
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 import threading
 from dataclasses import dataclass
@@ -27,11 +30,32 @@ from .config import Config
 from .loop import AgentLoop
 from .modes import MODE_PROFILES, Mode, ModeProfile, build_toolset
 from .privileges import KDialogPasswordProvider, SudoCredentialCache
-from .prompts import build_system_prompt, load_context_file
+from .prompts import build_cleanup_messages, build_system_prompt, load_context_file
 from .provider import LLMProvider, build_provider
 from .sessions import SessionManager, SessionStore
 
 log = logging.getLogger("phoenix.daemon")
+
+#: The single auxiliary worker finishes within this window or the cleanup is
+#: abandoned. Transcription itself is expected in a few seconds; the cleanup
+#: is one short LLM round-trip and must not lag the overlay for long.
+CLEANUP_TIMEOUT_SECONDS = 20.0
+
+
+def _strip_wrapper_quotes(text: str) -> str:
+    """Remove a single level of symmetric wrapping quotes, if present.
+
+    Models occasionally wrap short answers in quotes despite instructions;
+    the cleaned transcript goes straight into an editable field, so a quote
+    pair that the model added (rather than the speaker having said it) must
+    not survive.
+    """
+    for left, right in (('"', '"'), ("'", "'"), ("“", "”"), ("„", "“")):
+        if len(text) >= 2 and text.startswith(left) and text.endswith(right):
+            inner = text[1:-1].strip()
+            if inner:
+                return inner
+    return text
 
 
 @dataclass
@@ -48,11 +72,19 @@ class AgentDaemon:
         config: Config,
         *,
         provider: LLMProvider | None = None,
+        cleanup_provider: LLMProvider | None = None,
         password_provider=None,
         emitter=None,
     ):
         self.config = config
         self._provider = provider or build_provider(config)
+        # Transcript cleanup is a separate, optional single-shot call: a
+        # dedicated provider (not the run provider) so the scripted test
+        # provider's call sequence stays untouched. None disables cleanup.
+        self._cleanup_provider = cleanup_provider
+        self._cleanup_pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="phoenix-cleanup"
+        )
         self._password_provider = password_provider  # None -> KDialog lazily
         self._emitter = emitter or (lambda event: None)
         self._sessions = SessionManager(SessionStore(config.data_dir / "sessions"))
@@ -152,6 +184,51 @@ class AgentDaemon:
                     return True
         return False
 
+    def submit_cleanup(self, text: str) -> str:
+        """Queue a single-shot LLM cleanup of a voice transcript.
+
+        Returns a cleanup id the frontend pairs with the later
+        ``cleanup_finished`` event; an empty id means cleanup is not
+        configured (no dedicated provider) and nothing will run. Runs on
+        the auxiliary pool: a slow cleanup must never delay the prompt
+        queue, and the D-Bus method must not block the main loop.
+        """
+        text = (text or "").strip()
+        if not text or self._cleanup_provider is None:
+            return ""
+        cleanup_id = "cleanup_" + uuid4().hex[:12]
+        future = self._cleanup_pool.submit(self._run_cleanup, cleanup_id, text)
+        future.add_done_callback(
+            lambda f: f.exception()
+            and log.error("cleanup task failed: %s", f.exception())
+        )
+        return cleanup_id
+
+    def _run_cleanup(self, cleanup_id: str, text: str) -> None:
+        """The single cleanup LLM call; emits exactly one event."""
+        status, cleaned = "completed", ""
+        try:
+            messages = build_cleanup_messages(text)
+            parts: list[str] = []
+            for item in self._cleanup_provider.stream(messages, tools=[]):
+                if item.get("type") == "text_delta":
+                    parts.append(item["text"])
+            cleaned = _strip_wrapper_quotes("".join(parts).strip())
+            if not cleaned:
+                status, cleaned = "error", ""
+        except Exception as exc:  # defensive: cleanup must never crash the daemon
+            log.warning("transcript cleanup %s failed: %s", cleanup_id, exc)
+            status, cleaned = "error", ""
+        self._emit(
+            events.make(
+                events.CLEANUP_FINISHED,
+                cleanup_id=cleanup_id,
+                source=text,
+                cleaned=cleaned,
+                status=status,
+            )
+        )
+
     def state(self) -> dict:
         with self._lock:
             return {
@@ -167,6 +244,7 @@ class AgentDaemon:
                 self._current_cancel.set()
             self._cond.notify_all()
         self._thread.join(timeout=timeout)
+        self._cleanup_pool.shutdown(wait=False, cancel_futures=True)
 
     # -- worker ----------------------------------------------------------------
 

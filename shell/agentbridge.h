@@ -52,6 +52,15 @@
  * accumulate the row's tool log, and RunFinished(run_id, status,
  * final_text, turns, tokens_in, tokens_out) completes the run's row.
  *
+ * Transcript cleanup: SubmitTranscriptCleanup(text) asks the daemon to
+ * normalize a finished dictation with a single LLM call ("Multiply five
+ * times twenty-five" -> "Multiply 5 x 25"); the daemon answers
+ * asynchronously with TranscriptCleaned(cleanup_id, source, cleaned,
+ * status). requestTranscriptCleanup() speaks that method and
+ * transcriptCleaned() is emitted only for the newest request whose cleanup
+ * succeeded — an older clip's result, a failed cleanup (the raw text stays
+ * on screen) and a superseded request are all dropped here.
+ *
  * The conversation model is the ChatGPT-style history the results pane
  * renders: one row per prompt/answer pair, appended — never replaced — so
  * follow-on questions extend the history the initial voice prompt created.
@@ -144,6 +153,15 @@ public:
      * just changed) makes the daemon begin a fresh conversation. */
     Q_INVOKABLE void sendPrompt(const QString &prompt);
 
+    /*! \brief Asks the daemon to clean up a finished transcript.
+     *
+     * One LLM round-trip on the daemon side; when the cleaned text comes
+     * back (transcriptCleaned), superseded requests and failures are
+     * dropped, so exactly one signal follows a successful cleanup of the
+     * newest dictated clip. Does nothing while no daemon mode is spoken
+     * to. */
+    Q_INVOKABLE void requestTranscriptCleanup(const QString &text);
+
 Q_SIGNALS:
     void availabilityChanged();
     void partialTranscriptChanged();
@@ -165,6 +183,13 @@ Q_SIGNALS:
      * results pane re-pins its scroll to the newest exchange when this
      * fires. */
     void resultReady();
+
+    /*! \brief The newest dictated clip's cleaned-up transcript arrived.
+     *
+     * \a source is the raw text the cleanup was requested for; the
+     * receiver replaces it with \a cleaned only if nothing newer has been
+     * transcribed in the meantime. */
+    void transcriptCleaned(const QString &source, const QString &cleaned);
 
 private Q_SLOTS:
     /*! \brief Re-probes and re-subscribes when the service appears or vanishes. */
@@ -205,6 +230,14 @@ private Q_SLOTS:
                             const QString &tool,
                             const QString &status,
                             const QString &output);
+
+    /*! \brief TranscriptCleaned: the newest clip's cleanup succeeded.
+     *  Superseded requests are ignored (their cleanup id no longer
+     *  matches) and failures never reach this slot with text. */
+    void onTranscriptCleaned(const QString &cleanupId,
+                             const QString &source,
+                             const QString &cleaned,
+                             const QString &status);
 
 private:
     void subscribeToServiceSignals();
@@ -266,4 +299,9 @@ private:
     // started: the conversation that following sendPrompt() calls continue.
     // Cleared on mode changes — the daemon files sessions per mode.
     QString m_sessionId;
+    // The in-flight transcript cleanup: the daemon-side id and the raw text
+    // it was asked to clean (the source the eventual replacement applies
+    // to). A new request supersedes the previous one.
+    QString m_pendingCleanupId;
+    QString m_pendingCleanupSource;
 };

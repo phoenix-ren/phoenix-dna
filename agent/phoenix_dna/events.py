@@ -20,6 +20,8 @@ AUTH_REQUESTED = "auth_requested"
 AUTH_FINISHED = "auth_finished"
 RUN_FINISHED = "run_finished"
 STATE_CHANGED = "state_changed"
+#: A submitted transcript cleanup completed (successfully or not).
+CLEANUP_FINISHED = "cleanup_finished"
 
 #: Terminal statuses for a run.
 RUN_STATUSES = ("completed", "cancelled", "error", "max_turns")

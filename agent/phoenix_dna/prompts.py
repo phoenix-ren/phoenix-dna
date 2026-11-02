@@ -66,6 +66,31 @@ Tool use:
 Current date: {now}."""
 
 
+_CLEANUP_SYSTEM = """\
+You clean up raw speech-to-text transcripts so they can be used as prompts \
+for a desktop AI agent. Rewrite the transcript exactly as the speaker meant \
+it, applying these rules:
+
+- Write number words as digits ("twenty-five" -> "25") and normalize spoken
+  math and units to symbols ("times" -> "x", "percent" -> "%",
+  "degrees" -> "°"). Example: "Multiply five times twenty-five" becomes
+  "Multiply 5 x 25".
+- Fix mis-recognized words to what the speaker most plausibly meant.
+- Add punctuation and capitalization; drop filler words (um, uh).
+- Keep the speaker's language and wording otherwise; never answer, execute
+  or expand the transcript.
+
+Reply with the cleaned transcript only - no quotes, no commentary."""
+
+
+def build_cleanup_messages(text: str) -> list[dict]:
+    """Single-shot messages for the transcript-cleanup call (no tools)."""
+    return [
+        {"role": "system", "content": _CLEANUP_SYSTEM},
+        {"role": "user", "content": text},
+    ]
+
+
 def build_system_prompt(profile: ModeProfile, extra_context: str | None = None) -> str:
     now = _dt.datetime.now().strftime("%A, %Y-%m-%d %H:%M")
     parts = [
