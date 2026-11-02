@@ -200,19 +200,44 @@ PhoenixController::PhoenixController(QObject *parent)
                 }
             });
 
-    // The settings store edits what lives here: the two hotkey actions
-    // above (plus the picker's) and the API keys in keys.json. It re-binds
-    // through the same actions, so its changes announce themselves through
-    // the same changed signals the QML side already watches — forwarded
-    // here, and to the picker for its shortcut.
+    // The typed prompt has a system-wide companion too: Meta+Alt+Return
+    // by default opens the prompt editor, so a query can be written from
+    // any application - no microphone, no transcription. It lives in a
+    // component of its own, like the search's: in the component of the
+    // window picker the bare "Meta+Alt" swallows every "Meta+Alt" plus
+    // key - the binding would register there, but it would never become
+    // live.
+    m_promptShortcut = new QAction(this);
+    m_promptShortcut->setObjectName(QStringLiteral("type-prompt"));
+    m_promptShortcut->setText(i18n("Type a Query"));
+    m_promptShortcut->setProperty("componentName", QStringLiteral("org.phoenixdna.prompt"));
+    m_promptShortcut->setProperty("componentDisplayName", QStringLiteral("Phoenix DNA Prompt"));
+    const QList<QKeySequence> promptHotkey{QKeySequence(QStringLiteral("Meta+Alt+Return"))};
+    KGlobalAccel::self()->setDefaultShortcut(m_promptShortcut, promptHotkey);
+    KGlobalAccel::self()->setShortcut(m_promptShortcut, promptHotkey);
+    connect(m_promptShortcut, &QAction::triggered, this, &PhoenixController::showPromptEditor);
+    connect(KGlobalAccel::self(), &KGlobalAccel::globalShortcutChanged, this,
+            [this](QAction *action, const QKeySequence &) {
+                if (action == m_promptShortcut) {
+                    Q_EMIT promptShortcutChanged();
+                }
+            });
+
+    // The settings store edits what lives here: the hotkey actions
+    // above (plus the picker's) and the API keys in keys.json. It
+    // re-binds through the same actions, so its changes announce
+    // themselves through the same changed signals the QML side already
+    // watches — forwarded here, and to the picker for its shortcut.
     m_settings = new SettingsStore(m_toggleShortcut, m_searchShortcut,
-                                   m_screenshotPicker->shortcutAction(), this);
+                                   m_screenshotPicker->shortcutAction(), m_promptShortcut, this);
     connect(m_settings, &SettingsStore::recordShortcutChanged, this,
             &PhoenixController::recordShortcutChanged);
     connect(m_settings, &SettingsStore::searchShortcutChanged, this,
             &PhoenixController::searchShortcutChanged);
     connect(m_settings, &SettingsStore::screenshotShortcutChanged,
             m_screenshotPicker, &WindowScreenshotPicker::shortcutChanged);
+    connect(m_settings, &SettingsStore::promptShortcutChanged, this,
+            &PhoenixController::promptShortcutChanged);
 }
 
 PhoenixController::~PhoenixController() = default;
@@ -353,6 +378,18 @@ QString PhoenixController::searchShortcut() const
     return QString();
 }
 
+QString PhoenixController::promptShortcut() const
+{
+    // The live binding of the typed-prompt hotkey, like the other two.
+    const QList<QKeySequence> shortcuts = KGlobalAccel::self()->shortcut(m_promptShortcut);
+    for (const QKeySequence &shortcut : shortcuts) {
+        if (!shortcut.isEmpty()) {
+            return shortcut.toString(QKeySequence::NativeText);
+        }
+    }
+    return QString();
+}
+
 QString PhoenixController::searchUser() const
 {
     // The daemon files sessions per user: root-mode runs belong to
@@ -367,6 +404,17 @@ QString PhoenixController::searchUser() const
 void PhoenixController::showDictationOverlay()
 {
     Q_EMIT dictationOverlayRequested();
+}
+
+void PhoenixController::showPromptEditor()
+{
+    // A dictation in flight owns the overlay: its editor is locked while
+    // the transcript arrives or the clip is being transcribed, so a typed
+    // prompt would have nowhere to go.
+    if (m_recording || m_transcribing) {
+        return;
+    }
+    Q_EMIT promptEditorRequested();
 }
 
 void PhoenixController::toggleConversationPane()

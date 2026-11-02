@@ -267,6 +267,19 @@ Window {
         }
     }
 
+    // The typed-query path: the panel's keyboard button (and its global
+    // hotkey) reach the conversation window when it is on screen, so a
+    // query can be written right away — and it continues the session,
+    // like a dictated follow-on.
+    function focusPrompt() {
+        if (!visible) {
+            show()
+        }
+        raise()
+        requestActivate()
+        Qt.callLater(focusInput)
+    }
+
     // Shows a result: brings the window up and pins the scroll to the
     // newest exchange — answers flow downwards, ChatGPT style, so the
     // newest content is what the user wants to see.

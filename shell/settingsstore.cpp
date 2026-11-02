@@ -19,11 +19,12 @@
 namespace
 {
 
-// The roles the settings window addresses the three hotkeys by; they match
+// The roles the settings window addresses the four hotkeys by; they match
 // the model in SettingsWindow.qml.
 const QString kRecordRole = QStringLiteral("record");
 const QString kSearchRole = QStringLiteral("search");
 const QString kScreenshotRole = QStringLiteral("screenshot");
+const QString kPromptRole = QStringLiteral("prompt");
 
 // The speech-to-text providers Transcriber knows; anything else in
 // keys.json falls back to MiniMax, like Transcriber::resolveConfig() does.
@@ -85,11 +86,13 @@ QString modifierString(Qt::KeyboardModifiers modifiers)
 SettingsStore::SettingsStore(QAction *recordShortcut,
                              QAction *searchShortcut,
                              QAction *screenshotShortcut,
+                             QAction *promptShortcut,
                              QObject *parent)
     : QObject(parent),
       m_recordShortcut(recordShortcut),
       m_searchShortcut(searchShortcut),
-      m_screenshotShortcut(screenshotShortcut)
+      m_screenshotShortcut(screenshotShortcut),
+      m_promptShortcut(promptShortcut)
 {
     // Success notes fade out on their own; complaints stay until the next
     // action, so the user has time to read them.
@@ -206,6 +209,9 @@ QAction *SettingsStore::actionForRole(const QString &role) const
     if (role == kScreenshotRole) {
         return m_screenshotShortcut;
     }
+    if (role == kPromptRole) {
+        return m_promptShortcut;
+    }
     return nullptr;
 }
 
@@ -241,9 +247,9 @@ bool SettingsStore::applyShortcut(const QString &role, int key, int modifiers)
             setStatus(i18n("That is not a usable key combination."), true);
             return false;
         }
-        // Only the picker accepts a modifiers-only binding: for recording
-        // and search it would swallow every press of the bare modifiers
-        // (and collide with the picker's grab).
+        // Only the picker accepts a modifiers-only binding: for recording,
+        // search and the typed prompt it would swallow every press of the
+        // bare modifiers (and collide with the picker's grab).
         if (role != kScreenshotRole) {
             setStatus(i18n("The %1 shortcut needs a regular key besides the modifiers.",
                            action->text()),
@@ -282,13 +288,7 @@ bool SettingsStore::applyShortcut(const QString &role, int key, int modifiers)
 
     setStatus(i18n("%1 is now %2.", action->text(), sequence.toString(QKeySequence::NativeText)),
               false);
-    if (role == kRecordRole) {
-        Q_EMIT recordShortcutChanged();
-    } else if (role == kSearchRole) {
-        Q_EMIT searchShortcutChanged();
-    } else {
-        Q_EMIT screenshotShortcutChanged();
-    }
+    emitShortcutChanged(role);
     return true;
 }
 
@@ -306,14 +306,24 @@ bool SettingsStore::clearShortcut(const QString &role)
     }
 
     setStatus(i18n("The shortcut of %1 was removed.", action->text()), false);
+    emitShortcutChanged(role);
+    return true;
+}
+
+void SettingsStore::emitShortcutChanged(const QString &role)
+{
+    // The changed signal that belongs to the role: the controllers
+    // forward them, so every place that shows a live binding (the
+    // buttons' tooltips, the settings window's rows) updates at once.
     if (role == kRecordRole) {
         Q_EMIT recordShortcutChanged();
     } else if (role == kSearchRole) {
         Q_EMIT searchShortcutChanged();
+    } else if (role == kPromptRole) {
+        Q_EMIT promptShortcutChanged();
     } else {
         Q_EMIT screenshotShortcutChanged();
     }
-    return true;
 }
 
 bool SettingsStore::writeKeyField(const QString &field, const QString &value)
