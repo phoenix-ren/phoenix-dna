@@ -81,6 +81,17 @@ PlasmaCore.Dialog {
     // Emitted when the user takes an attached file off the follow-up.
     signal attachmentRemoved(int index)
 
+    // Whether the window picker is waiting for the user to click a window
+    // of the desktop; bound by the shell.
+    property bool screenshotPicking: false
+
+    // The global shortcut that starts the window picker; bound by the
+    // shell (empty when nothing is bound).
+    property string screenshotShortcut: ""
+
+    // Emitted when the user wants to photograph a window of the desktop.
+    signal screenshotRequested()
+
     // Emitted when the pane goes away (close button, Esc, toggle()).
     signal dismissed()
 
@@ -162,6 +173,13 @@ PlasmaCore.Dialog {
             Math.min(Screen.desktopAvailableHeight - minPaneHeight, y))
     }
 
+    // True while a compositor-driven resize is in flight (see the resize
+    // handles): window geometry changes arriving then are the user's drag
+    // — not applySize()'s own — and must be recorded as the dragged size,
+    // or the automatic sizing would snap the pane back on the next
+    // content change.
+    property bool systemResizing: false
+
     // Puts the window at the user's remembered position; a no-op while the
     // pane has never been moved (the Dialog then keeps its own placement
     // next to the anchor item). Called right after the window becomes
@@ -224,6 +242,20 @@ PlasmaCore.Dialog {
     // and a later transcript would then never appear — same guard as the
     // dictation overlay, whose editor this bar replicates.
     onTranscriptChanged: followUpEdit.text = transcript
+
+    // During a compositor-driven resize the window geometry is the truth:
+    // record it as the user's dragged size. The settle timer ends the
+    // drag — the compositor owns the pointer during a system resize, so
+    // the drag handle never sees a release event.
+    onWidthChanged: if (systemResizing) {
+        userWidth = conversationPane.width
+        resizeSettleTimer.restart()
+    }
+
+    onHeightChanged: if (systemResizing) {
+        userHeight = conversationPane.height
+        resizeSettleTimer.restart()
+    }
 
     onAnchorChanged: {
         if (anchor) {
@@ -373,6 +405,15 @@ PlasmaCore.Dialog {
             context: Qt.WindowShortcut
             enabled: conversationPane.canSubmit
             onActivated: conversationPane.submitted(conversationPane.transcript)
+        }
+
+        // Ends a compositor-driven resize once the geometry stops moving
+        // for a moment (there is no release event to react to).
+        Timer {
+            id: resizeSettleTimer
+
+            interval: 250
+            onTriggered: conversationPane.systemResizing = false
         }
 
         implicitWidth: conversationPane.maximized
@@ -944,6 +985,36 @@ PlasmaCore.Dialog {
                             }
                         }
 
+                        // The camera: photograph a window of the desktop
+                        // and attach the picture to this follow-up.
+                        PC3.ToolButton {
+                            id: screenshotButton
+                            objectName: "screenshotButton"
+
+                            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+                            icon.name: "camera-photo"
+                            icon.width: Kirigami.Units.iconSizes.small
+                            icon.height: Kirigami.Units.iconSizes.small
+                            // While the picker waits for a click, the
+                            // button says so.
+                            icon.color: conversationPane.screenshotPicking
+                                ? "#fcfcfc"
+                                : Kirigami.Theme.textColor
+
+                            onClicked: conversationPane.screenshotRequested()
+
+                            PC3.ToolTip {
+                                text: {
+                                    const shortcut = conversationPane.screenshotShortcut;
+                                    return shortcut.length > 0
+                                        ? i18n("Screenshot a window (%1)", shortcut)
+                                        : i18n("Screenshot a window");
+                                }
+                            }
+                        }
+
                         // The transcript, editable so a dictated follow-on
                         // can be corrected before sending — and typeable
                         // from scratch. The editor is the single source of
@@ -1045,15 +1116,18 @@ PlasmaCore.Dialog {
         // and bottom resize, the corner does both. They are only needed in
         // the normal state (maximized fills the screen already).
         //
-        // All three compute the drag delta in *global* screen coordinates,
-        // captured once at press time. Item-relative deltas cannot work
-        // here: the handle moves with the window between the pointer event
-        // and the Dialog applying the resize (window geometry lands
-        // asynchronously on Wayland), so a bottom-right drag would measure
-        // the window's own motion against itself — the drag cancels itself
-        // (no height gain) and resizes jaggedly, bouncing back as the
-        // geometry catches up. Global deltas are anchored to the screen and
-        // immune to all of it.
+        // On press each handle asks the compositor to run an interactive
+        // resize (startSystemResize) — the right way to resize a frameless
+        // window on Wayland, where the compositor owns geometry and applies
+        // every edge smoothly. A client-side height assignment cannot do
+        // that: the Dialog's own position sync re-clamps the window into
+        // the screen on each height change, which is what made vertical
+        // resizing snap back (horizontal growth, unclamped, happened to
+        // survive). If the system resize is unavailable, the handle falls
+        // back to manual math, computed in *global* screen coordinates
+        // captured at press time — item-relative deltas cannot work here,
+        // because the handle moves with the window between the pointer
+        // event and the Dialog applying the resize.
         MouseArea {
             objectName: "resizeRight"
 
@@ -1070,9 +1144,11 @@ PlasmaCore.Dialog {
             onPressed: (mouse) => {
                 pressGlobal = mapToGlobal(mouse.x, mouse.y)
                 startWidth = conversationPane.width
+                conversationPane.systemResizing =
+                    conversationPane.startSystemResize(Qt.RightEdge)
             }
             onPositionChanged: (mouse) => {
-                if (!pressed) {
+                if (!pressed || conversationPane.systemResizing) {
                     return
                 }
                 const global = mapToGlobal(mouse.x, mouse.y)
@@ -1100,9 +1176,11 @@ PlasmaCore.Dialog {
             onPressed: (mouse) => {
                 pressGlobal = mapToGlobal(mouse.x, mouse.y)
                 startHeight = conversationPane.height
+                conversationPane.systemResizing =
+                    conversationPane.startSystemResize(Qt.BottomEdge)
             }
             onPositionChanged: (mouse) => {
-                if (!pressed) {
+                if (!pressed || conversationPane.systemResizing) {
                     return
                 }
                 const global = mapToGlobal(mouse.x, mouse.y)
@@ -1132,9 +1210,11 @@ PlasmaCore.Dialog {
                 pressGlobal = mapToGlobal(mouse.x, mouse.y)
                 startWidth = conversationPane.width
                 startHeight = conversationPane.height
+                conversationPane.systemResizing = conversationPane.startSystemResize(
+                    Qt.RightEdge | Qt.BottomEdge)
             }
             onPositionChanged: (mouse) => {
-                if (!pressed) {
+                if (!pressed || conversationPane.systemResizing) {
                     return
                 }
                 const global = mapToGlobal(mouse.x, mouse.y)
