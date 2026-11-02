@@ -143,10 +143,12 @@ PlasmoidItem {
         onRecordClicked: Phoenix.PhoenixController.toggleRecording()
 
         onSubmitted: (text) => {
-            // Follow-ons keep the pane as the conversation surface: clear
-            // the input and follow the newest exchange while the answer
-            // streams in below the previous ones.
-            resultsPane.transcript = "";
+            // Follow-ons keep the pane as the conversation surface: the
+            // controller clears both transcript surfaces when the text is
+            // submitted (see submitText()), so the follow-up field is left
+            // empty — placeholder reading "Ask a follow-up…" — for the next
+            // query; here we only follow the newest exchange while the
+            // answer streams in below the previous ones.
             resultsPane.showLive();
             Phoenix.PhoenixController.submitText(text);
         }
