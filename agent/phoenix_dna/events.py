@@ -14,6 +14,10 @@ from __future__ import annotations
 RUN_STARTED = "run_started"
 TURN_STARTED = "turn_started"
 TEXT_DELTA = "text_delta"
+#: The model's reasoning, streamed apart from its answer (MiniMax and
+#: friends wrap it in <think> tags inside the content; the provider
+#: splits it out).
+THINKING_DELTA = "thinking_delta"
 TOOL_CALL_STARTED = "tool_call_started"
 TOOL_CALL_FINISHED = "tool_call_finished"
 AUTH_REQUESTED = "auth_requested"

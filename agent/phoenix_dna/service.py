@@ -40,6 +40,7 @@ except ImportError:  # tests that do not touch D-Bus
 _SIGNAL_MAP = {
     "run_started": ("run_started", ("run_id", "mode", "session_id")),
     "text_delta": ("text_delta", ("run_id", "text")),
+    "thinking_delta": ("thinking_delta", ("run_id", "text")),
     "tool_call_started": (
         "tool_call_started",
         ("run_id", "call_id", "tool", "args_json"),
@@ -122,6 +123,7 @@ def build_bridge(service) -> SignalBridge:
         {
             "run_started": service.RunStarted,
             "text_delta": service.TextDelta,
+            "thinking_delta": service.ThinkingDelta,
             "tool_call_started": service.ToolCallStarted,
             "tool_call_finished": service.ToolCallFinished,
             "auth_requested": service.AuthRequested,
@@ -165,6 +167,9 @@ if dbus is not None:
 
         @dbus.service.signal(INTERFACE, signature="ss")
         def TextDelta(self, run_id, text): ...
+
+        @dbus.service.signal(INTERFACE, signature="ss")
+        def ThinkingDelta(self, run_id, text): ...
 
         @dbus.service.signal(INTERFACE, signature="ssss")
         def ToolCallStarted(self, run_id, call_id, tool, args_json): ...

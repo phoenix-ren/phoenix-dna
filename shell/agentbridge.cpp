@@ -71,16 +71,20 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
     // the moment a result is complete for the widget. The match rules bind
     // to the well-known name, so they can be installed before the daemon
     // is even running — delivery starts as soon as the name is acquired.
-    // RunStarted/TextDelta/ToolCall* stream the run into resultText and
-    // the activity log as it happens: the pane opens at the run's first
-    // output (activityStarted) instead of waiting for the result, and the
-    // finished result arms the pane's dismiss countdown.
+    // RunStarted/TextDelta/ThinkingDelta/ToolCall* stream the run into
+    // resultText, the row's thinking and the activity log as it happens:
+    // the pane opens at the run's first output (activityStarted) instead
+    // of waiting for the result, and the finished result arms the pane's
+    // dismiss countdown.
     QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
                                           QStringLiteral("RunStarted"), this,
                                           SLOT(onRunStarted(QString, QString, QString)));
     QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
                                           QStringLiteral("TextDelta"), this,
                                           SLOT(onTextDelta(QString, QString)));
+    QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
+                                          QStringLiteral("ThinkingDelta"), this,
+                                          SLOT(onThinkingDelta(QString, QString)));
     QDBusConnection::sessionBus().connect(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("RunFinished"), this,
         SLOT(onRunFinished(QString, QString, QString, uint, uint, uint)));
@@ -498,6 +502,7 @@ void AgentBridge::onRunStarted(const QString &runId, const QString &mode, const 
     m_streaming = false;
     m_deltaTimer.stop();
     m_pendingDelta.clear();
+    m_pendingThinking.clear();
     if (ours) {
         const QueuedPrompt queued = m_pendingPrompts.takeFirst();
         if (queued.newSession) {
@@ -530,8 +535,25 @@ void AgentBridge::onTextDelta(const QString &runId, const QString &text)
     }
 }
 
+void AgentBridge::onThinkingDelta(const QString &runId, const QString &text)
+{
+    Q_UNUSED(runId)
+
+    // The notes are activity too: the pane opens even while the model is
+    // only thinking.
+    beginStreaming();
+    m_pendingThinking += text;
+    if (!m_deltaTimer.isActive()) {
+        m_deltaTimer.start();
+    }
+}
+
 void AgentBridge::flushDeltas()
 {
+    if (!m_pendingThinking.isEmpty()) {
+        m_conversation.appendThinking(m_pendingThinking);
+        m_pendingThinking.clear();
+    }
     if (m_pendingDelta.isEmpty()) {
         return;
     }
@@ -678,6 +700,7 @@ void AgentBridge::onRunFinished(const QString &runId,
     // close the current history row (its streamed partial, if any, stays).
     m_deltaTimer.stop();
     m_pendingDelta.clear();
+    m_pendingThinking.clear();
     if (!finalText.trimmed().isEmpty()) {
         m_conversation.setResult(finalText);
     }

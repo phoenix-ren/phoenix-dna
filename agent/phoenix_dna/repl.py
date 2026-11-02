@@ -236,6 +236,9 @@ class EventPrinter:
             )
         elif kind == "text_delta":
             self.stream(event.get("text", ""))
+        elif kind == "thinking_delta":
+            # The reasoning, dim: the trail of the run, not its answer.
+            self.stream(self._c("2", event.get("text", "")))
         elif kind == "tool_call_started":
             self.close_line()
             args = json.dumps(event.get("args", {}), ensure_ascii=False)

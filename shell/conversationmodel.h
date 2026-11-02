@@ -88,6 +88,9 @@ public:
      * answer keeps the place it deserves. */
     void demoteResultToThinking();
 
+    /*! \brief Appends streamed thinking to the current exchange. */
+    void appendThinking(const QString &delta);
+
     /*! \brief Replaces the current exchange's thinking (the notes the
      *  agent wrote while it worked). */
     void setThinking(const QString &thinking);

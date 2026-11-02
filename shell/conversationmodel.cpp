@@ -122,6 +122,15 @@ void ConversationModel::setThinking(const QString &thinking)
     touchCurrent({ThinkingRole});
 }
 
+void ConversationModel::appendThinking(const QString &delta)
+{
+    if (delta.isEmpty() || m_exchanges.isEmpty()) {
+        return;
+    }
+    m_exchanges.last().thinking += delta;
+    touchCurrent({ThinkingRole});
+}
+
 void ConversationModel::appendToolLog(const QString &markdown)
 {
     if (markdown.isEmpty() || m_exchanges.isEmpty()) {

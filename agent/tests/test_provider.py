@@ -110,3 +110,78 @@ def test_arguments_streamed_in_pieces_are_reassembled():
     call = responses[0]["response"].tool_calls[0]
     assert call.arguments == {"command": "ls"}
     assert call.arguments_error is None
+
+
+# --- thinking split out of the content ---------------------------------------
+
+
+def _content_chunk(text: str) -> bytes:
+    return _sse({"choices": [{"delta": {"content": text}}]})
+
+
+def _reasoning_chunk(text: str) -> bytes:
+    return _sse({"choices": [{"delta": {"reasoning_content": text}}]})
+
+
+def _deltas(items):
+    return [
+        (i["type"], i.get("text", "")) for i in _consume(items) if i["type"] != "response"
+    ]
+
+
+def test_think_block_split_from_the_answer():
+    response = _response([_content_chunk("<think>pondering</think>The answer.")])
+    assert response.text == "The answer."
+    assert response.thinking == "pondering"
+    # the history keeps the content as the model sent it
+    assert response.raw_text == "<think>pondering</think>The answer."
+
+
+def test_think_tag_split_across_deltas():
+    items = [
+        _content_chunk("<th"),
+        _content_chunk("ink>deep "),
+        _content_chunk("thought</th"),
+        _content_chunk("ink>\n\nAnswer"),
+    ]
+    response = _response(items)
+    assert response.thinking == "deep thought"
+    assert response.text == "Answer"
+    # the reasoning streams as it arrives, the answer only once it is sure
+    assert _deltas(items) == [
+        ("thinking_delta", "deep "),
+        ("thinking_delta", "thought"),
+        ("text_delta", "Answer"),
+    ]
+
+
+def test_reasoning_content_field_is_thinking():
+    response = _response([_reasoning_chunk("hmm "), _content_chunk("Hi there")])
+    assert response.thinking == "hmm"
+    assert response.text == "Hi there"
+    assert response.raw_text == "Hi there"
+    assert _deltas([_reasoning_chunk("hmm "), _content_chunk("Hi")]) == [
+        ("thinking_delta", "hmm "),
+        ("text_delta", "Hi"),
+    ]
+
+
+def test_plain_content_stays_the_answer():
+    # a '<' that never becomes a tag must not hold the stream hostage
+    items = [_content_chunk("Just the answer, < with a bracket."), _content_chunk(" More")]
+    response = _response(items)
+    assert response.text == "Just the answer, < with a bracket. More"
+    assert response.thinking == ""
+    assert response.raw_text == response.text
+
+
+def test_two_think_blocks_around_one_answer():
+    response = _response([_content_chunk("<think>a</think>mid<think>b</think>end")])
+    assert response.text == "midend"
+    assert response.thinking == "ab"
+
+
+def test_unclosed_think_block_is_all_thinking():
+    response = _response([_content_chunk("<think>never finished")])
+    assert response.text == ""
+    assert response.thinking == "never finished"
