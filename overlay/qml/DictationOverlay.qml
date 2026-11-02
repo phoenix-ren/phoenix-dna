@@ -45,6 +45,13 @@ PlasmaCore.Dialog {
     // agent as a prompt. The shell wires this to the controller.
     signal submitted(string text)
 
+    // Whether the transcript can be submitted right now: something was
+    // dictated, the clip is not mid-recording or mid-transcription. The
+    // send button and the Shift+Enter shortcut both consult it, so the two
+    // paths can never disagree.
+    readonly property bool canSubmit: transcript.length > 0
+        && !listening && !transcribing
+
     // Emitted when the user dismisses the overlay without sending.
     signal closed()
 
@@ -154,6 +161,20 @@ PlasmaCore.Dialog {
                 onTextChanged: if (text !== dictationOverlay.transcript) {
                     dictationOverlay.transcript = text
                 }
+
+                // Same contract as the send button, from the keyboard:
+                // Shift+Enter submits, Enter breaks the line (the editor is
+                // multi-line). Any other key keeps the editor's own
+                // behaviour — hence no blanket accept.
+                Keys.onPressed: (event) => {
+                    if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                        && (event.modifiers & Qt.ShiftModifier)) {
+                        if (dictationOverlay.canSubmit) {
+                            dictationOverlay.submitted(dictationOverlay.transcript)
+                        }
+                        event.accepted = true
+                    }
+                }
             }
 
             // Why a clip could not be transcribed (missing key, network,
@@ -176,9 +197,12 @@ PlasmaCore.Dialog {
                     Layout.alignment: Qt.AlignRight
                     icon.name: "document-send"
                     text: i18n("Send to agent")
-                    enabled: dictationOverlay.transcript.length > 0
-                             && !dictationOverlay.listening && !dictationOverlay.transcribing
+                    enabled: dictationOverlay.canSubmit
                     onClicked: dictationOverlay.submitted(dictationOverlay.transcript)
+
+                    PC3.ToolTip {
+                        text: i18n("Send to agent (Shift+Enter)")
+                    }
                 }
             }
         }

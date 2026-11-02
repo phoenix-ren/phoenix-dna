@@ -72,6 +72,12 @@ PlasmaCore.Dialog {
     // shell submits it over the existing session history.
     signal submitted(string text)
 
+    // Whether a follow-on can be submitted right now: there is text, and
+    // no dictation is in flight. The send button and the Shift+Enter
+    // shortcut both consult it, so the two paths can never disagree.
+    readonly property bool canSubmit: transcript.length > 0
+        && !listening && !transcribing
+
     // The item the pane floats next to — the shell passes its own item so
     // the result appears where the user triggered the query.
     property Item anchor: null
@@ -697,6 +703,21 @@ PlasmaCore.Dialog {
                             onTextChanged: if (text !== conversationPane.transcript) {
                                 conversationPane.transcript = text
                             }
+
+                            // Same contract as the send button, from the
+                            // keyboard: Shift+Enter submits the follow-on,
+                            // Enter breaks the line (the editor is
+                            // multi-line). Any other key keeps the editor's
+                            // own behaviour — hence no blanket accept.
+                            Keys.onPressed: (event) => {
+                                if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                                    && (event.modifiers & Qt.ShiftModifier)) {
+                                    if (conversationPane.canSubmit) {
+                                        conversationPane.submitted(conversationPane.transcript)
+                                    }
+                                    event.accepted = true
+                                }
+                            }
                         }
 
                         // One explicit send, no accidental submissions —
@@ -707,9 +728,12 @@ PlasmaCore.Dialog {
                             Layout.alignment: Qt.AlignRight
                             icon.name: "document-send"
                             text: i18n("Send to agent")
-                            enabled: conversationPane.transcript.length > 0
-                                     && !conversationPane.listening && !conversationPane.transcribing
+                            enabled: conversationPane.canSubmit
                             onClicked: conversationPane.submitted(conversationPane.transcript)
+
+                            PC3.ToolTip {
+                                text: i18n("Send to agent (Shift+Enter)")
+                            }
                         }
                     }
 
