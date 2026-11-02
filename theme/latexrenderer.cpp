@@ -519,10 +519,20 @@ void LatexRenderer::render(int requestId, const QString &markdown)
 {
     const QString engineBin = engine();
     if (engineBin.isEmpty()) {
-        Q_EMIT failed(requestId,
-                      QStringLiteral("No TeX engine found — install one "
-                                     "(e.g. dnf install texlive-scheme-basic) "
-                                     "to render math."));
+        // Delivered asynchronously: a synchronous emit from inside the
+        // invokable never reaches QML handlers when the call was made
+        // from some contexts (a Repeater delegate, observed in the
+        // field) — every emit of this class goes through the event
+        // loop for that reason.
+        QMetaObject::invokeMethod(
+            this, [this, requestId] {
+                Q_EMIT failed(requestId,
+                              QStringLiteral(
+                                  "No TeX engine found — install one "
+                                  "(e.g. dnf install texlive-scheme-basic) "
+                                  "to render math."));
+            },
+            Qt::QueuedConnection);
         return;
     }
 
@@ -539,7 +549,13 @@ void LatexRenderer::render(int requestId, const QString &markdown)
     const QString pdfPath = dir + QLatin1Char('/') + hash
         + QLatin1String(".pdf");
     if (QFileInfo::exists(pdfPath)) {
-        Q_EMIT rendered(requestId, QUrl::fromLocalFile(pdfPath));
+        // Cache hit: same rule as above — the emit goes through the
+        // event loop, never synchronously out of the invokable.
+        QMetaObject::invokeMethod(
+            this, [this, requestId, pdfPath] {
+                Q_EMIT rendered(requestId, QUrl::fromLocalFile(pdfPath));
+            },
+            Qt::QueuedConnection);
         return;
     }
 

@@ -604,7 +604,8 @@ PlasmaCore.Dialog {
                                         textFormat: TextEdit.MarkdownText
                                         wrapMode: Text.WordWrap
                                         color: PhoenixTheme.primaryTextColor
-                                        onTextChanged: MarkdownDocument.spaceParagraphs(
+                                        onTextChanged: Qt.callLater(
+                                            MarkdownDocument.spaceParagraphs,
                                             textDocument,
                                             searchOverlay.paragraphSpacing)
                                     }                                }
