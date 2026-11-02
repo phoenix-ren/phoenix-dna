@@ -87,7 +87,12 @@ class AgentDaemon:
         )
         self._password_provider = password_provider  # None -> KDialog lazily
         self._emitter = emitter or (lambda event: None)
-        self._sessions = SessionManager(SessionStore(config.data_dir / "sessions"))
+        # One SQLite database per user (root / the local login name; the
+        # anonymous web mode files into the local user's database). The
+        # legacy JSONL store, if present, is imported into it once.
+        self._sessions = SessionManager(
+            SessionStore(config.data_dir / "users", config.data_dir / "sessions")
+        )
         self._root_cache: SudoCredentialCache | None = None
         self._mode: Mode = Mode.USER
 

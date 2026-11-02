@@ -1,54 +1,93 @@
 # SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
-"""Session store and manager tests."""
+"""Session store and manager tests (per-user SQLite)."""
 
 from __future__ import annotations
 
-from phoenix_dna.sessions import SessionManager, SessionStore
+import json
+import sqlite3
+
+from phoenix_dna.sessions import SessionManager, SessionStore, _local_username
+
+
+def _sessions_rows(db_path):
+    db = sqlite3.connect(db_path)
+    db.row_factory = sqlite3.Row
+    return [dict(r) for r in db.execute("SELECT * FROM sessions")]
+
+
+def _message_rows(db_path):
+    db = sqlite3.connect(db_path)
+    db.row_factory = sqlite3.Row
+    return [dict(r) for r in db.execute("SELECT * FROM messages ORDER BY seq")]
 
 
 def test_store_roundtrip(tmp_path):
-    store = SessionStore(tmp_path / "sessions")
-    store.append(
-        "user", "abc", {"kind": "message", "message": {"role": "user", "content": "hi"}}
-    )
-    store.append(
-        "user", "abc", {"kind": "run_finished", "data": {"status": "completed"}}
-    )
-    store.append(
-        "user",
-        "abc",
-        {"kind": "message", "message": {"role": "assistant", "content": "yo"}},
-    )
+    store = SessionStore(tmp_path / "users")
+    user = store.local_user
+    store.append_message(user, "user", "abc", {"role": "user", "content": "hi"})
+    store.record_run(user, "user", "abc", "run_finished", {"status": "completed"})
+    store.append_message(user, "user", "abc", {"role": "assistant", "content": "yo"})
 
-    entries = store.read("user", "abc")
-    assert len(entries) == 3
-    assert all("ts" in e for e in entries)
-    assert store.read("user", "missing") == []
-    assert store.path("user", "abc").parent == tmp_path / "sessions" / "user"
+    messages = store.read_messages(user, "abc")
+    assert [m["content"] for m in messages] == ["hi", "yo"]
+
+    rows = _message_rows(store.db_path(user))
+    assert [r["role"] for r in rows] == ["user", "assistant"]
+    assert rows[0]["content"] == "hi"
+    # The full message is kept for faithful replay.
+    assert json.loads(rows[0]["message_json"]) == {"role": "user", "content": "hi"}
+
+    sessions = _sessions_rows(store.db_path(user))
+    assert len(sessions) == 1
+    assert sessions[0]["id"] == "abc"
+    assert sessions[0]["mode"] == "user"
+    assert sessions[0]["user"] == user
+    assert sessions[0]["created_at"] <= sessions[0]["updated_at"]
+
+    # Unknown sessions read back empty.
+    assert store.read_messages(user, "missing") == []
 
 
-def test_store_skips_corrupt_lines(tmp_path):
-    store = SessionStore(tmp_path / "sessions")
-    path = store.path("user", "x")
-    path.parent.mkdir(parents=True)
-    path.write_text(
-        '{"kind": "message", "message": {"role": "user", "content": "ok"}}\nnot json\n\n'
-    )
-    assert len(store.read("user", "x")) == 1
+def test_one_database_per_user(tmp_path):
+    store = SessionStore(tmp_path / "users")
+    user = store.local_user
+
+    assert store.user_for_mode("root") == "root"
+    assert store.user_for_mode("user") == user
+    # The anonymous web mode files into the local user's database.
+    assert store.user_for_mode("web") == user
+
+    store.append_message(user, "user", "s1", {"role": "user", "content": "mine"})
+    store.append_message("root", "root", "s2", {"role": "user", "content": "root's"})
+
+    assert store.db_path(user).parent == tmp_path / "users" / user
+    assert store.db_path("root").parent == tmp_path / "users" / "root"
+    assert store.read_messages(user, "s2") == []  # not in michelle's DB
+    assert store.read_messages("root", "s1") == []  # not in root's DB
+
+    root_rows = _message_rows(store.db_path("root"))
+    assert [r["content"] for r in root_rows] == ["root's"]
 
 
 def test_manager_new_session(tmp_path):
-    manager = SessionManager(SessionStore(tmp_path))
+    manager = SessionManager(SessionStore(tmp_path / "users"))
     conv = manager.get("user")
     assert conv.id and len(conv.id) == 12
     assert conv.messages == []
     assert conv.mode == "user"
+    assert conv.user == manager.store.local_user
+
+
+def test_manager_root_gets_root_user(tmp_path):
+    manager = SessionManager(SessionStore(tmp_path / "users"))
+    conv = manager.get("root")
+    assert conv.user == "root"
 
 
 def test_manager_persistence_and_reload(tmp_path):
-    store = SessionStore(tmp_path)
+    store = SessionStore(tmp_path / "users")
     manager = SessionManager(store)
     conv = manager.get("user", "sess42")
     assert conv.messages == []  # unknown id -> fresh conversation
@@ -58,24 +97,126 @@ def test_manager_persistence_and_reload(tmp_path):
     manager.record(conv, "run_finished", {"status": "completed"})
 
     # a brand new manager (fresh process simulation) reloads from disk
-    reloaded = SessionManager(SessionStore(tmp_path)).get("user", "sess42")
-    assert [m["content"] for m in reloaded.messages] == ["hello", "hi"]
+    fresh = SessionManager(SessionStore(tmp_path / "users"))
+    conv2 = fresh.get("user", "sess42")
+    assert [m["content"] for m in conv2.messages] == ["hello", "hi"]
+    assert conv2.messages[0]["role"] == "user"
 
-    # audit entries are not replayed as messages
-    assert all(m.get("role") for m in reloaded.messages)
-
-
-def test_manager_cache_reuse(tmp_path):
-    manager = SessionManager(SessionStore(tmp_path))
-    first = manager.get("user", "cached1")
-    first.messages.append({"role": "user", "content": "x"})
-    again = manager.get("user", "cached1")
-    assert again is first
-    assert len(again.messages) == 1
+    # run audit entries exist exactly once (not duplicated by the reload)
+    db = sqlite3.connect(store.db_path(store.local_user))
+    runs = db.execute("SELECT kind FROM runs WHERE session_id = 'sess42'").fetchall()
+    assert [r[0] for r in runs] == ["run_finished"]
 
 
-def test_manager_cache_eviction(tmp_path):
-    manager = SessionManager(SessionStore(tmp_path), max_cached=2)
-    for i in range(5):
-        manager.get("user", f"s{i}")
-    assert len(manager._cache) == 2
+def test_manager_cache_is_per_user(tmp_path):
+    manager = SessionManager(SessionStore(tmp_path / "users"))
+    web = manager.get("web", "shared-id")
+    root = manager.get("root", "shared-id")
+    # Same id, different user databases: two distinct conversations.
+    assert web.user == manager.store.local_user
+    assert root.user == "root"
+    assert web is not root
+
+    web.messages.append({"role": "user", "content": "anon q"})
+    cached = manager.get("web", "shared-id")
+    assert cached is web
+
+
+def test_tool_call_message_roundtrip(tmp_path):
+    """Assistant messages with tool calls survive replay faithfully."""
+    store = SessionStore(tmp_path / "users")
+    manager = SessionManager(store)
+    conv = manager.get("user", "tools")
+    message = {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+            {
+                "id": "call_1",
+                "type": "function",
+                "function": {"name": "bash", "arguments": '{"command": "ls"}'},
+            }
+        ],
+    }
+    manager.append(conv, message)
+
+    fresh = SessionManager(SessionStore(tmp_path / "users"))
+    replay = fresh.get("user", "tools").messages
+    assert replay == [message]
+
+
+def test_legacy_jsonl_import(tmp_path):
+    legacy = tmp_path / "sessions"
+    for mode, sid, contents in (
+        (
+            "user",
+            "old1",
+            [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "yo"}],
+        ),
+        ("root", "oldroot", [{"role": "user", "content": "fix it"}]),
+    ):
+        path = legacy / mode / f"{sid}.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = [
+            json.dumps(
+                {
+                    "ts": "2026-01-01T00:00:00+00:00",
+                    "kind": "run_started",
+                    "data": {"run_id": "r1", "mode": mode},
+                }
+            )
+        ]
+        lines += [
+            json.dumps(
+                {"ts": "2026-01-01T00:00:01+00:00", "kind": "message", "message": m}
+            )
+            for m in contents
+        ]
+        lines += [
+            json.dumps(
+                {
+                    "ts": "2026-01-01T00:00:02+00:00",
+                    "kind": "run_finished",
+                    "data": {"status": "completed"},
+                }
+            )
+        ]
+        path.write_text("\n".join(lines) + "\n")
+
+    store = SessionStore(tmp_path / "users", legacy)
+    user = store.local_user
+
+    mine = store.read_messages(user, "old1")
+    assert [m["content"] for m in mine] == ["hi", "yo"]
+    root_messages = store.read_messages("root", "oldroot")
+    assert [m["content"] for m in root_messages] == ["fix it"]
+
+    db = sqlite3.connect(store.db_path(user))
+    runs = db.execute("SELECT kind FROM runs WHERE session_id = 'old1'").fetchall()
+    assert [r[0] for r in runs] == ["run_started", "run_finished"]
+
+    # A second store instance must not duplicate anything.
+    again = SessionStore(tmp_path / "users", legacy)
+    assert [m["content"] for m in again.read_messages(user, "old1")] == ["hi", "yo"]
+    db2 = sqlite3.connect(again.db_path(user))
+    count = db2.execute(
+        "SELECT COUNT(*) FROM messages WHERE session_id = 'old1'"
+    ).fetchone()[0]
+    assert count == 2
+
+
+def test_legacy_import_skips_corrupt_lines(tmp_path):
+    legacy = tmp_path / "sessions" / "user"
+    legacy.mkdir(parents=True)
+    (legacy / "broken.jsonl").write_text(
+        '{"kind": "message", "message": {"role": "user", "content": "ok"}}\nnot json\n\n'
+    )
+    store = SessionStore(tmp_path / "users", tmp_path / "sessions")
+    assert [m["content"] for m in store.read_messages(store.local_user, "broken")] == [
+        "ok"
+    ]
+
+
+def test_local_username_resolution():
+    """The local user comes from the environment or passwd, never blank."""
+    assert _local_username()
