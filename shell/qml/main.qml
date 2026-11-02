@@ -11,7 +11,7 @@ import plasma.applet.org.phoenixdna.agent as Phoenix
 
 // Components 2, 3 and 4 are separate QML modules, installed independently.
 import org.phoenixdna.overlay as PhoenixOverlay
-import org.phoenixdna.pane as PhoenixPane
+import org.phoenixdna.resultswindow as PhoenixResults
 import org.phoenixdna.search as PhoenixSearch
 
 /*
@@ -37,7 +37,7 @@ PlasmoidItem {
         target: Phoenix.PhoenixController
 
         function onDictationOverlayRequested() {
-            if (resultsPane.visible) {
+            if (resultsWindow.visible) {
                 // The pane's bar mirrors listening/transcribing via its
                 // bindings below; nothing else to do here.
                 return;
@@ -56,7 +56,7 @@ PlasmoidItem {
         }
 
         function onConversationPaneRequested() {
-            resultsPane.toggle();
+            resultsWindow.toggle();
         }
 
         // The search button (or its global hotkey) asks for the session
@@ -81,17 +81,17 @@ PlasmoidItem {
         target: Phoenix.PhoenixController.agent
 
         function onActivityStarted() {
-            resultsPane.showLive();
+            resultsWindow.showLive();
         }
 
         function onResultReady() {
-            resultsPane.showResult();
+            resultsWindow.showResult();
         }
 
         // A session the user clicked in the session search: its history
         // is in the conversation model now, so the pane opens on it.
         function onStoredSessionOpened() {
-            resultsPane.showResult();
+            resultsWindow.showResult();
         }
     }
 
@@ -105,7 +105,7 @@ PlasmoidItem {
 
         function onPartialTranscriptChanged() {
             dictationOverlay.transcript = Phoenix.PhoenixController.partialTranscript;
-            resultsPane.transcript = Phoenix.PhoenixController.partialTranscript;
+            resultsWindow.transcript = Phoenix.PhoenixController.partialTranscript;
         }
 
         function onTranscribingChanged() {
@@ -159,22 +159,23 @@ PlasmoidItem {
         }
     }
 
-    // Component 3 — the results pane.
+    // Component 3 — the results window.
     //
-    // Transient: it shows itself the moment the agent's result arrives,
-    // renders above any view, and dismisses itself again once the result
-    // has had its time on screen. Anchored to the widget like the overlay
-    // so it appears where the query was triggered from.
+    // A fully-fledged, decorated toplevel: the compositor moves, resizes,
+    // maximizes and closes it like any other window (the frameless Plasma
+    // Dialog predecessor was a window class the compositor refuses to move
+    // or resize interactively). It shows itself the moment the agent's
+    // result arrives, stays above other windows so the result announces
+    // itself, and persists until closed by hand; closing only hides it, so
+    // the compositor keeps it where the user left it.
     //
     // Its input bar continues the conversation: record and send route
     // through the controller exactly like the panel's record button and
     // the overlay's "Send to agent", so a follow-on rides on the session
     // history the initial voice prompt created (AgentBridge tracks the
     // session id).
-    PhoenixPane.ConversationPane {
-        id: resultsPane
-
-        anchor: root
+    PhoenixResults.ResultsWindow {
+        id: resultsWindow
 
         // The bridge appends one row per run to the conversation model and
         // streams the answer (text deltas) and tool-call narration (fenced
@@ -219,7 +220,7 @@ PlasmoidItem {
             // query; here we only follow the newest exchange while the
             // answer streams in below the previous ones. A follow-on keeps
             // the session: the daemon continues the conversation on screen.
-            resultsPane.showLive();
+            resultsWindow.showLive();
             Phoenix.PhoenixController.submitText(text, false);
         }
 
@@ -228,7 +229,7 @@ PlasmoidItem {
         // overlay takes over as the transcript surface so the follow-on can
         // still be verified and sent — and its submission must keep the
         // pane's session intent (follow-up), not restart the session.
-        onDismissed: if (resultsPane.listening) {
+        onDismissed: if (resultsWindow.listening) {
             dictationOverlay.followUp = true;
             dictationOverlay.transcript = Phoenix.PhoenixController.partialTranscript;
             dictationOverlay.listening = Phoenix.PhoenixController.recording;
@@ -248,8 +249,6 @@ PlasmoidItem {
     // every further character drops the sessions that no longer match.
     PhoenixSearch.SessionSearchOverlay {
         id: sessionSearch
-
-        anchor: root
 
         // The user whose history is searched: root mode browses root's
         // sessions, every other mode the local user's.
