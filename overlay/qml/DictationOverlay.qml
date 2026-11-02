@@ -262,21 +262,24 @@ PlasmaCore.Dialog {
                     onTextChanged: if (text !== dictationOverlay.transcript) {
                         dictationOverlay.transcript = text
                     }
-
-                    // Same contract as the send button, from the keyboard:
-                    // Shift+Enter submits, Enter breaks the line (the editor is
-                    // multi-line). Any other key keeps the editor's own
-                    // behaviour — hence no blanket accept.
-                    Keys.onPressed: (event) => {
-                        if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                            && (event.modifiers & Qt.ShiftModifier)) {
-                            if (dictationOverlay.canSubmit) {
-                                dictationOverlay.submitted(dictationOverlay.transcript)
-                            }
-                            event.accepted = true
-                        }
-                    }
                 }
+            }
+
+            // Shift+Enter submits the transcript from anywhere in the
+            // overlay window. The shortcut lives on the window rather than
+            // on the editor because keyboard focus often rests elsewhere
+            // (a fresh dictation, the send button after a mouse click) and
+            // a key handler on the editor would simply never fire —
+            // previously the only keyboard way to send was pressing Space
+            // on the focused button. "Return" covers the main Enter key,
+            // "Enter" the numpad's. Plain Enter keeps inserting the line
+            // break — there is no shortcut for it. The canSubmit guard is
+            // shared with the button, so the two paths can never disagree.
+            Shortcut {
+                sequences: ["Shift+Return", "Shift+Enter"]
+                context: Qt.WindowShortcut
+                enabled: dictationOverlay.canSubmit
+                onActivated: dictationOverlay.submitted(dictationOverlay.transcript)
             }
 
             // The file picker for the "+" button. Every picked file is
