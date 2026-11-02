@@ -44,6 +44,10 @@ PlasmaCore.Dialog {
     // transcribed. The editor behaves the same, it only starts empty.
     property bool typing: false
 
+    // The typed query, kept while the editor is hidden: the toggle can
+    // bring it back, so a mis-click costs nothing. Esc throws it away.
+    property string draft: ""
+
     // Set once recording stops and the clip is with the transcription
     // service; the transcript appears (or the error below) when it returns.
     property bool transcribing: false
@@ -85,10 +89,20 @@ PlasmaCore.Dialog {
     // Emitted when the user dismisses the overlay without sending.
     signal closed()
 
+    // Emitted when the user discards the query (Esc): the text is thrown
+    // away and the overlay goes away with it.
+    signal discarded()
+
     // Engine results are pushed into the editor imperatively (not via a
     // text binding): a binding would be destroyed by the first user edit
     // and a later transcript would then never appear.
     onTranscriptChanged: transcriptEdit.text = transcript
+
+    // Starting to type shows the draft again - and nothing else: what a
+    // dictation left in the editor must not turn into a typed query.
+    onTypingChanged: if (typing) {
+        transcript = draft;
+    }
 
     // Anchoring the overlay to the panel widget keeps it horizontally aligned
     // with wherever the user is actually interacting.
@@ -333,8 +347,33 @@ PlasmaCore.Dialog {
                                     : dictationOverlay.listening ? i18n("Speak now…")
                                     : i18n("No speech was recognized.")
 
-                    onTextChanged: if (text !== dictationOverlay.transcript) {
-                        dictationOverlay.transcript = text
+                    onTextChanged: {
+                        if (text !== dictationOverlay.transcript) {
+                            dictationOverlay.transcript = text
+                        }
+                        // What the user writes is the draft: it is kept
+                        // while the editor is hidden, so the toggle can
+                        // bring the query back.
+                        if (dictationOverlay.typing) {
+                            dictationOverlay.draft = text
+                        }
+                    }
+
+                    // Shift+Enter submits, even with the keyboard in the
+                    // editor: a text edit swallows the key before the
+                    // window's shortcut ever gets to see it (it would
+                    // insert a line break instead). The window shortcut
+                    // above covers the case where the focus rests
+                    // elsewhere; this one covers the editor itself, so
+                    // the two can never both fire.
+                    Keys.onPressed: (event) => {
+                        if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                            && (event.modifiers & Qt.ShiftModifier)) {
+                            event.accepted = true;
+                            if (dictationOverlay.canSubmit) {
+                                dictationOverlay.submitted(dictationOverlay.transcript);
+                            }
+                        }
                     }
                 }
             }
@@ -354,6 +393,25 @@ PlasmaCore.Dialog {
                 context: Qt.WindowShortcut
                 enabled: dictationOverlay.canSubmit
                 onActivated: dictationOverlay.submitted(dictationOverlay.transcript)
+            }
+
+            // Esc throws a typed query away: the editor goes down and
+            // the text with it. It is the one way to lose the draft -
+            // hiding the editor with the toggle keeps it.
+            //
+            // The shortcut lives on the window rather than on the editor
+            // for the same reason as the one above: the keyboard focus
+            // often rests elsewhere, and a key handler on the editor
+            // would simply never fire.
+            Shortcut {
+                sequences: ["Escape"]
+                context: Qt.WindowShortcut
+                enabled: dictationOverlay.typing
+                onActivated: {
+                    dictationOverlay.draft = "";
+                    dictationOverlay.transcript = "";
+                    dictationOverlay.discarded();
+                }
             }
 
             // The file picker for the "+" button. Every picked file is

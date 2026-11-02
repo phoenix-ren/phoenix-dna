@@ -26,9 +26,12 @@ the keyboard in it: nothing is recorded, nothing is transcribed, and the
 query is sent to the agent like a dictated one. The global shortcut
 `Meta+Alt+Return` does the same from any application.
 
-When the conversation window is on screen, it owns the prompt: the typed
-query goes into its follow-up field and continues the session, exactly like
-a dictated follow-on.
+The button is a toggle — pressing it again puts the editor away, and the
+query stays as a draft, so a mis-click costs nothing. `Esc` is the way to
+throw the draft away: the editor closes and the query is gone.
+
+The conversation window owns the prompt while it is on screen: a typed
+query continues that session, exactly like a dictated follow-on.
 
 ## Layout
 

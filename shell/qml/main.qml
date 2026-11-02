@@ -53,6 +53,11 @@ PlasmoidItem {
             // only while a pane-started clip is handing over (below), whose
             // submission must remain a follow-on. It resets on submit or
             // close.
+            //
+            // A dictation takes the editor over from a typed query: the
+            // typed editor is put away (its draft is kept), and the
+            // microphone owns the prompt.
+            Phoenix.PhoenixController.setPromptEditorOpen(false);
             dictationOverlay.typing = false;
             dictationOverlay.transcript = Phoenix.PhoenixController.partialTranscript;
             dictationOverlay.listening = Phoenix.PhoenixController.recording;
@@ -64,9 +69,13 @@ PlasmoidItem {
 
         // The keyboard button (or its global hotkey) asks for the prompt
         // editor: the query is typed rather than dictated, and nothing is
-        // recorded.
+        // recorded. Asking again puts it away again - it is a toggle.
         function onPromptEditorRequested() {
             root.openTypedPrompt();
+        }
+
+        function onPromptEditorCloseRequested() {
+            root.closeTypedPrompt();
         }
 
         function onConversationPaneRequested() {
@@ -160,26 +169,28 @@ PlasmoidItem {
     }
 
     // Opens the prompt editor for a query the user types rather than
-    // dictates: the same overlay the microphone opens, but empty, with
-    // the keyboard in it and nothing being recorded.
+    // dictates: the same overlay the microphone opens, but with the
+    // keyboard in it and nothing being recorded.
     function openTypedPrompt() {
-        if (resultsWindow.visible) {
-            // The conversation window is on screen: its own follow-up
-            // field is the prompt surface there (the same rule the
-            // dictation overlay follows), so the typed query goes there
-            // and continues the session on screen.
-            resultsWindow.focusPrompt();
-            return;
-        }
+        // The editor shows the draft it kept, not whatever a dictation
+        // left behind in it.
         dictationOverlay.typing = true;
-        dictationOverlay.transcript = "";
         dictationOverlay.listening = false;
         dictationOverlay.transcribing = false;
         dictationOverlay.statusMessage = "";
         dictationOverlay.inputAnchor = root;
         dictationOverlay.visible = true;
+        Phoenix.PhoenixController.setPromptEditorOpen(true);
         // The window has to be up before the editor can take the focus.
         Qt.callLater(dictationOverlay.focusEditor);
+    }
+
+    // Puts the typed editor away again. The query stays: it is a draft
+    // the toggle can bring back (Esc is what discards it).
+    function closeTypedPrompt() {
+        dictationOverlay.visible = false;
+        dictationOverlay.typing = false;
+        Phoenix.PhoenixController.setPromptEditorOpen(false);
     }
 
     // Component 2 — the dictation overlay.
@@ -199,10 +210,27 @@ PlasmoidItem {
         // results pane is not opened here — it appears by itself when the
         // agent's answer comes back.
         onSubmitted: (text) => {
+            // A typed query continues the conversation that is on screen
+            // (the window owns the session while it is up); a dictated
+            // one follows the overlay's own follow-up flag.
+            const newSession = !(dictationOverlay.followUp
+                || (dictationOverlay.typing && resultsWindow.visible));
             dictationOverlay.visible = false;
             dictationOverlay.typing = false;
-            Phoenix.PhoenixController.submitText(text, !dictationOverlay.followUp);
+            // The query is on its way: it must not come back with the
+            // next toggle.
+            dictationOverlay.draft = "";
+            Phoenix.PhoenixController.setPromptEditorOpen(false);
+            Phoenix.PhoenixController.submitText(text, newSession);
             dictationOverlay.followUp = false;
+        }
+
+        // Esc discards the typed query: the text is thrown away and the
+        // editor goes away with it.
+        onDiscarded: {
+            dictationOverlay.typing = false;
+            dictationOverlay.visible = false;
+            Phoenix.PhoenixController.setPromptEditorOpen(false);
         }
 
         // The files attached to the prompt: the overlay and the results
@@ -218,11 +246,13 @@ PlasmoidItem {
         screenshotShortcut: Phoenix.PhoenixController.screenshotPicker.shortcut
         onScreenshotRequested: Phoenix.PhoenixController.startScreenshot()
 
-        // Closing abandons the dictation; nothing is sent.
+        // Closing abandons the dictation; nothing is sent. A typed draft
+        // is kept (the toggle can bring it back).
         onClosed: {
             dictationOverlay.visible = false;
             dictationOverlay.typing = false;
             dictationOverlay.followUp = false;
+            Phoenix.PhoenixController.setPromptEditorOpen(false);
         }
     }
 

@@ -215,7 +215,7 @@ PhoenixController::PhoenixController(QObject *parent)
     const QList<QKeySequence> promptHotkey{QKeySequence(QStringLiteral("Meta+Alt+Return"))};
     KGlobalAccel::self()->setDefaultShortcut(m_promptShortcut, promptHotkey);
     KGlobalAccel::self()->setShortcut(m_promptShortcut, promptHotkey);
-    connect(m_promptShortcut, &QAction::triggered, this, &PhoenixController::showPromptEditor);
+    connect(m_promptShortcut, &QAction::triggered, this, &PhoenixController::togglePromptEditor);
     connect(KGlobalAccel::self(), &KGlobalAccel::globalShortcutChanged, this,
             [this](QAction *action, const QKeySequence &) {
                 if (action == m_promptShortcut) {
@@ -406,7 +406,7 @@ void PhoenixController::showDictationOverlay()
     Q_EMIT dictationOverlayRequested();
 }
 
-void PhoenixController::showPromptEditor()
+void PhoenixController::togglePromptEditor()
 {
     // A dictation in flight owns the overlay: its editor is locked while
     // the transcript arrives or the clip is being transcribed, so a typed
@@ -414,7 +414,23 @@ void PhoenixController::showPromptEditor()
     if (m_recording || m_transcribing) {
         return;
     }
+
+    if (m_promptEditorOpen) {
+        // The editor is a toggle: asking again puts it away. The query
+        // stays a draft — Esc is what throws it away.
+        Q_EMIT promptEditorCloseRequested();
+        return;
+    }
     Q_EMIT promptEditorRequested();
+}
+
+void PhoenixController::setPromptEditorOpen(bool open)
+{
+    if (m_promptEditorOpen == open) {
+        return;
+    }
+    m_promptEditorOpen = open;
+    Q_EMIT promptEditorOpenChanged();
 }
 
 void PhoenixController::toggleConversationPane()
