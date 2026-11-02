@@ -109,6 +109,41 @@ python3 -m venv --system-site-packages .venv   # once
 
 Requires distro packages `python3-dbus`, `python3-gobject` (present on Fedora).
 
+### As a systemd service
+
+In normal use the daemon is **not** started from a terminal: it runs as a
+systemd service of the desktop user (`michelle`).
+
+```sh
+agent/systemd/install-user-service.sh          # writes ~/.config/systemd/user/phoenix.service
+systemctl --user status phoenix.service
+journalctl --user -u phoenix.service -f
+```
+
+The unit is enabled for `default.target`, so the daemon comes up with the
+session and the plasmoid finds `dna.phoenix.Agent` on the bus without
+anything being started by hand. `agent/systemd/phoenix.service.in` is the
+template; the installer fills in the interpreter and the agent directory,
+so the service follows the checkout it was installed from.
+
+**Why the user manager and not a root system service:**
+
+- The daemon owns a name on the **session bus** — that bus only exists
+  inside the user's session, so a system unit would have no bus to join.
+- Root mode elevates *on demand*: the daemon asks for the password with
+  `kdialog` (which needs the GUI session: `DISPLAY`/`WAYLAND_DISPLAY`) and
+  runs the command through `sudo`. As root, `sudo` would succeed silently
+  and the password prompt would be theatre — the daemon would already have
+  all the power it asks for.
+- Config (`~/.config/phoenix-dna`) and state
+  (`~/.local/state/phoenix-dna`) belong to the user, and `keys.json` is
+  expected to be mode 0600. As root the daemon would litter the home
+  directory with root-owned files.
+
+The daemon needs a MiniMax key; without one it exits with an error, and
+systemd retries a few times per minute before the unit stays in `failed`
+state (`systemctl --user restart phoenix.service` after fixing the key).
+
 ## Trying it out: the REPL
 
 `phoenix-dna-repl` (or `python -m phoenix_dna.repl`) is an interactive terminal for
@@ -149,14 +184,16 @@ The 5th of November next year is 4 days away from today.
 
 ```sh
 ./.venv/bin/pip install pytest
-./.venv/bin/python -m pytest -q            # unit + daemon + D-Bus tests (uses your session bus)
+./.venv/bin/python -m pytest -q            # unit + daemon + D-Bus tests
 PHOENIX_LIVE_TEST=1 ./.venv/bin/python -m pytest tests/test_live_minimax.py -q -s   # real API calls
 ```
 
-Notes for D-Bus tests: they own `dna.phoenix.Agent` on your session bus for the
-duration of the test run, and use `SessionBus(private=True)` for the client
-side because `dbus.SessionBus()` is a process-wide singleton (sharing it
-between server and client deadlocks).
+Notes for D-Bus tests: they start a **private D-Bus daemon** of their own,
+so they can run while `phoenix.service` is up — they neither fight the
+running daemon for the name `dna.phoenix.Agent` nor receive its signals.
+Server and client use two separate connections to that bus, because sharing
+one connection between them deadlocks (`call_blocking` vs. dispatch on the
+same connection).
 
 ## Security notes (v1, honest)
 
