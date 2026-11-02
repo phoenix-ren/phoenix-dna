@@ -235,7 +235,15 @@ class SessionStore:
     ) -> None:
         role = str(message.get("role") or "")
         content = message.get("content")
-        if not isinstance(content, str):
+        if isinstance(content, list):
+            # A prompt with attachments: the content is a list of parts
+            # (text and images). The searchable text is the text parts.
+            content = "\n".join(
+                str(part.get("text", ""))
+                for part in content
+                if isinstance(part, dict) and part.get("type") == "text"
+            )
+        elif not isinstance(content, str):
             # Assistant messages with tool calls may carry None; the query
             # text lives in message_json either way.
             content = "" if content is None else str(content)

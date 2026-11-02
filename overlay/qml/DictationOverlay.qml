@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 import QtQuick
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PC3
@@ -40,6 +41,17 @@ PlasmaCore.Dialog {
     // service; the transcript appears (or the error below) when it returns.
     property bool transcribing: false
     property string statusMessage: ""
+
+    // The files attached to this prompt: a list of maps with "name",
+    // "path", "mimeType" and "size" keys. Bound by the shell; the same
+    // list the results pane shows, because both edit the same prompt.
+    property var attachments: []
+
+    // Emitted when the user picks a file to attach to the prompt.
+    signal attachmentAdded(url file)
+
+    // Emitted when the user takes an attached file off the prompt.
+    signal attachmentRemoved(int index)
 
     // Emitted when the user accepts the transcript and wants it sent to the
     // agent as a prompt. The shell wires this to the controller.
@@ -137,42 +149,153 @@ PlasmaCore.Dialog {
                 Layout.fillWidth: true
             }
 
-            // The live transcript, editable so the user can correct the
-            // recognition before sending. The editor is the single source
-            // of truth for what "Send to agent" submits: engine results
-            // flow in via onTranscriptChanged above, edits flow back into
-            // dictationOverlay.transcript here (guarded, so the two never ping-pong).
-            PC3.TextArea {
-                id: transcriptEdit
+            // The files attached to this prompt: one chip per file, each
+            // with a button that takes it off the list again. The chips
+            // sit above the editor, so the text field keeps its full
+            // height when there is nothing attached.
+            Flow {
+                id: attachmentFlow
 
                 Layout.fillWidth: true
-                Layout.fillHeight: true
-                // "TextArea" is not addressable unqualified here: the
-                // plasma-components import is namespaced ("as PC3"), and
-                // an unqualified reference is a ReferenceError at load.
-                wrapMode: Text.Wrap
-                // Locked while the engine owns the text; editable the
-                // moment a result has landed.
-                readOnly: dictationOverlay.listening || dictationOverlay.transcribing
-                placeholderText: dictationOverlay.transcribing ? i18n("Transcribing…")
-                                : dictationOverlay.listening ? i18n("Speak now…")
-                                : i18n("No speech was recognized.")
+                visible: dictationOverlay.attachments.length > 0
+                spacing: Kirigami.Units.smallSpacing
 
-                onTextChanged: if (text !== dictationOverlay.transcript) {
-                    dictationOverlay.transcript = text
+                Repeater {
+                    id: attachmentRepeater
+                    objectName: "attachmentRepeater"
+
+                    model: dictationOverlay.attachments
+
+                    delegate: Rectangle {
+                        id: attachmentChip
+
+                        required property var modelData
+                        required property int index
+
+                        implicitWidth: chipRow.implicitWidth + 2 * Kirigami.Units.smallSpacing
+                        implicitHeight: chipRow.implicitHeight + 2 * Kirigami.Units.smallSpacing
+
+                        radius: Kirigami.Units.smallSpacing
+                        color: Qt.rgba(1, 1, 1, 0.08)
+                        border.width: 1
+                        border.color: Qt.rgba(1, 1, 1, 0.16)
+
+                        RowLayout {
+                            id: chipRow
+
+                            anchors.fill: parent
+                            anchors.margins: Kirigami.Units.smallSpacing
+                            spacing: Kirigami.Units.smallSpacing
+
+                            Kirigami.Icon {
+                                source: "mail-attachment"
+                                width: 16
+                                height: 16
+                            }
+
+                            Text {
+                                text: attachmentChip.modelData.name
+                                elide: Text.ElideMiddle
+                                color: Kirigami.Theme.textColor
+                                Layout.maximumWidth: Kirigami.Units.gridUnit * 8
+                            }
+
+                            PC3.ToolButton {
+                                icon.name: "window-close"
+                                icon.width: 12
+                                icon.height: 12
+
+                                onClicked: dictationOverlay.attachmentRemoved(attachmentChip.index)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // The prompt itself, with the button that attaches files to
+            // it on its left.
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: Kirigami.Units.smallSpacing
+
+                PC3.ToolButton {
+                    id: addAttachmentButton
+                    objectName: "addAttachmentButton"
+
+                    Layout.alignment: Qt.AlignTop
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+                    icon.name: "list-add"
+                    icon.width: Kirigami.Units.iconSizes.small
+                    icon.height: Kirigami.Units.iconSizes.small
+
+                    onClicked: attachmentDialog.open()
+
+                    PC3.ToolTip {
+                        text: i18n("Attach a file to the prompt")
+                    }
                 }
 
-                // Same contract as the send button, from the keyboard:
-                // Shift+Enter submits, Enter breaks the line (the editor is
-                // multi-line). Any other key keeps the editor's own
-                // behaviour — hence no blanket accept.
-                Keys.onPressed: (event) => {
-                    if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                        && (event.modifiers & Qt.ShiftModifier)) {
-                        if (dictationOverlay.canSubmit) {
-                            dictationOverlay.submitted(dictationOverlay.transcript)
+                // The live transcript, editable so the user can correct the
+                // recognition before sending. The editor is the single source
+                // of truth for what "Send to agent" submits: engine results
+                // flow in via onTranscriptChanged above, edits flow back into
+                // dictationOverlay.transcript here (guarded, so the two never ping-pong).
+                PC3.TextArea {
+                    id: transcriptEdit
+
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    // "TextArea" is not addressable unqualified here: the
+                    // plasma-components import is namespaced ("as PC3"), and
+                    // an unqualified reference is a ReferenceError at load.
+                    wrapMode: Text.Wrap
+                    // Locked while the engine owns the text; editable the
+                    // moment a result has landed.
+                    readOnly: dictationOverlay.listening || dictationOverlay.transcribing
+                    placeholderText: dictationOverlay.transcribing ? i18n("Transcribing…")
+                                    : dictationOverlay.listening ? i18n("Speak now…")
+                                    : i18n("No speech was recognized.")
+
+                    onTextChanged: if (text !== dictationOverlay.transcript) {
+                        dictationOverlay.transcript = text
+                    }
+
+                    // Same contract as the send button, from the keyboard:
+                    // Shift+Enter submits, Enter breaks the line (the editor is
+                    // multi-line). Any other key keeps the editor's own
+                    // behaviour — hence no blanket accept.
+                    Keys.onPressed: (event) => {
+                        if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                            && (event.modifiers & Qt.ShiftModifier)) {
+                            if (dictationOverlay.canSubmit) {
+                                dictationOverlay.submitted(dictationOverlay.transcript)
+                            }
+                            event.accepted = true
                         }
-                        event.accepted = true
+                    }
+                }
+            }
+
+            // The file picker for the "+" button. Every picked file is
+            // handed to the shell, which owns the attachment list.
+            FileDialog {
+                id: attachmentDialog
+
+                title: i18n("Attach files to the prompt")
+                fileMode: FileDialog.OpenFiles
+                nameFilters: [
+                    i18n("Images and documents"),
+                    "*.png *.jpg *.jpeg *.gif *.webp *.bmp *.tif *.tiff *.pdf *.txt *.md *.csv *.log *.json *.xml *.yaml *.yml",
+                    i18n("All files"),
+                    "*"
+                ]
+
+                onAccepted: {
+                    for (let i = 0; i < selectedFiles.length; ++i) {
+                        dictationOverlay.attachmentAdded(selectedFiles[i])
                     }
                 }
             }

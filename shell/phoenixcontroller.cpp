@@ -14,6 +14,7 @@
 #include <QQmlEngine>
 
 #include <QAction>
+#include <QFileInfo>
 #include <QKeySequence>
 #include <cstdio>
 
@@ -23,7 +24,8 @@ PhoenixController::PhoenixController(QObject *parent)
       m_agent(new AgentBridge(this)),
       m_capture(new AudioCapture(this)),
       m_clipRecorder(new ClipRecorder(this)),
-      m_transcriber(new Transcriber(this))
+      m_transcriber(new Transcriber(this)),
+      m_attachments(new PromptAttachments(this))
 {
     // The overlay pops up as soon as dictation starts, so the transcript is
     // visible while the user is still speaking.
@@ -264,5 +266,41 @@ void PhoenixController::submitText(const QString &text, bool newSession)
     // The query is generated and on its way; the pane no longer opens here.
     // It appears by itself when the daemon's answer arrives — see
     // AgentBridge::onRunFinished().
-    m_agent->sendPrompt(text, newSession);
+    //
+    // The attachments travel with it and are consumed: they belonged to
+    // this prompt, not to the next one.
+    const QVariantList attachments = m_attachments->toPayload();
+    m_attachments->clear();
+    m_agent->sendPrompt(text, newSession, attachments);
+}
+
+bool PhoenixController::addAttachment(const QUrl &url)
+{
+    if (m_attachments->addFile(url)) {
+        setStatusMessage(QString());
+        return true;
+    }
+
+    // Tell the user why the file did not make it: an unreadable path, a
+    // duplicate, or a file too large to inline.
+    const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
+    const QFileInfo info(path);
+    QString reason;
+    if (!info.exists() || !info.isFile()) {
+        reason = QStringLiteral("no such file");
+    } else if (!info.isReadable()) {
+        reason = QStringLiteral("not readable");
+    } else if (info.size() > PromptAttachments::MaxFileSize) {
+        reason = QStringLiteral("larger than %1 MiB")
+                     .arg(PromptAttachments::MaxFileSize / (1024 * 1024));
+    } else {
+        reason = QStringLiteral("already attached");
+    }
+    setStatusMessage(QStringLiteral("Cannot attach %1: %2").arg(info.fileName(), reason));
+    return false;
+}
+
+void PhoenixController::removeAttachment(int index)
+{
+    m_attachments->remove(index);
 }

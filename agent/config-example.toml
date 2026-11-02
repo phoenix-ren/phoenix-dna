@@ -8,6 +8,8 @@
 [agent]
 # provider = "minimax"            # or "fake" for a canned-response test provider
 # model = "MiniMax-Text-01"
+# vision = true                   # send attached images to the model; "auto"
+#                                 # (the default) decides from the model name
 # llm_base_url = "https://api.minimax.io/v1"
 # request_timeout = 120
 # max_turns = 24
