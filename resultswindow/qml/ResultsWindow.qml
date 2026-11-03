@@ -1053,9 +1053,8 @@ Window {
                         spacing: Kirigami.Units.smallSpacing
 
                         // The record button, as in the compact
-                        // representation: record while idle, stop while
-                        // recording. No colour tint — Breeze's
-                        // media-record is already the red circle.
+                        // representation: microphone while idle, stop
+                        // while recording. No colour tint.
                         PC3.ToolButton {
                             id: recordButton
                             objectName: "recordButton"
@@ -1063,7 +1062,7 @@ Window {
                             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-                            icon.name: resultsWindow.listening ? "media-playback-stop" : "media-record"
+                            icon.name: resultsWindow.listening ? "media-playback-stop" : "audio-input-microphone"
                             icon.width: Kirigami.Units.iconSizes.small
                             icon.height: Kirigami.Units.iconSizes.small
 

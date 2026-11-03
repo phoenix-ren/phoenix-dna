@@ -139,10 +139,10 @@ Item {
             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-            // The record button becomes a stop button while recording. No
-            // colour tint: Breeze's media-record is already the red circle
-            // the convention calls for.
-            icon.name: root.recording ? "media-playback-stop" : "media-record"
+            // The record button becomes a stop button while recording. A
+            // microphone rather than a red circle signals speech input;
+            // no colour tint needed either way.
+            icon.name: root.recording ? "media-playback-stop" : "audio-input-microphone"
             icon.width: Kirigami.Units.iconSizes.small
             icon.height: Kirigami.Units.iconSizes.small
 
