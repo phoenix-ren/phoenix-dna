@@ -13,7 +13,6 @@
 
 find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS
     Core
-    Concurrent
     Gui
     Qml
     Quick
@@ -45,9 +44,8 @@ ecm_target_qml_sources(org.phoenixdna.theme
 ecm_finalize_qml_module(org.phoenixdna.theme)
 
 # QQuickTextDocument (Quick) and QTextDocument (Gui) of the helpers;
-# QtConcurrent takes the pixel work off the GUI thread.
+# the formula pixel work runs on the global QThreadPool (Core).
 target_link_libraries(org.phoenixdna.theme PRIVATE
-    Qt6::Concurrent
     Qt6::Gui
     Qt6::Quick
 )

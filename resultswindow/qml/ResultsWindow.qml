@@ -427,6 +427,9 @@ Window {
                             property int formulaToken: -1
                             property string formulaFailedReason: ""
 
+                            // -1: idle; 0..100 while the formulas render.
+                            property real renderProgress: -1
+
                             readonly property bool wantsFormulas: !running
                                 && result.length > 0
                                 && formulaToken < 0
@@ -458,6 +461,7 @@ Window {
                                     return
                                 }
                                 formulaToken = resultsWindow.nextPdfToken()
+                                renderProgress = 0
                                 LatexRenderer.embedFormulas(
                                     formulaToken, resultLabel.textDocument,
                                     result, PhoenixTheme.primaryTextColor,
@@ -484,12 +488,27 @@ Window {
                             Connections {
                                 target: LatexRenderer
 
+                                function onEmbedded(token) {
+                                    if (token === exchange.formulaToken) {
+                                        exchange.renderProgress = -1
+                                    }
+                                }
+
+                                function onProgress(token, done, total) {
+                                    if (token === exchange.formulaToken
+                                        && total > 0) {
+                                        exchange.renderProgress =
+                                            Math.round(100 * done / total)
+                                    }
+                                }
+
                                 function onFailed(token, reason) {
                                     // -2: requested, failed, never again
                                     // for this result.
                                     if (token === exchange.formulaToken) {
                                         exchange.formulaToken = -2
                                         exchange.formulaFailedReason = reason
+                                        exchange.renderProgress = -1
                                     }
                                 }
                             }
@@ -818,6 +837,32 @@ Window {
                                             MarkdownDocument.spaceParagraphs,
                                             textDocument,
                                             resultsWindow.paragraphSpacing)
+                                    }
+                                }
+
+                                // While the formulas render, a quiet
+                                // progress line under the card — the
+                                // pool delivers one tick per formula.
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    visible: exchange.renderProgress >= 0
+
+                                    Kirigami.ProgressBar {
+                                        Layout.preferredWidth:
+                                            Kirigami.Units.gridUnit * 8
+                                        from: 0
+                                        to: 100
+                                        value: exchange.renderProgress
+                                    }
+
+                                    PC3.Label {
+                                        text: i18n("Rendering math… %1%",
+                                                   exchange.renderProgress)
+                                        color: PhoenixTheme.secondaryTextColor
+                                        font.pixelSize: Math.max(
+                                            9, Math.round(
+                                                Qt.application.font.pixelSize
+                                                * 0.8))
                                     }
                                 }
 
