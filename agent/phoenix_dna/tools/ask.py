@@ -47,17 +47,19 @@ def _spec() -> ToolSpec:
         description=(
             "Ask the user one question with multiple-choice options and "
             "wait for their answer; the tool result reports what they "
-            "chose and anything they typed themselves. Use it only when "
-            "the answer changes what you do - otherwise pick a sensible "
-            "default and proceed. Give 2 to 6 options with short labels "
+            "chose and anything they typed themselves. Use it whenever a "
+            "decision belongs to the user (which of several targets, "
+            "formats, scopes, schedules...); choose a sensible default "
+            "yourself only when the choice genuinely has one. Give "
+            "2 to 6 options with short labels "
             "(a few words) and a longer description when it helps; if "
             'you recommend one, put it first and add "(recommended)" to '
             'its label. Do not add an "other" or "type my own" option: '
-            "the user can always write their own answer. When you will "
-            "ask several questions to gather what you need, pass goal "
-            "(what you are collecting) plus step and est_steps on every "
-            "question so the interface can show progress; revise "
-            "est_steps as you learn."
+            "the user can always write their own answer. A task with "
+            "several such decisions is one short series of questions: "
+            "pass goal (what you are collecting) plus step and "
+            "est_steps on every question so the interface can show "
+            "progress; revise est_steps as you learn."
         ),
         parameters={
             "type": "object",
