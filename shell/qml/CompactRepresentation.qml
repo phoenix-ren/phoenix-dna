@@ -166,7 +166,7 @@ Item {
             // the row's implicit width is, and that is the sum of what the
             // children ask for - the waveform's own implicitWidth among
             // them.
-            Layout.minimumWidth: Kirigami.Units.gridUnit * 2
+            Layout.minimumWidth: Kirigami.Units.gridUnit * 3
 
             model: root.waveformModel
             active: root.recording
