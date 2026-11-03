@@ -38,7 +38,7 @@ from .attachments import (
     stage as stage_attachments,
     vision_enabled,
 )
-from .config import Config
+from .config import Config, load_config
 from .loop import AgentLoop
 from .modes import MODE_PROFILES, Mode, ModeProfile, build_toolset
 from .privileges import KDialogPasswordProvider, SudoCredentialCache
@@ -76,6 +76,14 @@ def _strip_wrapper_quotes(text: str) -> str:
             if inner:
                 return inner
     return text
+
+
+def _close_speaker(speaker) -> None:
+    """Retire a replaced speaker on the auxiliary pool; never raises."""
+    try:
+        speaker.close()
+    except Exception:  # pragma: no cover - defensive
+        log.exception("closing a replaced speaker failed")
 
 
 @dataclass
@@ -178,6 +186,25 @@ class AgentDaemon:
     def speech_state(self) -> dict:
         """The GetSpeechState answer: {"enabled": bool, "state": str}."""
         return self._speaker.speech_state()
+
+    def reload_speech(self) -> None:
+        """Re-read the configuration and rebuild the speech pipeline.
+
+        The settings window writes keys.json and asks for this, so
+        flipping read-aloud takes effect at once — no service restart,
+        and a disable mid-utterance falls silent through the old
+        speaker's close. The fresh configuration replaces self.config
+        wholesale; nothing else in it can have changed since the daemon
+        started (the window writes only speech settings).
+        """
+        config = load_config(self.config.config_dir, self.config.data_dir)
+        new_speaker = build_speaker(config, emitter=self._emit)
+        old, self._speaker = self._speaker, new_speaker
+        self.config = config
+        if old is not None:
+            # Off the D-Bus main loop: closing may join the worker and
+            # kill the playback chain (bounded, but not instant).
+            self._aux_pool.submit(_close_speaker, old)
 
     def modes(self) -> list[ModeProfile]:
         return list(MODE_PROFILES.values())

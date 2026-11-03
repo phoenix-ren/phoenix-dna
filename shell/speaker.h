@@ -74,6 +74,15 @@ public Q_SLOTS:
     /*! \brief Asks the daemon to interrupt playback immediately. */
     void stop();
 
+    /*! \brief Asks the daemon to re-read its configuration and rebuild
+     *  the speech pipeline, then re-probes the state.
+     *
+     * What the settings window does after saving: a flipped toggle (or
+     * voice, or read mode) applies at once — the probe only runs once
+     * the daemon answers, so it cannot race the rebuild and report the
+     * state the rebuild just replaced. */
+    void reload();
+
 private Q_SLOTS:
     /*! \brief SpeechStateChanged from the daemon: adopt "speaking"/"idle". */
     void onSpeechStateChanged(const QString &state);

@@ -51,6 +51,19 @@ _TTS_ENV_FIELDS = (
     "tts_local_venv",
 )
 
+#: The tts_* fields the settings window manages in keys.json (the same
+#: entries the plasmoid reads, so both sides agree without a text file
+#: in sight). Applied between the defaults and agent.toml: the file and
+#: the environment remain the power-user overrides.
+_TTS_KEY_FIELDS = (
+    "tts_enabled",
+    "tts_provider",
+    "tts_voice",
+    "tts_speed",
+    "tts_format",
+    "tts_read_mode",
+)
+
 
 @dataclass(frozen=True)
 class Config:
@@ -145,7 +158,18 @@ def _load_keys_file(config_dir: Path) -> dict:
     try:
         data = json.loads(keys_file.read_text())
         if isinstance(data, dict):
-            return {k: v for k, v in data.items() if isinstance(v, str)}
+            cleaned = {}
+            for key, value in data.items():
+                if isinstance(value, str):
+                    cleaned[key] = value
+                elif isinstance(value, bool):
+                    # The settings window writes strings, but a
+                    # hand-edited file may carry real booleans; the
+                    # GUI-managed tts_* settings must survive either.
+                    cleaned[key] = "true" if value else "false"
+                elif isinstance(value, (int, float)):
+                    cleaned[key] = str(value)
+            return cleaned
     except (OSError, ValueError) as exc:
         log.warning("failed to read %s: %s", keys_file, exc)
     return {}
@@ -223,6 +247,12 @@ def load_config(
         data_dir=data_dir,
         keys=keys,
         llm_api_key=env.get("PHOENIX_LLM_API_KEY") or keys.get("minimax_api_key", ""),
+    )
+
+    # What the settings window wrote to keys.json (see _TTS_KEY_FIELDS):
+    # above the defaults, below agent.toml and the environment.
+    config = _apply_overrides(
+        config, {field: keys[field] for field in _TTS_KEY_FIELDS if keys.get(field)}
     )
 
     # agent.toml overrides

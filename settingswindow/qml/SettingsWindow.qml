@@ -88,6 +88,15 @@ Window {
     property bool llmKeyFromEnvironment: false
     property bool sttKeyFromEnvironment: false
 
+    // Read-aloud: whether the daemon speaks the answers, when it starts
+    // speaking them ("final"/"stream"), the voice id it synthesizes
+    // with, and whether the environment overrides any of it.
+    property bool speechEnabled: false
+    property string speechReadMode: "final"
+    property string speechVoice: ""
+    readonly property string speechVoiceDefault: "English_expressive_narrator"
+    property bool speechFromEnvironment: false
+
     // The settings store's answer to the last action.
     property string statusMessage: ""
     property bool statusIsError: false
@@ -103,6 +112,10 @@ Window {
     signal sttProviderChangeRequested(string provider)
     signal shortcutCaptureRequested(string role, int key, int modifiers)
     signal shortcutClearRequested(string role)
+    signal speechEnabledChangeRequested(bool enabled)
+    signal speechReadModeChangeRequested(string mode)
+    signal speechVoiceChangeRequested(string voice)
+    signal speechTestRequested()
 
     title: i18n("Settings — Phoenix DNA")
     flags: Qt.Dialog
@@ -137,6 +150,12 @@ Window {
             sttKeyFieldEdit.text = window.sttApiKey
             sttProviderCombo.currentIndex = window.sttProvider === "openai" ? 1 : 0
             themeCombo.currentIndex = window.themeIndex(window.theme)
+            speechEnabledBox.checked = window.speechEnabled
+            speechModeCombo.currentIndex =
+                window.speechReadMode === "stream" ? 1 : 0
+            speechVoiceCombo.editText = window.speechVoice !== ""
+                ? window.speechVoice
+                : window.speechVoiceDefault
             // The font list is rebuilt on every opening: what this
             // system has may have changed since the last look.
             window.fontChoices = window.buildFontChoices()
@@ -159,6 +178,12 @@ Window {
     onSttApiKeyChanged: sttKeyFieldEdit.text = window.sttApiKey
     onSttProviderChanged: sttProviderCombo.currentIndex =
         window.sttProvider === "openai" ? 1 : 0
+    onSpeechEnabledChanged: speechEnabledBox.checked = window.speechEnabled
+    onSpeechReadModeChanged: speechModeCombo.currentIndex =
+        window.speechReadMode === "stream" ? 1 : 0
+    onSpeechVoiceChanged: speechVoiceCombo.editText = window.speechVoice !== ""
+        ? window.speechVoice
+        : window.speechVoiceDefault
     onThemeChanged: themeCombo.currentIndex = window.themeIndex(window.theme)
     onLightFontChanged: lightFontCombo.currentIndex =
         window.fontIndex(window.fontChoices, window.lightFont)
@@ -701,6 +726,134 @@ Window {
                         color: PhoenixTheme.warningColor
                         text: i18n("An API key environment variable is set and takes "
                             + "precedence over the stored key.")
+                    }
+
+                    Kirigami.Separator {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Kirigami.Units.smallSpacing
+                    }
+
+                    // ---- Read aloud ---------------------------------------
+                    // The daemon speaks the agent's answers; this is its
+                    // on/off switch and the two choices that shape it.
+                    // Every change applies at once (the shell asks the
+                    // daemon to rebuild its speech pipeline after
+                    // saving) — no restart, unlike the keys above.
+                    Kirigami.Heading {
+                        level: 2
+                        text: i18n("Read aloud")
+                        color: PhoenixTheme.headingTextColor
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PC3.CheckBox {
+                            id: speechEnabledBox
+                            objectName: "speechEnabledBox"
+
+                            // Instant apply, like the combos above; the
+                            // store's value is pushed imperatively so an
+                            // edit cannot fight a binding.
+                            onToggled: window.speechEnabledChangeRequested(checked)
+                        }
+
+                        PC3.Label {
+                            Layout.fillWidth: true
+                            text: i18n("The agent reads its answers aloud")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.Button {
+                            objectName: "speechTestButton"
+
+                            // Hearing the voice is the honest way to
+                            // check the setup: the key, the voice and
+                            // the playback, one short round-trip.
+                            text: i18n("Test")
+                            enabled: speechEnabledBox.checked
+                            onClicked: window.speechTestRequested()
+                        }
+                    }
+
+                    HintLabel {
+                        Layout.fillWidth: true
+                        text: i18n("Synthesis uses the agent's MiniMax key. The "
+                            + "answer's math is spoken as mathematics, code is "
+                            + "not read out, and speaking stops the moment you "
+                            + "close the results window or press its record "
+                            + "button.")
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PC3.Label {
+                            text: i18n("When:")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.ComboBox {
+                            id: speechModeCombo
+                            objectName: "speechModeCombo"
+
+                            model: [i18n("After the answer is complete"),
+                                    i18n("While it is generated")]
+
+                            onActivated: (index) =>
+                                window.speechReadModeChangeRequested(
+                                    index === 1 ? "stream" : "final")
+                        }
+                    }
+
+                    HintLabel {
+                        Layout.fillWidth: true
+                        // The trade-off in one breath, so the choice is
+                        // an informed one: only "complete" can promise
+                        // that a working note is never spoken aloud.
+                        text: i18n("“After the answer is complete” never reads "
+                            + "the agent's working notes aloud. “While it is "
+                            + "generated” starts speaking sooner, but a note "
+                            + "that precedes a tool call may already have been "
+                            + "said when it is retracted — it cannot be unsaid.")
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PC3.Label {
+                            text: i18n("Voice:")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.ComboBox {
+                            id: speechVoiceCombo
+                            objectName: "speechVoiceCombo"
+
+                            editable: true
+                            model: [window.speechVoiceDefault]
+
+                            onActivated: (index) =>
+                                window.speechVoiceChangeRequested(editText)
+                            onAccepted: window.speechVoiceChangeRequested(editText)
+                        }
+                    }
+
+                    HintLabel {
+                        Layout.fillWidth: true
+                        text: i18n("A MiniMax voice id; the entry is editable for "
+                            + "the voices the service offers.")
+                    }
+
+                    HintLabel {
+                        Layout.fillWidth: true
+                        visible: window.speechFromEnvironment
+                        color: PhoenixTheme.warningColor
+                        text: i18n("A PHOENIX_TTS_* environment variable is set "
+                            + "and takes precedence over these settings.")
                     }
 
                     Kirigami.Separator {

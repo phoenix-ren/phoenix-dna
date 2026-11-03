@@ -160,11 +160,20 @@ answer is normalized for the ear — math is spoken as mathematics
 (`$\pi r^2$` becomes "pi r squared", tied to the renderer's own span
 detector by a shared test fixture), code fences and URLs are not read
 out — then synthesized sentence by sentence and played through a
-PipeWire sink. Playback can be interrupted at any moment (the stop
-button next to the record button, or pressing record itself), and the
-results window has a per-answer "Read aloud" button.
+PipeWire sink. Playback can be interrupted at any moment: the stop
+control next to the record button, closing the results window (or
+pressing `Esc` in it), or pressing record itself. The results window
+also has a per-answer "Read aloud" button.
 
-Enable it in `~/.config/phoenix-dna/agent.toml`:
+Enable it in the settings window (the panel's gear button → **Read
+aloud**): flip the toggle, and it applies at once — the window asks the
+daemon to rebuild its speech pipeline over D-Bus, so no service
+restart, and turning it off mid-utterance falls silent. The same
+section offers the read mode and the voice, plus a Test button. The
+settings are stored in `~/.config/phoenix-dna/keys.json` as `tts_*`
+entries; power users can still set the same things in
+`~/.config/phoenix-dna/agent.toml`, which wins over the file the window
+writes:
 
 ```toml
 [agent]
