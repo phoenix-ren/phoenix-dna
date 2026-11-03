@@ -57,7 +57,10 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: Kirigami.Units.smallSpacing
 
-        Kirigami.ProgressBar {
+        // PC3, not Kirigami: Kirigami has no ProgressBar — the trap this
+        // applet already fell into once (c7916fe). Instantiating the
+        // window (results_harness.qml) catches this at build time now.
+        PC3.ProgressBar {
             Layout.fillWidth: true
             from: 1
             to: Math.max(wizardView.estSteps, wizardView.step)
