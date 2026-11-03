@@ -764,9 +764,7 @@ Window {
                             // The agent's answer, last in the exchange:
                             // the one thing the window exists to show,
                             // so it is the only part rendered at full
-                            // size — in a card of its own, with the
-                            // mirrored tail and the attribution below
-                            // it.
+                            // size — with the attribution below it.
                             // Rendered as Markdown: the agent mostly
                             // answers in plain sentences, but code and
                             // lists do occur.
@@ -776,79 +774,55 @@ Window {
                                 Layout.fillWidth: true
                                 spacing: 0
 
-                                // The answer itself, in a card: bigger
-                                // than the rest of the window, brighter,
-                                // and set off from the notes and the log
-                                // that precede it.
-                                Rectangle {
-                                    id: answerCard
-                                    objectName: "answerCard"
+                                // The answer itself: bigger than the
+                                // rest of the window, brighter, and set
+                                // off from the notes and the log that
+                                // precede it — but on the window's own
+                                // background, without a card around it:
+                                // the answer is the window's text, and
+                                // the formulas in it are drawn on the
+                                // same background, the way the text
+                                // beside them is.
+                                Kirigami.SelectableLabel {
+                                    id: resultLabel
+                                    objectName: "resultLabel"
 
-                                    Layout.alignment: Qt.AlignLeft
+                                    Layout.fillWidth: true
                                     visible: exchange.result.length > 0
 
-                                    // The margin between the answer and
-                                    // the card's edge.
-                                    readonly property int padding:
-                                        Kirigami.Units.smallSpacing * 2
-
-                                    // Hug the text, but wrap (and so stop
-                                    // growing) at nearly the whole row:
-                                    // the answer is the main text of the
-                                    // window and may use the width.
-                                    // NOTE: implicitWidth, not width — a
-                                    // ColumnLayout sizes its children
-                                    // from their implicit size, and a
-                                    // width binding here would be clobbered
-                                    // on the first layout pass.
-                                    implicitWidth: Math.min(
-                                        exchange.width * 0.96,
-                                        resultLabel.implicitWidth
-                                            + 2 * answerCard.padding)
-                                    implicitHeight: resultLabel.implicitHeight
-                                        + 2 * answerCard.padding
-
-                                    radius: Kirigami.Units.smallSpacing * 2
-                                    color: PhoenixTheme.cardFill
-                                    border.width: 1
-                                    border.color: PhoenixTheme.cardBorderColor
-
-                                    Kirigami.SelectableLabel {
-                                        id: resultLabel
-                                        objectName: "resultLabel"
-
-                                        anchors.fill: parent
-                                        anchors.margins: answerCard.padding
-
-                                        // The answer as Markdown, its
-                                        // LaTeX verbatim — until the run
-                                        // finishes and the formulas are
-                                        // compiled into tinted images
-                                        // inside this very document (the
-                                        // text around them stays this
-                                        // native view).
-                                        text: exchange.result
-                                        textFormat: TextEdit.MarkdownText
-                                        wrapMode: Text.WordWrap
-                                        color: PhoenixTheme.primaryTextColor
-                                        // Larger than the rest of the
-                                        // window: this is the text the
-                                        // user came for.
-                                        font.pixelSize: Math.round(
-                                            Qt.application.font.pixelSize * 1.12)
-                                        // Re-space after every change: the
-                                        // answer streams in as deltas,
-                                        // each rebuilding the document.
-                                        // Deferred out of the change
-                                        // cascade (and coalesced): the
-                                        // document edits of one polish
-                                        // must not synchronously begin
-                                        // the next.
-                                        onTextChanged: Qt.callLater(
-                                            MarkdownDocument.spaceParagraphs,
-                                            textDocument,
-                                            resultsWindow.paragraphSpacing)
-                                    }
+                                    // The answer as Markdown, its
+                                    // LaTeX verbatim — until the run
+                                    // finishes and the formulas are
+                                    // compiled into images inside this
+                                    // very document (the text around
+                                    // them stays this native view).
+                                    text: exchange.result
+                                    textFormat: TextEdit.MarkdownText
+                                    wrapMode: Text.WordWrap
+                                    color: PhoenixTheme.primaryTextColor
+                                    // The agent's own voice, in the
+                                    // family the user chose for this
+                                    // mode (see PhoenixTheme): the
+                                    // answer is the one text set
+                                    // apart from the chrome.
+                                    font.family: PhoenixTheme.answerFontFamily
+                                    // Larger than the rest of the
+                                    // window: this is the text the
+                                    // user came for.
+                                    font.pixelSize: Math.round(
+                                        Qt.application.font.pixelSize * 1.12)
+                                    // Re-space after every change: the
+                                    // answer streams in as deltas,
+                                    // each rebuilding the document.
+                                    // Deferred out of the change
+                                    // cascade (and coalesced): the
+                                    // document edits of one polish
+                                    // must not synchronously begin
+                                    // the next.
+                                    onTextChanged: Qt.callLater(
+                                        MarkdownDocument.spaceParagraphs,
+                                        textDocument,
+                                        resultsWindow.paragraphSpacing)
                                 }
 
                                 // While the formulas render, a quiet
@@ -891,39 +865,6 @@ Window {
                                     font.pixelSize: Math.max(
                                         9, Math.round(
                                             Qt.application.font.pixelSize * 0.8))
-                                }
-
-                                // The mirrored pointy edge, at the
-                                // answer's bottom-left corner: it takes
-                                // the card's colors, so the two read as
-                                // one shape.
-                                Canvas {
-                                    id: answerTail
-                                    objectName: "answerTail"
-
-                                    Layout.alignment: Qt.AlignLeft
-                                    Layout.leftMargin: Kirigami.Units.smallSpacing * 2
-                                    Layout.topMargin: -1
-                                    visible: exchange.result.length > 0
-                                    implicitWidth: Kirigami.Units.smallSpacing * 2
-                                    implicitHeight: Kirigami.Units.smallSpacing
-                                    onPaint: {
-                                        const ctx = getContext("2d")
-                                        ctx.fillStyle = answerCard.color
-                                        ctx.strokeStyle = answerCard.border.color
-                                        ctx.lineWidth = 1
-                                        ctx.beginPath()
-                                        ctx.moveTo(0, 0)
-                                        ctx.lineTo(width, 0)
-                                        ctx.lineTo(1, height - 0.5)
-                                        ctx.closePath()
-                                        ctx.fill()
-                                        ctx.beginPath()
-                                        ctx.moveTo(0, 0)
-                                        ctx.lineTo(1, height - 0.5)
-                                        ctx.lineTo(width, 0)
-                                        ctx.stroke()
-                                    }
                                 }
 
                                 // Who answered — and, while the agent is

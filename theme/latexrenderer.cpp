@@ -128,12 +128,18 @@ const char *unicodeTablePreamble()
 // in its own kind (inline math stays inline-style, display stays
 // display-style — read off the span's own delimiters).
 //
+// The formula is typeset in the ink it is to appear in — the colour of
+// the text around it — and the page itself stays transparent, so the
+// rasterizer hands back the ink and its coverage and nothing else: the
+// formula then sits on the answer's own background, with the edges
+// blended into it, exactly like the text beside it.
+//
 // Every formula sits in a line of its own, and a small rule that
 // hangs into the left margin marks the line's baseline: the renderer
 // finds the mark in the rasterized page and knows where the formula
 // stands — without it, the crop to the ink throws the baseline away
 // and the formula floats above the text it belongs to.
-QString buildFormulaTex(const QStringList &spans)
+QString buildFormulaTex(const QStringList &spans, const QColor &ink)
 {
     QString body;
     body += QStringLiteral("\\documentclass[11pt]{article}\n");
@@ -141,6 +147,14 @@ QString buildFormulaTex(const QStringList &spans)
         "\\IfFileExists{geometry.sty}{\\usepackage[paperwidth=24cm,"
         "paperheight=16cm,left=%1pt,right=1mm,top=1mm,bottom=1mm]"
         "{geometry}}{}\n").arg(kTextLeftPt);
+    // The ink, in the colour it is to appear in. The page stays
+    // transparent: the formula is drawn on the answer's background,
+    // not on a sheet of paper.
+    body += QStringLiteral("\\IfFileExists{color.sty}{\\usepackage{color}"
+                           "\\color[rgb]{%1,%2,%3}}{}\n")
+                .arg(ink.redF(), 0, 'f', 4)
+                .arg(ink.greenF(), 0, 'f', 4)
+                .arg(ink.blueF(), 0, 'f', 4);
     body += QStringLiteral("\\IfFileExists{amsmath.sty}{\\usepackage{amsmath}}{\n"
                            "\\providecommand{\\tfrac}[2]{\\frac{#1}{#2}}\n"
                            "\\providecommand{\\dfrac}[2]{\\frac{#1}{#2}}\n"
@@ -248,9 +262,10 @@ QString markdownWithImages(const QString &markdown, const QList<bool> &ready)
     return result;
 }
 
-// The rendered page cropped to its ink (anything darker than paper),
-// as a tinted alpha mask: the formula's coverage becomes transparency,
-// the colour is \a ink, the background vanishes.
+// The rendered page cropped to its ink, as it comes out of the
+// rasterizer: the ink in the colour it is to appear in, and its
+// coverage in the alpha — the page is transparent, so there is no
+// paper to take away.
 //
 // \a baseline receives the y of the formula's baseline inside the
 // cropped image (-1 when the marker was not found). The baseline is
@@ -266,7 +281,7 @@ QImage formulaImage(const QImage &page, const QColor &ink, int *baseline)
     int baselineRow = -1;
     for (int y = 0; y < page.height() && baselineRow < 0; ++y) {
         for (int x = 0; x < markerStrip && x < page.width(); ++x) {
-            if (qGray(page.pixel(x, y)) < 200) {
+            if (qAlpha(page.pixel(x, y)) > 0) {
                 // The mark's bottom edge is the baseline: the first
                 // row below it is where the text stands.
                 baselineRow = y + 1;
@@ -277,12 +292,9 @@ QImage formulaImage(const QImage &page, const QColor &ink, int *baseline)
 
     int left = page.width(), top = page.height(), right = -1, bottom = -1;
     for (int y = 0; y < page.height(); ++y) {
-        const QRgb *line = reinterpret_cast<const QRgb *>(page.scanLine(y));
         for (int x = textLeft; x < page.width(); ++x) {
-            const QRgb px = line[x];
-            // LaTeX ink is black on white; anti-aliased edges are in
-            // between, so anything clearly darker than paper is ink.
-            if (qGray(px) < 200) {
+            // The page is transparent: the ink is where the alpha is.
+            if (qAlpha(page.pixel(x, y)) > 0) {
                 if (x < left) left = x;
                 if (x > right) right = x;
                 if (y < top) top = y;
@@ -302,16 +314,7 @@ QImage formulaImage(const QImage &page, const QColor &ink, int *baseline)
         // The baseline's place inside the cropped image.
         *baseline = (baselineRow >= 0) ? baselineRow - top : -1;
     }
-    const QRgb inkRgb = qRgba(ink.red(), ink.green(), ink.blue(), 255);
-    for (int y = 0; y < out.height(); ++y) {
-        QRgb *line = reinterpret_cast<QRgb *>(out.scanLine(y));
-        for (int x = 0; x < out.width(); ++x) {
-            // Luminance → alpha: black ink is opaque, paper is gone.
-            const int alpha = 255 - qGray(line[x]);
-            line[x] = qRgba(qRed(inkRgb), qGreen(inkRgb), qBlue(inkRgb),
-                            alpha);
-        }
-    }
+    Q_UNUSED(ink);
     return out;
 }
 
@@ -380,10 +383,13 @@ QString LatexRenderer::engine() const
 QString LatexRenderer::rasterizer() const
 {
     if (!m_rasterizerResolved) {
+        // pdftocairo, not pdftoppm: it keeps the page transparent, so
+        // the rasterized page carries the ink's coverage in its alpha
+        // and the formula can be drawn on the answer's own background.
         m_rasterizer = QStandardPaths::findExecutable(
-            QStringLiteral("pdftoppm"));
+            QStringLiteral("pdftocairo"));
         if (m_rasterizer.isEmpty()) {
-            qWarning() << "LatexRenderer: pdftoppm (poppler-utils) not "
+            qWarning() << "LatexRenderer: pdftocairo (poppler-utils) not "
                           "found — answers keep LaTeX verbatim.";
         }
         m_rasterizerResolved = true;
@@ -488,16 +494,20 @@ void LatexRenderer::embedFormulas(int requestId,
     }
     if (rasterizer().isEmpty()) {
         failLater(requestId,
-                  QStringLiteral("pdftoppm not found — install "
+                  QStringLiteral("pdftocairo not found — install "
                                  "poppler-utils to render math."));
         return;
     }
 
     // Content-addressed cache over the span list: the same formulas
-    // compile once, whatever text surrounds them. The version is part
-    // of the key: the compiled page changed (the formulas carry their
-    // baseline marker now), and the old pages are not interchangeable.
-    QString spanKey = QStringLiteral("baseline-3:");
+    // compile once, whatever text surrounds them. The ink is part of
+    // the key — the formula is typeset in the colour it is to appear
+    // in — and so is the version: the compiled page changed (the
+    // formulas carry their baseline marker now), and the old pages are
+    // not interchangeable.
+    QString spanKey = QStringLiteral("ink-1:");
+    spanKey += QStringLiteral("%1,%2,%3;")
+                   .arg(ink.red()).arg(ink.green()).arg(ink.blue());
     for (const QString &span : pending.spans) {
         spanKey += span + QChar::Nbsp;
     }
@@ -541,7 +551,7 @@ void LatexRenderer::embedFormulas(int requestId,
 
     QFile texFile(texPath);
     if (!texFile.open(QIODevice::WriteOnly | QIODevice::Truncate)
-        || texFile.write(buildFormulaTex(pending.spans).toUtf8()) < 0) {
+        || texFile.write(buildFormulaTex(pending.spans, ink).toUtf8()) < 0) {
         failLater(requestId, texFile.errorString());
         return;
     }
@@ -580,7 +590,7 @@ void LatexRenderer::rasterize(int requestId, const QString &pdfPath)
                 m_pending.erase(it);
                 failLater(requestId,
                           QStringLiteral(
-                              "Rasterizing the formulas failed (pdftoppm "
+                              "Rasterizing the formulas failed (pdftocairo "
                               "exit %1).")
                               .arg(exitCode));
             });
@@ -590,7 +600,7 @@ void LatexRenderer::rasterize(int requestId, const QString &pdfPath)
                 m_pending.remove(requestId);
                 failLater(requestId,
                           QStringLiteral(
-                              "pdftoppm could not be started."));
+                              "pdftocairo could not be started."));
             });
     // Rasterizing many pages takes their own time; a fixed short cap
     // would cut long essays off.
@@ -605,10 +615,13 @@ void LatexRenderer::rasterize(int requestId, const QString &pdfPath)
                   QStringLiteral("Rasterizing timed out."));
     });
     // 216 dpi = three pixels per point: crisp on hidpi, cropped to the
-    // ink right after.
+    // ink right after. The page stays transparent (-transp): the
+    // rasterized page carries the ink's coverage in its alpha, and the
+    // formula is drawn on the answer's own background.
     process->setWorkingDirectory(QFileInfo(pdfPath).absolutePath());
     process->start(rasterizer(),
                    {QStringLiteral("-png"),
+                    QStringLiteral("-transp"),
                     QStringLiteral("-r"), QStringLiteral("216"),
                     QFileInfo(pdfPath).fileName(),
                     pageDir + QLatin1String("/page")});

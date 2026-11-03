@@ -20,12 +20,12 @@
  * rich text — the app's font, size, margins, lists, scrolling and
  * selection, all untouched. Only the math spans ($…$, $$…$$, \(…\),
  * \[…\]) are compiled: one LaTeX run per finished answer, every formula
- * on its own page, the pages rendered through pdftoppm and cropped to
- * their ink. Each cropped image becomes an alpha mask tinted with the
- * caller's ink colour — light-mode text colour or dark-mode text colour
- * — over a transparent background, so the formula sits on whatever the
- * card behind it looks like. A theme switch re-tints from the cached
- * PDF without recompiling.
+ * on its own page, the pages rasterized with a transparent background
+ * and cropped to their ink. The formula is typeset in the ink colour
+ * it is to appear in — the colour of the text around it — and the
+ * rasterizer hands back that ink with its coverage, so the formula is
+ * drawn on the answer's own background, with its edges blended into
+ * it, exactly like the text beside it.
  *
  * embedFormulas() is asynchronous (a compile takes its time); when the
  * formulas are in, embedded(requestId) fires and the given document
@@ -116,8 +116,10 @@ private:
     /*! \brief The detected engine executable, or empty. */
     QString engine() const;
 
-    /*! \brief The PDF rasterizer (pdftoppm of poppler-utils), or
-     *  empty — the compiled pages are turned into images with it. */
+    /*! \brief The PDF rasterizer (pdftocairo of poppler-utils), or
+     *  empty — the compiled pages are turned into images with it. It
+     *  keeps the page transparent, so the image carries the ink's
+     *  coverage in its alpha. */
     QString rasterizer() const;
 
     /*! \brief The cache directory holding the .tex/.pdf files,
@@ -130,7 +132,7 @@ private:
                  const QString &pdfPath);
 
     /*! \brief Turns the compiled \a pdfPath into one PNG per formula
-     *  page (pdftoppm), asynchronously; on success startPageJobs()
+     *  page (pdftocairo), asynchronously; on success startPageJobs()
      *  fans the pages out. */
     void rasterize(int requestId, const QString &pdfPath);
 
