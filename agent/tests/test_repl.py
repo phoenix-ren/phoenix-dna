@@ -12,7 +12,7 @@ from phoenix_dna.repl import (
     EventPrinter,
     dbus_signal_to_event,
     parse_answer_line,
-    read_answer,
+    read_form_answers,
     wait_for_run,
 )
 
@@ -126,7 +126,7 @@ def test_printer_truncates_long_tool_args_and_output(capsys):
 def test_printer_renders_a_question_and_collects_the_answer(capsys):
     answered = []
     printer = EventPrinter(
-        color=False, answer_fn=lambda ask_id, question: answered.append(ask_id)
+        color=False, answer_fn=lambda ask_id, form: answered.append(ask_id)
     )
     printer.on_event(
         {
@@ -134,12 +134,16 @@ def test_printer_renders_a_question_and_collects_the_answer(capsys):
             "run_id": "r",
             "ask_id": "ask_1",
             "question": {
-                "question": "Which disk should the backup use?",
-                "header": "Backup disk",
-                "options": [
-                    {"label": "/dev/sda", "description": "the SSD"},
-                    {"label": "/dev/sdb"},
-                ],
+                "questions": [
+                    {
+                        "question": "Which disk should the backup use?",
+                        "header": "Backup disk",
+                        "options": [
+                            {"label": "/dev/sda", "description": "the SSD"},
+                            {"label": "/dev/sdb"},
+                        ],
+                    }
+                ]
             },
         }
     )
@@ -150,23 +154,25 @@ def test_printer_renders_a_question_and_collects_the_answer(capsys):
     assert "or your own words" in out
     assert answered == ["ask_1"]
 
-    # wizard metadata is shown as progress context
+    # a multi-question form numbers its questions and carries the goal
     printer.on_event(
         {
             "kind": "question_asked",
             "run_id": "r",
             "ask_id": "ask_2",
             "question": {
-                "question": "Encrypt it?",
-                "options": [{"label": "Yes"}, {"label": "No"}],
-                "step": 2,
-                "est_steps": 4,
                 "goal": "backup setup",
+                "questions": [
+                    {"question": "Disk?", "options": [{"label": "a"}, {"label": "b"}]},
+                    {"question": "Encrypt?", "options": [{"label": "Yes"}, {"label": "No"}]},
+                ],
             },
         }
     )
     out = capsys.readouterr().out
-    assert "(step 2 of ~4: backup setup) Encrypt it?" in out
+    assert "❓ backup setup" in out
+    assert "(1 of 2) Disk?" in out
+    assert "(2 of 2) Encrypt?" in out
 
 
 def test_printer_badges_harness_confirmations(capsys):
@@ -177,8 +183,12 @@ def test_printer_badges_harness_confirmations(capsys):
             "run_id": "r",
             "ask_id": "ask_c",
             "question": {
-                "question": "Allow this root command to run?\n\n$ rm -rf /tmp/x",
-                "options": [{"label": "Allow"}, {"label": "Deny"}],
+                "questions": [
+                    {
+                        "question": "Allow this root command to run?\n\n$ rm -rf /tmp/x",
+                        "options": [{"label": "Allow"}, {"label": "Deny"}],
+                    }
+                ],
                 "harness": True,
             },
         }
@@ -212,19 +222,43 @@ def test_parse_answer_line():
     }
 
 
-def test_read_answer_prompts_until_nonempty():
-    question = {"options": [{"label": "a"}, {"label": "b"}]}
-    inputs = iter(["", "  ", "2"])
-    answer = read_answer(question, input_fn=lambda _prompt: next(inputs))
-    assert answer == {"selected": [1]}
+def test_read_form_answers_walks_questions_with_back_and_skip():
+    form = {
+        "questions": [
+            {
+                "question": "Disk?",
+                "options": [{"label": "/dev/sda"}, {"label": "/dev/sdb"}],
+            },
+            {"question": "Encrypt?", "options": [{"label": "Yes"}, {"label": "No"}]},
+            {"question": "How often?", "options": [{"label": "Nightly"}, {"label": "Never"}]},
+        ]
+    }
+    # answer q1, go back and change it, skip q2, answer q3
+    inputs = iter(["1", "b", "2", "", "nightly"])
+    answers = read_form_answers(
+        form, input_fn=lambda _prompt: next(inputs), print_fn=lambda _t: None
+    )
+    assert answers == [
+        {"selected": [1]},
+        {},
+        {"selected": [0]},
+    ]
 
 
-def test_read_answer_eof_degrades_to_an_explicit_no_answer():
+def test_read_form_answers_eof_fills_the_rest_with_skips():
+    form = {
+        "questions": [
+            {"question": "a?", "options": [{"label": "x"}, {"label": "y"}]},
+            {"question": "b?", "options": [{"label": "x"}, {"label": "y"}]},
+        ]
+    }
+
     def eof(_prompt):
         raise EOFError
 
-    answer = read_answer({"options": [{"label": "a"}, {"label": "b"}]}, input_fn=eof)
-    assert answer["text"]
+    answers = read_form_answers(form, input_fn=eof, print_fn=lambda _t: None)
+    assert answers[0]["text"]  # explicit no-answer text
+    assert answers[1] == {}  # the rest are deliberate skips
 
 
 def test_dbus_signal_to_event_questions():

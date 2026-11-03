@@ -65,26 +65,27 @@ class Speaker;
  * succeeded — an older clip's result, a failed cleanup (the raw text stays
  * on screen) and a superseded request are all dropped here.
  *
- * Questions: when the model needs a decision only the user can make, it
- * calls the daemon's ask_user tool, which blocks the run until the
- * question is answered (or times out). The daemon announces that with
- * QuestionAsked(run_id, ask_id, question_json) — parsed here into \a
- * pendingQuestion, a map with the askId, the question, its options
- * (label + description each), the multiple flag and the wizard metadata
- * (goal/step/estSteps) when the model is asking a series. answerQuestion()
- * sends the user's reply (chosen option indices or labels, plus anything
- * they wrote themselves) to AnswerQuestion(ask_id, answer_json); the
- * daemon's QuestionAnswered — answered, timeout or cancelled — empties \a
- * pendingQuestion again, and so does the run ending. A question is
- * activity like any other: the pane opens on it.
+ * Questions: when the model needs decisions only the user can make, it
+ * calls the daemon's ask_user tool — one call carrying every question it
+ * already knows it needs — and the run blocks until the form is answered
+ * (or times out). The daemon announces that with QuestionAsked(run_id,
+ * ask_id, question_json), parsed here into \a pendingForm: the askId,
+ * the questions (each with options), the goal, and the harness marker
+ * when it is a daemon-authored confirmation. submitAnswers() sends the
+ * user's answers — one entry per question, indices and/or their own
+ * words, blanks as deliberate skips — as a single AnswerQuestion call;
+ * QuestionAnswered (answered, timeout or cancelled) or the run's end
+ * empties the form again. A question is activity like any other: the
+ * pane opens on it.
  *
- * A question series is a wizard: while it runs, \a wizardState keeps the
- * pane in the wizard view (one question at a time, progress, the answers
- * collected so far). The wizard starts at a question carrying step
- * metadata, stays up across the gaps between the series' questions (the
- * bridge marks it waiting), and ends when the agent stops asking and
- * goes to work — its first non-ask_user tool call — or the question
- * times out, is cancelled or its run ends.
+ * A form of several questions is a wizard: \a wizardState carries its
+ * summary ({active, goal, count}) while it is pending, and the results
+ * pane swaps its conversation for the wizard view — which walks the
+ * questions entirely client-side (instant back, exact progress, the
+ * answers reviewed before they are submitted as one). Follow-up
+ * questions the model asks after an answer opens a new decision arrive
+ * as further forms: one question renders as the inline card, several
+ * re-open the wizard.
  *
  * Session titles: the daemon (re)generates a session's title with a single
  * LLM call after every completed run and announces it with
@@ -190,28 +191,25 @@ public:
      * another session's transcript arrives. */
     Q_PROPERTY(QVariantList sessionMessages READ sessionMessages NOTIFY sessionMessagesChanged)
 
-    /*! \brief The question the running prompt is blocked on, or an empty
-     *  map while none is.
+    /*! \brief The form the running prompt is blocked on, or an empty map
+     *  while none is.
      *
-     * ask_user asks the user one multiple-choice question and blocks the
-     * run until it is answered, cancelled or timed out. QuestionAsked
-     * fills this map — askId, question, header, options (a list of
-     * {label, description}), multiple, and the wizard metadata goal,
-     * step, estSteps when the model gave it — and QuestionAnswered or the
-     * run's end empties it. The results pane renders it as the question
-     * card to answer. */
-    Q_PROPERTY(QVariantMap pendingQuestion READ pendingQuestion NOTIFY pendingQuestionChanged)
+     * ask_user blocks the run on a form of questions. QuestionAsked fills
+     * this map — askId, questions (a list of {question, header, options:
+     * [{label, description}], multiple}), goal, and harness when it is a
+     * daemon-authored confirmation — and QuestionAnswered or the run's
+     * end empties it. One question renders as the inline card; several
+     * open the wizard view, which walks them client-side (back, exact
+     * progress) and submits all answers together. */
+    Q_PROPERTY(QVariantMap pendingForm READ pendingForm NOTIFY pendingFormChanged)
 
-    /*! \brief The state of the question series (wizard) in flight.
+    /*! \brief The state of the wizard in flight.
      *
-     * {active, goal, step, estSteps, waiting, answers} — answers being
-     * the questions asked so far with what the user answered ({question,
-     * answer, status} each). Active from the first question that carries
-     * step metadata until the agent stops asking and goes to work (its
-     * first non-ask_user tool call), the question times out or is
-     * cancelled, or the run ends; waiting marks the gap between two of
-     * the series' questions. The results pane swaps its conversation for
-     * the wizard view while active. */
+     * {active, goal, count}: a form of several questions is active for as
+     * long as it is pending — the questions, the cursor and the answers
+     * live in the view (all client-side, no round-trip per question), so
+     * the bridge only carries the summary. The results pane swaps its
+     * conversation for the wizard view while active. */
     Q_PROPERTY(QVariantMap wizardState READ wizardState NOTIFY wizardStateChanged)
 
     bool isAvailable() const { return m_available; }
@@ -245,11 +243,11 @@ public:
     QVariantList sessionSummaries() const { return m_sessionSummaries; }
     QVariantList sessionMessages() const { return m_sessionMessages; }
 
-    /*! \brief The question the running prompt is blocked on ({ } when
-     *  none is). */
-    QVariantMap pendingQuestion() const { return m_pendingQuestion; }
+    /*! \brief The form the running prompt is blocked on ({ } when none
+     *  is). */
+    QVariantMap pendingForm() const { return m_pendingForm; }
 
-    /*! \brief The state of the question series (wizard) in flight. */
+    /*! \brief The state of the wizard in flight. */
     QVariantMap wizardState() const { return m_wizardState; }
 
     QString proposedAction() const { return m_proposedAction; }
@@ -368,7 +366,7 @@ public:
      * (question no longer pending, payload does not resolve) is only
      * logged — the question stays pending, and the user can retry.
      */
-    Q_INVOKABLE bool answerQuestion(const QVariantList &selected, const QString &text);
+    Q_INVOKABLE bool submitAnswers(const QVariantList &answers);
 
 Q_SIGNALS:
     void availabilityChanged();
@@ -413,7 +411,7 @@ Q_SIGNALS:
 
     /*! \brief Emitted when the pending question changed: asked, answered,
      *  timed out, cancelled — or dropped with its run. */
-    void pendingQuestionChanged();
+    void pendingFormChanged();
 
     /*! \brief Emitted when the wizard state changed: a series began or
      *  advanced, is waiting between questions, or ended. */
@@ -520,7 +518,7 @@ private:
     void setPartialTranscript(const QString &text);
     void setFinalTranscript(const QString &text);
     void setAgentMessage(const QString &text);
-    void setPendingQuestion(const QVariantMap &question);
+    void setPendingForm(const QVariantMap &form);
     void setWizardState(const QVariantMap &state);
 
     /*! \brief Ends the wizard (no-op when none is active): the agent
@@ -620,7 +618,7 @@ private:
     Speaker *m_speech = nullptr;
     // The question the running prompt is blocked on (ask_user): parsed
     // from QuestionAsked, emptied by QuestionAnswered or the run's end.
-    QVariantMap m_pendingQuestion;
+    QVariantMap m_pendingForm;
     // The wizard state of a question series (see wizardState); inactive
     // maps simply carry active=false.
     QVariantMap m_wizardState;

@@ -136,13 +136,18 @@ class RootCommandConfirmer:
                 {"label": "Allow", "description": "Run it once, as root"},
                 {"label": "Deny", "description": "Skip it and tell me why"},
             ],
-            "harness": True,
         }
+        form = {"questions": [question], "harness": True}
         answer, status = self._coordinator.ask(
-            self._run_id, question, cancel=cancel, timeout=self._timeout
+            self._run_id, form, cancel=cancel, timeout=self._timeout
         )
 
-        if status == "answered" and answer.get("selected") == ["Allow"]:
+        entries = answer.get("answers", [])
+        if (
+            status == "answered"
+            and entries
+            and entries[0].get("selected") == ["Allow"]
+        ):
             return True, "allowed by the user"
         if status == "cancelled":
             return False, "cancelled"

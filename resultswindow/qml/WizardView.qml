@@ -8,36 +8,69 @@ import org.kde.kirigami as Kirigami
 import org.phoenixdna.theme
 
 /*
- * The wizard view: while the agent is asking a series of questions
- * (ask_user carrying goal/step/est_steps), the results window's
- * conversation gives way to this pane — one question at a time, a
- * progress bar towards "the agent has what it needs", and the answers
- * collected so far. When the agent stops asking and goes to work, the
- * conversation returns.
+ * The wizard view: while the run is blocked on a form of several
+ * questions (one ask_user call), the results window's conversation gives
+ * way to this pane. It walks the questions entirely client-side — one
+ * question at a time, instant back, exact progress (the count is known:
+ * the whole form arrived at once) — and submits every answer together
+ * only when the user finishes. A blank answer is a deliberate skip; the
+ * model is told there was no answer, not asked again.
  *
- * The pane is fed by the agent bridge: `wizard` is its wizard state
- * ({active, goal, step, estSteps, waiting, answers}) and `question` the
- * pending question ({} in the waiting gap between two questions, while
- * the model thinks about the answer it just got). The estimates are the
- * model's own and may be revised as it learns — hence the "~".
+ * Fed by the agent bridge: `form` is its pendingForm ({askId, questions,
+ * goal}) and the answers leave as one submit signal, routed to
+ * AnswerQuestion.
  */
 ColumnLayout {
     id: wizardView
 
-    property var wizard: ({})
-    property var question: ({})
+    property var form: ({})
+    property var wizard: ({})   // the bridge's summary: {active, goal, count}
 
-    // Emitted when the user answers the current question; routed to the
-    // agent bridge like the inline card's answers.
-    signal submitted(var selected, string text)
+    // Emitted when the user finishes the form: one {selected, text} map
+    // per question, in order.
+    signal submitted(var answers)
 
-    // The gap between two questions: the last answer was accepted and
-    // the next question has not arrived yet.
-    readonly property bool waiting: wizard.active === true
-        && question.askId === undefined
+    readonly property var questions: form.questions ?? []
+    readonly property int count: questions.length
+    readonly property int cursor: __cursor
 
-    readonly property int step: wizard.step ?? 1
-    readonly property int estSteps: wizard.estSteps ?? step
+    // The walker's state: which question is on screen, and one answer
+    // entry per question. All local — back and forward are instant, and
+    // nothing reaches the agent until the final submit.
+    property int __cursor: 0
+    property var __answers: []
+
+    onFormChanged: {
+        __cursor = 0;
+        __answers = questions.map(question => ({ "selected": [], "text": "" }));
+    }
+
+    function saveCurrent() {
+        if (__answers.length > __cursor) {
+            __answers[__cursor] = inputs.currentState();
+        }
+    }
+
+    function goBack() {
+        if (__cursor > 0) {
+            saveCurrent();
+            __cursor--;
+        }
+    }
+
+    function goNext() {
+        if (__cursor < count - 1) {
+            saveCurrent();
+            __cursor++;
+        }
+    }
+
+    function submitAll() {
+        saveCurrent();
+        submitted(__answers);
+    }
+
+    on__CursorChanged: Qt.callLater(() => inputs.setState(__answers[__cursor] || {}))
 
     // The goal names what the questions collect ("backup setup"); the
     // fallback keeps the pane titled when the model omitted it.
@@ -46,25 +79,24 @@ ColumnLayout {
         color: PhoenixTheme.headingTextColor
         wrapMode: Text.WordWrap
 
-        text: wizardView.wizard.goal
-              ? wizardView.wizard.goal
+        text: wizardView.form.goal
+              ? wizardView.form.goal
               : i18n("A few questions first")
     }
 
-    // The progress towards enough information. `to` follows the model's
-    // current estimate, so a revised count moves the bar's scale.
+    // Exact progress: the whole form is known, so the count is real -
+    // no "~" estimates. The bar's filled part is the answered part; the
+    // question on screen is the one being answered.
     ColumnLayout {
         Layout.fillWidth: true
         spacing: Kirigami.Units.smallSpacing
 
-        // PC3, not Kirigami: Kirigami has no ProgressBar — the trap this
-        // applet already fell into once (c7916fe). Instantiating the
-        // window (results_harness.qml) catches this at build time now.
         PC3.ProgressBar {
             Layout.fillWidth: true
-            from: 1
-            to: Math.max(wizardView.estSteps, wizardView.step)
-            value: wizardView.step
+            // PC3, not Kirigami: Kirigami has no ProgressBar (c300500).
+            from: 0
+            to: wizardView.count
+            value: wizardView.cursor
         }
 
         Text {
@@ -72,11 +104,8 @@ ColumnLayout {
             font.pixelSize: Math.max(
                 9, Math.round(Qt.application.font.pixelSize * 0.9))
 
-            text: wizardView.waiting
-                  ? i18n("Question %1 of ~%2 answered — preparing the next…",
-                         wizardView.step, wizardView.estSteps)
-                  : i18n("Question %1 of ~%2",
-                         wizardView.step, wizardView.estSteps)
+            text: i18n("Question %1 of %2",
+                       wizardView.cursor + 1, wizardView.count)
         }
     }
 
@@ -85,23 +114,26 @@ ColumnLayout {
         Layout.topMargin: Kirigami.Units.smallSpacing
     }
 
-    // What has been collected so far — dimmed, because it is context,
-    // not the task at hand.
+    // What has been answered so far — dimmed context, revisable with
+    // the Back button (nothing is sent until the final submit).
     Repeater {
-        model: wizardView.wizard.answers ?? []
+        model: wizardView.cursor  // the questions behind the current one
 
         delegate: ColumnLayout {
             id: answeredEntry
 
-            required property var modelData
+            required property int index
 
             Layout.fillWidth: true
             spacing: 0
 
+            readonly property var question: wizardView.questions[answeredEntry.index]
+            readonly property var answer: wizardView.__answers[answeredEntry.index]
+
             Text {
                 Layout.fillWidth: true
 
-                text: answeredEntry.modelData.question ?? ""
+                text: answeredEntry.question ? answeredEntry.question.question : ""
                 wrapMode: Text.WordWrap
                 elide: Text.ElideRight
                 color: PhoenixTheme.secondaryTextColor
@@ -114,13 +146,20 @@ ColumnLayout {
                 Layout.leftMargin: Kirigami.Units.smallSpacing
 
                 text: {
-                    const answer = answeredEntry.modelData.answer ?? {};
-                    const labels = (answer.selected ?? []).join(", ");
+                    const answer = answeredEntry.answer ?? {};
+                    const labels = (answer.selected ?? []).map(
+                        index => answeredEntry.question.options[index].label);
                     const own = answer.text ?? "";
                     if (labels && own) {
-                        return "✓ " + labels + " — " + own;
+                        return "✓ " + labels.join(", ") + " — " + own;
                     }
-                    return "✓ " + (labels || own);
+                    if (labels) {
+                        return "✓ " + labels.join(", ");
+                    }
+                    if (own) {
+                        return "✓ " + own;
+                    }
+                    return "· " + i18n("left blank");
                 }
                 wrapMode: Text.WordWrap
                 color: PhoenixTheme.secondaryTextColor
@@ -130,25 +169,19 @@ ColumnLayout {
         }
     }
 
-    // The current question, or the waiting gap.
-    PC3.BusyIndicator {
-        Layout.alignment: Qt.AlignHCenter
-        Layout.topMargin: Kirigami.Units.largeSpacing
-        visible: wizardView.waiting
-        running: wizardView.waiting
-    }
-
+    // The current question.
     ColumnLayout {
         Layout.fillWidth: true
         Layout.topMargin: Kirigami.Units.largeSpacing
-        visible: !wizardView.waiting
 
         Kirigami.Heading {
             level: 5
             visible: text.length > 0
             color: PhoenixTheme.secondaryTextColor
 
-            text: wizardView.question.header ?? ""
+            text: wizardView.questions[wizardView.cursor]
+                  ? (wizardView.questions[wizardView.cursor].header ?? "")
+                  : ""
         }
 
         Kirigami.SelectableLabel {
@@ -156,7 +189,9 @@ ColumnLayout {
 
             Layout.fillWidth: true
 
-            text: wizardView.question.question ?? ""
+            text: wizardView.questions[wizardView.cursor]
+                  ? (wizardView.questions[wizardView.cursor].question ?? "")
+                  : ""
             textFormat: TextEdit.PlainText
             wrapMode: Text.WordWrap
             font.weight: Font.DemiBold
@@ -164,24 +199,63 @@ ColumnLayout {
         }
 
         QuestionInputs {
+            id: inputs
+
             Layout.fillWidth: true
             Layout.topMargin: Kirigami.Units.smallSpacing
 
-            question: wizardView.question
-            showSkip: true
+            question: wizardView.questions[wizardView.cursor] ?? {}
+            showSubmit: false
+        }
+    }
 
-            onSubmitted: (selected, text) =>
-                wizardView.submitted(selected, text)
+    // The walker's chrome: back through the answered questions (instant
+    // - it is all local state), forward (a blank is a deliberate skip),
+    // and the submit that finally sends every answer at once.
+    RowLayout {
+        Layout.fillWidth: true
+        Layout.topMargin: Kirigami.Units.smallSpacing
+        spacing: Kirigami.Units.smallSpacing
+
+        PC3.Button {
+            objectName: "backButton"
+
+            enabled: wizardView.cursor > 0
+            icon.name: "go-previous"
+            text: i18n("Back")
+            onClicked: wizardView.goBack()
         }
 
-        Text {
-            Layout.fillWidth: true
-            Layout.topMargin: Kirigami.Units.smallSpacing
+        Item { Layout.fillWidth: true }
 
-            text: i18n("The agent is waiting for this answer before it continues.")
-            font.pixelSize: Math.max(
-                9, Math.round(Qt.application.font.pixelSize * 0.8))
-            color: PhoenixTheme.secondaryTextColor
+        PC3.Button {
+            objectName: "nextButton"
+
+            visible: wizardView.cursor < wizardView.count - 1
+            icon.name: "go-next"
+            text: i18n("Next")
+            onClicked: wizardView.goNext()
         }
+
+        PC3.Button {
+            objectName: "submitButton"
+
+            visible: wizardView.cursor >= wizardView.count - 1
+            icon.name: "document-send"
+            text: i18n("Submit answers")
+            onClicked: wizardView.submitAll()
+        }
+    }
+
+    Text {
+        Layout.fillWidth: true
+        Layout.topMargin: Kirigami.Units.smallSpacing
+
+        text: wizardView.cursor >= wizardView.count - 1
+              ? i18n("Everything is sent together when you submit; the agent is waiting.")
+              : i18n("Nothing is sent until you submit; Back revisits your answers.")
+        font.pixelSize: Math.max(
+            9, Math.round(Qt.application.font.pixelSize * 0.8))
+        color: PhoenixTheme.secondaryTextColor
     }
 }

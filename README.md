@@ -14,10 +14,10 @@ modes, streams progress back, and renders the result in a fully-fledged results
 window. When the agent needs a decision only the user can make, it asks: the
 question appears in the results window as a card — radio buttons (or
 checkboxes) per option, or the user's own words — and the run continues once
-it is answered. A series of questions switches the window into a wizard view:
-one question at a time, with a progress bar, the answers collected so far,
-and the conversation returning when the agent has what it needs and goes to
-work.
+it is answered. Several questions arrive as one form, and the window becomes
+a wizard: one question at a time with a back button and exact progress, the
+answers reviewed and then all sent together, and the conversation returning
+when the agent has what it needs and goes to work.
 
 The panel's search button (or Meta+Alt+`) opens the session search: the
 user's previous sessions on the left, under the name the daemon gave them,

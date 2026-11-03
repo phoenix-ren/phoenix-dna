@@ -425,35 +425,40 @@ void AgentBridge::storeExchange(const QString &prompt,
     m_conversation.finishExchange();
 }
 
-bool AgentBridge::answerQuestion(const QVariantList &selected, const QString &text)
+bool AgentBridge::submitAnswers(const QVariantList &answers)
 {
-    // AnswerQuestion(ask_id, answer_json): selected entries are 0-based
-    // option indices (the daemon also accepts exact labels), text is the
-    // user's own words. Either part may carry the answer alone. A false
-    // reply (question no longer pending, payload rejected) is only
-    // logged: the question stays pending, and the card lets the user
+    // AnswerQuestion(ask_id, answer_json): one entry per question of the
+    // form, in order — {"selected": [indices], "text": "own words"},
+    // either part may carry the answer, an empty entry is a deliberate
+    // skip. A false reply (form no longer pending, payload rejected) is
+    // only logged: the form stays pending, and the view lets the user
     // retry.
-    if (m_pendingQuestion.isEmpty()) {
+    if (m_pendingForm.isEmpty() || answers.isEmpty()) {
         return false;
     }
 
-    QJsonObject answer;
-    const QJsonArray chosen = QJsonArray::fromVariantList(selected);
-    if (!chosen.isEmpty()) {
-        answer.insert(QStringLiteral("selected"), chosen);
-    }
-    const QString own = text.trimmed();
-    if (!own.isEmpty()) {
-        answer.insert(QStringLiteral("text"), own);
-    }
-    if (answer.isEmpty()) {
-        return false;
+    QJsonArray entries;
+    for (const QVariant &entry : answers) {
+        const QVariantMap map = entry.toMap();
+        QJsonObject object;
+        const QJsonArray chosen = QJsonArray::fromVariantList(
+            map.value(QStringLiteral("selected")).toList());
+        if (!chosen.isEmpty()) {
+            object.insert(QStringLiteral("selected"), chosen);
+        }
+        const QString own = map.value(QStringLiteral("text")).toString().trimmed();
+        if (!own.isEmpty()) {
+            object.insert(QStringLiteral("text"), own);
+        }
+        entries.append(object);
     }
 
+    QJsonObject payload;
+    payload.insert(QStringLiteral("answers"), entries);
     QDBusMessage message = QDBusMessage::createMethodCall(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("AnswerQuestion"));
-    message << m_pendingQuestion.value(QStringLiteral("askId")).toString()
-            << QString::fromUtf8(QJsonDocument(answer).toJson(QJsonDocument::Compact));
+    message << m_pendingForm.value(QStringLiteral("askId")).toString()
+            << QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
 
     auto *watcher =
         new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
@@ -462,9 +467,9 @@ bool AgentBridge::answerQuestion(const QVariantList &selected, const QString &te
                 const QDBusReply<bool> reply = *watcher;
                 watcher->deleteLater();
                 if (!reply.isValid() || !reply.value()) {
-                    // The question stays pending: the run is still blocked
-                    // on it, and the card remains to retry.
-                    qWarning() << "answer was not accepted:" << reply.error().message();
+                    // The form stays pending: the run is still blocked on
+                    // it, and the view remains to retry.
+                    qWarning() << "answers were not accepted:" << reply.error().message();
                 }
             });
     return true;
@@ -480,82 +485,70 @@ void AgentBridge::onQuestionAsked(const QString &runId,
     // model asked before producing any text.
     beginStreaming();
 
-    // question_json: {question, options: [{label, description}], header?,
-    // multiple?, goal?, step?, est_steps?}. The card reads exactly these
-    // keys (camelCase here), so keep the mapping in one place.
-    const QVariantMap question = parseJsonObject(questionJson);
+    // The payload is the form: {questions: [{question, options,
+    // header?, multiple?}], goal?, harness?}. The view reads exactly
+    // these keys, so keep the mapping in one place.
+    const QVariantMap form = parseJsonObject(questionJson);
 
-    QVariantList options;
-    const QVariantList rawOptions = question.value(QStringLiteral("options")).toList();
-    for (const QVariant &entry : rawOptions) {
-        const QVariantMap option = entry.toMap();
+    QVariantList questions;
+    const QVariantList rawQuestions = form.value(QStringLiteral("questions")).toList();
+    for (const QVariant &questionEntry : rawQuestions) {
+        const QVariantMap question = questionEntry.toMap();
         QVariantMap mapped;
-        mapped.insert(QStringLiteral("label"),
-                      option.value(QStringLiteral("label")).toString());
-        const QString description = option.value(QStringLiteral("description")).toString().trimmed();
-        if (!description.isEmpty()) {
-            mapped.insert(QStringLiteral("description"), description);
+        mapped.insert(QStringLiteral("question"),
+                      question.value(QStringLiteral("question")).toString());
+
+        QVariantList options;
+        const QVariantList rawOptions = question.value(QStringLiteral("options")).toList();
+        for (const QVariant &optionEntry : rawOptions) {
+            const QVariantMap option = optionEntry.toMap();
+            QVariantMap mappedOption;
+            mappedOption.insert(QStringLiteral("label"),
+                                option.value(QStringLiteral("label")).toString());
+            const QString description =
+                option.value(QStringLiteral("description")).toString().trimmed();
+            if (!description.isEmpty()) {
+                mappedOption.insert(QStringLiteral("description"), description);
+            }
+            options.append(mappedOption);
         }
-        options.append(mapped);
+        mapped.insert(QStringLiteral("options"), options);
+
+        const QString header = question.value(QStringLiteral("header")).toString().trimmed();
+        if (!header.isEmpty()) {
+            mapped.insert(QStringLiteral("header"), header);
+        }
+        if (question.value(QStringLiteral("multiple")).toBool()) {
+            mapped.insert(QStringLiteral("multiple"), true);
+        }
+        questions.append(mapped);
     }
 
     QVariantMap payload;
     payload.insert(QStringLiteral("askId"), askId);
-    payload.insert(QStringLiteral("question"),
-                   question.value(QStringLiteral("question")).toString());
-    payload.insert(QStringLiteral("options"), options);
-    // The harness marker: a daemon-authored confirmation (destructive
-    // root command), not a model-authored question. The card styles it
-    // as a system confirmation, and it never joins a wizard.
-    if (question.value(QStringLiteral("harness")).toBool()) {
-        payload.insert(QStringLiteral("harness"), true);
-    }
-    const QString header = question.value(QStringLiteral("header")).toString().trimmed();
-    if (!header.isEmpty()) {
-        payload.insert(QStringLiteral("header"), header);
-    }
-    if (question.value(QStringLiteral("multiple")).toBool()) {
-        payload.insert(QStringLiteral("multiple"), true);
-    }
-    const QString goal = question.value(QStringLiteral("goal")).toString().trimmed();
+    payload.insert(QStringLiteral("questions"), questions);
+    const QString goal = form.value(QStringLiteral("goal")).toString().trimmed();
     if (!goal.isEmpty()) {
         payload.insert(QStringLiteral("goal"), goal);
     }
-    const QVariant step = question.value(QStringLiteral("step"));
-    if (!step.isNull() && step.toInt() > 0) {
-        payload.insert(QStringLiteral("step"), step.toInt());
+    // The harness marker: a daemon-authored confirmation (destructive
+    // root command), not a model-authored question. The card styles it
+    // as a system confirmation, and it never joins a wizard.
+    if (form.value(QStringLiteral("harness")).toBool()) {
+        payload.insert(QStringLiteral("harness"), true);
     }
-    const QVariant estSteps = question.value(QStringLiteral("est_steps"));
-    if (!estSteps.isNull() && estSteps.toInt() > 0) {
-        payload.insert(QStringLiteral("estSteps"), estSteps.toInt());
-    }
-    setPendingQuestion(payload);
+    setPendingForm(payload);
 
-    // A question with step metadata is part of a series: the wizard
-    // begins (or advances). A plain question mid-series is shown in the
-    // wizard pane as-is, without touching the progress.
-    const int wizardStep = payload.value(QStringLiteral("step")).toInt();
-    if (wizardStep > 0) {
-        QVariantMap wizard = m_wizardState;
-        const bool wasActive = wizard.value(QStringLiteral("active")).toBool();
+    // Several questions open the wizard. The questions, the cursor and
+    // the answers live in the view (client-side: instant back, exact
+    // progress), so the bridge carries only the summary.
+    if (questions.size() >= 2) {
+        QVariantMap wizard;
         wizard.insert(QStringLiteral("active"), true);
-        wizard.insert(QStringLiteral("waiting"), false);
-        wizard.insert(QStringLiteral("goal"), payload.value(QStringLiteral("goal")));
-        wizard.insert(QStringLiteral("step"), wizardStep);
-        wizard.insert(
-            QStringLiteral("estSteps"),
-            payload.contains(QStringLiteral("estSteps"))
-                ? payload.value(QStringLiteral("estSteps"))
-                : QVariant(step));
-        if (!wasActive) {
-            // A fresh wizard collects from scratch; a continuing series
-            // keeps what it gathered.
-            wizard.insert(QStringLiteral("answers"), QVariantList());
+        wizard.insert(QStringLiteral("count"), questions.size());
+        if (!goal.isEmpty()) {
+            wizard.insert(QStringLiteral("goal"), goal);
         }
-        setWizardState(wizard);
-    } else if (m_wizardState.value(QStringLiteral("active")).toBool()) {
-        QVariantMap wizard = m_wizardState;
-        wizard.insert(QStringLiteral("waiting"), false);
         setWizardState(wizard);
     }
 }
@@ -566,45 +559,25 @@ void AgentBridge::onQuestionAnswered(const QString &runId,
                                      const QString &answerJson)
 {
     Q_UNUSED(runId)
+    Q_UNUSED(status)
+    Q_UNUSED(answerJson)
 
-    // Only the question this card is showing ends here: a late answer for
-    // an already-replaced question must not clear its successor.
-    if (m_pendingQuestion.value(QStringLiteral("askId")).toString() != askId) {
+    // Only the form this view is showing ends here: a late answer for an
+    // already-replaced form must not clear its successor.
+    if (m_pendingForm.value(QStringLiteral("askId")).toString() != askId) {
         return;
     }
-
-    // A wizard records what it collected — the answered-so-far list is
-    // the running summary of the series. An answered question keeps the
-    // wizard up for the next one (waiting); a timeout or a cancellation
-    // ends it: nothing more will be answered here.
-    QVariantMap wizard = m_wizardState;
-    if (wizard.value(QStringLiteral("active")).toBool()) {
-        QVariantList answers = wizard.value(QStringLiteral("answers")).toList();
-        QVariantMap entry;
-        entry.insert(QStringLiteral("question"),
-                     m_pendingQuestion.value(QStringLiteral("question")));
-        entry.insert(QStringLiteral("answer"), parseJsonObject(answerJson));
-        entry.insert(QStringLiteral("status"), status);
-        answers.append(entry);
-        wizard.insert(QStringLiteral("answers"), answers);
-        if (status == QLatin1String("answered")) {
-            wizard.insert(QStringLiteral("waiting"), true);
-        } else {
-            wizard.insert(QStringLiteral("active"), false);
-            wizard.insert(QStringLiteral("waiting"), false);
-        }
-        setWizardState(wizard);
-    }
-    setPendingQuestion(QVariantMap());
+    setPendingForm(QVariantMap());
+    endWizard();
 }
 
-void AgentBridge::setPendingQuestion(const QVariantMap &question)
+void AgentBridge::setPendingForm(const QVariantMap &form)
 {
-    if (m_pendingQuestion == question) {
+    if (m_pendingForm == form) {
         return;
     }
-    m_pendingQuestion = question;
-    Q_EMIT pendingQuestionChanged();
+    m_pendingForm = form;
+    Q_EMIT pendingFormChanged();
 }
 
 void AgentBridge::setWizardState(const QVariantMap &state)
@@ -623,7 +596,6 @@ void AgentBridge::endWizard()
     }
     QVariantMap wizard = m_wizardState;
     wizard.insert(QStringLiteral("active"), false);
-    wizard.insert(QStringLiteral("waiting"), false);
     setWizardState(wizard);
 }
 
@@ -732,10 +704,9 @@ void AgentBridge::onRunStarted(const QString &runId, const QString &mode, const 
     m_deltaTimer.stop();
     m_pendingDelta.clear();
     m_pendingThinking.clear();
-    // A question never survives its run: if the previous run ended without
-    // QuestionAnswered (daemon restart mid-question), its card must go.
-    setPendingQuestion(QVariantMap());
-    // Neither does a wizard: a run boundary ends whatever it was asking.
+    // A form never survives its run: if the previous run ended without
+    // QuestionAnswered (daemon restart mid-question), its view must go.
+    setPendingForm(QVariantMap());
     endWizard();
     if (ours) {
         const QueuedPrompt queued = m_pendingPrompts.takeFirst();
@@ -942,9 +913,9 @@ void AgentBridge::onRunFinished(const QString &runId,
     m_deltaTimer.stop();
     m_pendingDelta.clear();
     m_pendingThinking.clear();
-    // ...and any question the run was blocked on is over now, answered or
+    // ...and any form the run was blocked on is over now, answered or
     // not (QuestionAnswered usually got here first).
-    setPendingQuestion(QVariantMap());
+    setPendingForm(QVariantMap());
     endWizard();
     if (!finalText.trimmed().isEmpty()) {
         m_conversation.setResult(finalText);
