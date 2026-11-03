@@ -45,6 +45,10 @@
  *    import clears the document's resource table.
  *  * The Markdown importer does not carry an image's size into the
  *    character format; the size is set here, in logical pixels.
+ *  * The crop to the ink throws the formula's baseline away, and an
+ *    image without its baseline floats above the text it belongs to.
+ *    The compiled page carries a mark of the baseline in its margin,
+ *    and the images are placed with it on the text's baseline.
  */
 class LatexRenderer : public QObject
 {
@@ -140,8 +144,11 @@ private:
     void startPageJobs(const Pending &pending, const QString &pageDir);
 
     /*! \brief One pool job delivered its image (or its failure, as a
-     *  null image); on the GUI thread, per delivery. */
-    void onImageReady(int requestId, int index, const QImage &image);
+     *  null image); on the GUI thread, per delivery. \a baseline is
+     *  where the formula's baseline is inside the image, or -1 when
+     *  it is unknown. */
+    void onImageReady(int requestId, int index, const QImage &image,
+                      int baseline);
 
     /*! \brief The join: whatever images are ready by now go into the
      *  document, the rest stay LaTeX. Idempotent — the deadline and
@@ -159,8 +166,14 @@ private:
      *  The order matters: the Markdown is written first (the import
      *  clears the document's resource table), the images are
      *  registered after it, and the sizing and the spacing go into a
-     *  single edit block. */
-    void embedImages(const Pending &pending, const QList<QImage> &images);
+     *  single edit block.
+     *
+     *  \a baselines tells where each formula's baseline is inside its
+     *  image (-1 when it is unknown): the images are placed so that
+     *  the formula stands on the text's baseline, not on the bottom of
+     *  its ink. */
+    void embedImages(const Pending &pending, const QList<QImage> &images,
+                     const QList<int> &baselines);
 
     /*! \brief Report a failure for \a requestId — through the event
      *  loop, like every emit of this class. */
@@ -176,6 +189,7 @@ private:
     {
         Pending pending;
         QList<QImage> images;
+        QList<int> baselines;   // where each formula's baseline is
         int delivered = 0;
         int submitted = 0;
     };

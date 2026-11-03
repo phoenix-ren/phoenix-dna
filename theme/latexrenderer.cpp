@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QImage>
+#include <QPainter>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -26,6 +27,21 @@
 #include <QQuickTextDocument>
 
 namespace {
+
+// --- the compiled page's geometry -------------------------------------
+
+// The pages are rasterized at 216 dpi — three pixels per point.
+constexpr qreal kPixelsPerPoint = 3.0;
+
+// The formula starts this far from the page's left edge, and the
+// marker that shows its baseline this far to the left of it, in the
+// margin (see buildFormulaTex).
+constexpr qreal kTextLeftPt = 20.0;
+constexpr qreal kMarkerOffsetPt = 10.0;
+
+// The strip of the page the marker is searched in: the margin in
+// front of the formula.
+constexpr qreal kMarkerStripPt = 15.0;
 
 // --- math-span detection (shared by containsLatex and the embedder) ------
 
@@ -111,13 +127,21 @@ const char *unicodeTablePreamble()
 // formula spills onto a second one, tiny margins, and each span kept
 // in its own kind (inline math stays inline-style, display stays
 // display-style — read off the span's own delimiters).
+//
+// Every formula sits in a picture environment, whose origin is the
+// formula's baseline, and a small rule in the left margin marks that
+// baseline: the renderer finds the mark in the rasterized page and
+// knows where the formula stands — without it, the crop to the ink
+// throws the baseline away and the formula floats above the text it
+// belongs to.
 QString buildFormulaTex(const QStringList &spans)
 {
     QString body;
     body += QStringLiteral("\\documentclass[11pt]{article}\n");
     body += QStringLiteral(
         "\\IfFileExists{geometry.sty}{\\usepackage[paperwidth=24cm,"
-        "paperheight=16cm,margin=1mm]{geometry}}{}\n");
+        "paperheight=16cm,left=%1pt,right=1mm,top=1mm,bottom=1mm]"
+        "{geometry}}{}\n").arg(kTextLeftPt);
     body += QStringLiteral("\\IfFileExists{amsmath.sty}{\\usepackage{amsmath}}{\n"
                            "\\providecommand{\\tfrac}[2]{\\frac{#1}{#2}}\n"
                            "\\providecommand{\\dfrac}[2]{\\frac{#1}{#2}}\n"
@@ -148,8 +172,19 @@ QString buildFormulaTex(const QStringList &spans)
         if (i > 0) {
             body += QStringLiteral("\\newpage\n");
         }
-        body += isDisplay ? QStringLiteral("\\[%1\\]\n").arg(inner)
-                          : QStringLiteral("$%1$\n").arg(inner);
+        // The picture: its origin is the baseline, and the rule in the
+        // margin marks it. The raise keeps the page tidy — the box
+        // takes no room of its own, the ink is where it was typeset.
+        body += QStringLiteral(
+                    "\\noindent\\raisebox{0pt}[0pt][0pt]{"
+                    "\\begin{picture}(0,0)"
+                    "\\put(-%1pt,0){\\rule{0.6pt}{0.6pt}}"
+                    "\\put(0,0){%2}\n"
+                    "\\end{picture}}\n")
+                    .arg(kMarkerOffsetPt)
+                    .arg(isDisplay
+                             ? QStringLiteral("$\\displaystyle %1$").arg(inner)
+                             : QStringLiteral("$%1$").arg(inner));
     }
     body += QStringLiteral("\\end{document}\n");
     return body;
@@ -216,12 +251,34 @@ QString markdownWithImages(const QString &markdown, const QList<bool> &ready)
 // The rendered page cropped to its ink (anything darker than paper),
 // as a tinted alpha mask: the formula's coverage becomes transparency,
 // the colour is \a ink, the background vanishes.
-QImage formulaImage(const QImage &page, const QColor &ink)
+//
+// \a baseline receives the y of the formula's baseline inside the
+// cropped image (-1 when the marker was not found). The baseline is
+// what the text around the formula stands on: the crop to the ink
+// alone cannot say where it was, and a formula without it floats
+// above the line it belongs to.
+QImage formulaImage(const QImage &page, const QColor &ink, int *baseline)
 {
+    // The baseline marker: a small rule in the left margin, its bottom
+    // edge on the formula's baseline.
+    const int markerStrip = qRound(kMarkerStripPt * kPixelsPerPoint);
+    const int textLeft = qRound(kTextLeftPt * kPixelsPerPoint);
+    int baselineRow = -1;
+    for (int y = 0; y < page.height() && baselineRow < 0; ++y) {
+        for (int x = 0; x < markerStrip && x < page.width(); ++x) {
+            if (qGray(page.pixel(x, y)) < 200) {
+                // The mark's bottom edge is the baseline: the first
+                // row below it is where the text stands.
+                baselineRow = y + 1;
+                break;
+            }
+        }
+    }
+
     int left = page.width(), top = page.height(), right = -1, bottom = -1;
     for (int y = 0; y < page.height(); ++y) {
         const QRgb *line = reinterpret_cast<const QRgb *>(page.scanLine(y));
-        for (int x = 0; x < page.width(); ++x) {
+        for (int x = textLeft; x < page.width(); ++x) {
             const QRgb px = line[x];
             // LaTeX ink is black on white; anti-aliased edges are in
             // between, so anything clearly darker than paper is ink.
@@ -234,10 +291,17 @@ QImage formulaImage(const QImage &page, const QColor &ink)
         }
     }
     if (right < 0) {
+        if (baseline) {
+            *baseline = -1;
+        }
         return {};
     }
     QImage out = page.copy(left, top, right - left + 1, bottom - top + 1)
                      .convertToFormat(QImage::Format_ARGB32);
+    if (baseline) {
+        // The baseline's place inside the cropped image.
+        *baseline = (baselineRow >= 0) ? baselineRow - top : -1;
+    }
     const QRgb inkRgb = qRgba(ink.red(), ink.green(), ink.blue(), 255);
     for (int y = 0; y < out.height(); ++y) {
         QRgb *line = reinterpret_cast<QRgb *>(out.scanLine(y));
@@ -248,6 +312,22 @@ QImage formulaImage(const QImage &page, const QColor &ink)
                             alpha);
         }
     }
+    return out;
+}
+
+// The image with transparent room below it, up to \a height: the room
+// a formula's baseline needs under it, so that the box the text
+// renderer places can put the baseline where the text's baseline is.
+QImage paddedImage(const QImage &image, int height)
+{
+    if (height <= image.height()) {
+        return image;
+    }
+    QImage out(image.width(), height, QImage::Format_ARGB32);
+    out.fill(Qt::transparent);
+    QPainter painter(&out);
+    painter.drawImage(0, 0, image);
+    painter.end();
     return out;
 }
 
@@ -414,8 +494,10 @@ void LatexRenderer::embedFormulas(int requestId,
     }
 
     // Content-addressed cache over the span list: the same formulas
-    // compile once, whatever text surrounds them.
-    QString spanKey;
+    // compile once, whatever text surrounds them. The version is part
+    // of the key: the compiled page changed (the formulas carry their
+    // baseline marker now), and the old pages are not interchangeable.
+    QString spanKey = QStringLiteral("baseline-2:");
     for (const QString &span : pending.spans) {
         spanKey += span + QChar::Nbsp;
     }
@@ -540,6 +622,7 @@ void LatexRenderer::startPageJobs(const Pending &pending,
     RenderJob job;
     job.pending = pending;
     job.images.resize(pending.spans.size());
+    job.baselines.resize(pending.spans.size());
     // The jobs actually started: one per formula, but only as many as
     // there are pages. The join counts these, not the formula count —
     // a rasterizer that came out short must not hold the whole answer
@@ -570,8 +653,10 @@ void LatexRenderer::startPageJobs(const Pending &pending,
         QThreadPool::globalInstance()->start([this, jobId, i, path, ink,
                                               pixelPerLogical] {
             const QImage page(path);
-            QImage image =
-                page.isNull() ? QImage() : formulaImage(page, ink);
+            int baseline = -1;
+            QImage image = page.isNull()
+                    ? QImage()
+                    : formulaImage(page, ink, &baseline);
             if (!image.isNull()) {
                 // Pre-scale to twice the logical size: the document
                 // must never see the multi-megapixel page (its layout
@@ -583,14 +668,18 @@ void LatexRenderer::startPageJobs(const Pending &pending,
                     image = image.scaledToHeight(targetHeight,
                                                  Qt::SmoothTransformation);
                 }
+                if (baseline >= 0) {
+                    // The baseline comes along with the scale.
+                    baseline = qRound(baseline / pixelPerLogical) * kPreScale;
+                }
             }
             // Delivery is queued to the GUI thread; if the deadline
             // assembled the job before this lands, the lookup below
             // finds nothing and the straggler is dropped.
             QMetaObject::invokeMethod(
                 this,
-                [this, jobId, i, image] {
-                    onImageReady(jobId, i, image);
+                [this, jobId, i, image, baseline] {
+                    onImageReady(jobId, i, image, baseline);
                 },
                 Qt::QueuedConnection);
         });
@@ -607,7 +696,7 @@ void LatexRenderer::startPageJobs(const Pending &pending,
 }
 
 void LatexRenderer::onImageReady(int requestId, int index,
-                                 const QImage &image)
+                                 const QImage &image, int baseline)
 {
     auto it = m_jobs.find(requestId);
     if (it == m_jobs.end()) {
@@ -616,6 +705,7 @@ void LatexRenderer::onImageReady(int requestId, int index,
     RenderJob &job = it.value();
     if (index >= 0 && index < job.images.size()) {
         job.images[index] = image;
+        job.baselines[index] = baseline;
     }
     ++job.delivered;
     Q_EMIT progress(requestId, job.delivered, job.submitted);
@@ -650,11 +740,12 @@ void LatexRenderer::assembleJob(int requestId)
     }
     // A straggler keeps its LaTeX as text: embedImages only swaps the
     // formulas whose image arrived.
-    embedImages(job.pending, job.images);
+    embedImages(job.pending, job.images, job.baselines);
 }
 
 void LatexRenderer::embedImages(const Pending &pending,
-                                const QList<QImage> &images)
+                                const QList<QImage> &images,
+                                const QList<int> &baselines)
 {
     QTextDocument *doc = pending.document
         ? pending.document->textDocument()
@@ -690,19 +781,56 @@ void LatexRenderer::embedImages(const Pending &pending,
         ready.append(!image.isNull());
     }
 
+    // The text's descent: how far the text reaches below its own
+    // baseline. The text renderer places an image's box with its
+    // bottom on the baseline plus this descent (its "align on the
+    // baseline" case), so a box that reaches exactly one text descent
+    // below the *formula's* baseline puts the two baselines on top of
+    // each other — and the room for it is transparent padding under
+    // the ink.
+    const QFontMetricsF textMetrics(doc->defaultFont());
+    const qreal textDescent = textMetrics.descent();
+
+    // The images with that room under them.
+    QList<QImage> prepared;
+    prepared.reserve(images.size());
+    for (int i = 0; i < images.size(); ++i) {
+        const QImage &image = images.at(i);
+        const int baseline = baselines.value(i, -1);
+        if (image.isNull() || baseline < 0) {
+            // No baseline to place: the image keeps its ink as it is.
+            prepared.append(image);
+            continue;
+        }
+        // How far the ink reaches below the formula's baseline, in
+        // logical pixels.
+        const qreal below =
+            (image.height() - baseline) / qreal(kPreScale);
+        if (below >= textDescent) {
+            // The formula reaches deeper than the text does (a
+            // fraction's denominator): its ink stays, and it sits a
+            // little high — the renderer has no placement that would
+            // do better.
+            prepared.append(image);
+            continue;
+        }
+        const int wanted = baseline + qRound(textDescent * kPreScale);
+        prepared.append(paddedImage(image, wanted));
+    }
+
     // The size of each image, in logical pixels: the pool scaled the
     // pages down to twice the size they are shown at, so the pixels are
     // halved here.
     QHash<QString, QSize> sizes;
     int embeddedCount = 0;
     for (int i = 0; i < pending.spans.size(); ++i) {
-        const QImage &image = images.at(i);
+        const QImage &image = prepared.value(i);
         if (image.isNull()) {
             continue;
         }
         sizes.insert(formulaName(i),
-                     QSize(image.width() / kPreScale,
-                          image.height() / kPreScale));
+                     QSize(image.width() / qreal(kPreScale),
+                          image.height() / qreal(kPreScale)));
         ++embeddedCount;
     }
 
@@ -718,7 +846,7 @@ void LatexRenderer::embedImages(const Pending &pending,
     // is simply gone when the layout looks the image up again.
     const auto registerImages = [&] {
         for (int i = 0; i < pending.spans.size(); ++i) {
-            const QImage &image = images.at(i);
+            const QImage &image = prepared.value(i);
             if (image.isNull()) {
                 continue;
             }
@@ -771,6 +899,15 @@ void LatexRenderer::embedImages(const Pending &pending,
                     QTextImageFormat sized = imageFormat;
                     sized.setWidth(size.width());
                     sized.setHeight(size.height());
+                    // The baseline of the formula, not the bottom of
+                    // its ink: the box is placed on the text's
+                    // baseline, and the transparent room under the ink
+                    // carries the formula's own baseline down to it.
+                    // The font is the text's own, so that the
+                    // renderer measures the descent the same way.
+                    sized.setFont(doc->defaultFont());
+                    sized.setProperty(QTextFormat::TextVerticalAlignment,
+                                      int(QTextCharFormat::AlignBaseline));
                     cursor.setPosition(fragment.position());
                     cursor.setPosition(fragment.position()
                                            + fragment.length(),
