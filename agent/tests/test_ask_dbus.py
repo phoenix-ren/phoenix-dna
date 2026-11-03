@@ -18,13 +18,22 @@ import pytest
 
 pytest.importorskip("dbus", reason="python3-dbus not installed")
 
-QUESTION_ARGS = {
-    "question": "Which disk should the backup use?",
-    "header": "Backup disk",
-    "options": [
-        {"label": "/dev/sda", "description": "the SSD"},
-        {"label": "/dev/sdb", "description": "the spinning one"},
+FORM_ARGS = {
+    "questions": [
+        {
+            "question": "Which disk should the backup use?",
+            "header": "Backup disk",
+            "options": [
+                {"label": "/dev/sda", "description": "the SSD"},
+                {"label": "/dev/sdb", "description": "the spinning one"},
+            ],
+        },
+        {
+            "question": "Encrypt the backup?",
+            "options": [{"label": "Yes"}, {"label": "No"}],
+        },
     ],
+    "goal": "backup setup",
 }
 
 
@@ -74,7 +83,7 @@ def service(bus_address, tmp_path_factory):
         config,
         provider=FakeProvider(
             [
-                {"tool": "ask_user", "args": QUESTION_ARGS},
+                {"tool": "ask_user", "args": FORM_ARGS},
                 "Backing up to /dev/sdb.",
             ]
         ),
@@ -149,24 +158,35 @@ def test_question_round_trip_over_dbus(client):
 
     assert seen["asked"]["run_id"] == run_id
     assert seen["asked"]["ask_id"].startswith("ask_")
-    assert seen["asked"]["question"]["question"] == QUESTION_ARGS["question"]
-    assert seen["asked"]["question"]["options"][0] == {
+    form = seen["asked"]["question"]
+    assert form["goal"] == "backup setup"
+    assert form["questions"][0]["question"] == FORM_ARGS["questions"][0]["question"]
+    assert form["questions"][0]["options"][0] == {
         "label": "/dev/sda",
         "description": "the SSD",
     }
 
     # an answer nobody asked for is refused; the question keeps waiting
-    assert not bool(iface.AnswerQuestion("ask_nope", '{"selected": [0]}'))
+    assert not bool(iface.AnswerQuestion("ask_nope", '{"answers": [{}]}'))
     assert not asked_event.is_set() or not finished.is_set()
 
     # the real answer releases the blocked run
-    assert bool(iface.AnswerQuestion(seen["asked"]["ask_id"], '{"selected": [1]}'))
+    assert bool(
+        iface.AnswerQuestion(
+            seen["asked"]["ask_id"], '{"answers": [{"selected": [1]}, {"selected": [1]}]}'
+        )
+    )
     assert finished.wait(15), "RunFinished signal never arrived"
     assert answered_event.wait(5), "QuestionAnswered signal never arrived"
 
     assert seen["answered"]["ask_id"] == seen["asked"]["ask_id"]
     assert seen["answered"]["ask_status"] == "answered"
-    assert seen["answered"]["answer"] == {"selected": ["/dev/sdb"], "text": ""}
+    assert seen["answered"]["answer"] == {
+        "answers": [
+            {"selected": ["/dev/sdb"], "text": ""},
+            {"selected": ["No"], "text": ""},
+        ]
+    }
 
     # the run finished with the scripted post-answer reply
     deadline = time.time() + 5
@@ -177,4 +197,6 @@ def test_question_round_trip_over_dbus(client):
     assert str(iface.GetState()[0]) == "idle"
 
     # and the settled question no longer accepts answers
-    assert not bool(iface.AnswerQuestion(seen["asked"]["ask_id"], '{"selected": [0]}'))
+    assert not bool(
+        iface.AnswerQuestion(seen["asked"]["ask_id"], '{"answers": [{}, {}]}')
+    )

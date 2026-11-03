@@ -298,28 +298,37 @@ class EventPrinter:
             )
         # turn_started / state_changed: too chatty for the REPL
 
-    def _render_question(self, question: dict) -> None:
-        """Print the question, numbered options, and how to answer."""
-        if question.get("harness"):
+    def _render_question(self, form: dict) -> None:
+        """Print the form: every question, numbered options, how to answer."""
+        if form.get("harness"):
             # A daemon-authored confirmation (destructive root command):
             # worth naming as such before the command it shows.
             self.line(
                 self._c("31", "  ⚠ system confirmation — required before the command runs")
             )
-        context = ""
-        if question.get("step"):
-            context = f"(step {question['step']} of ~{question.get('est_steps', '?')}"
-            if question.get("goal"):
-                context += f": {question['goal']}"
-            context += ") "
-        self.line(self._c("33", f"  ❓ {context}{question.get('question', '')}"))
-        for position, option in enumerate(question.get("options", []), start=1):
-            line = f"     {position}) {option.get('label', '')}"
-            if option.get("description"):
-                line += f" — {option['description']}"
-            self.line(line)
+        title = form.get("goal", "")
+        if title:
+            self.line(self._c("33", f"  ❓ {title}"))
+        for qposition, question in enumerate(form.get("questions", []), start=1):
+            if len(form.get("questions", [])) > 1:
+                self.line(
+                    self._c(
+                        "33",
+                        f"  ❓ ({qposition} of {len(form['questions'])}) "
+                        f"{question.get('question', '')}",
+                    )
+                )
+            else:
+                self.line(
+                    self._c("33", f"  ❓ {question.get('question', '')}")
+                )
+            for position, option in enumerate(question.get("options", []), start=1):
+                line = f"     {position}) {option.get('label', '')}"
+                if option.get("description"):
+                    line += f" — {option['description']}"
+                self.line(line)
         hint = "a number"
-        if question.get("multiple"):
+        if any(q.get("multiple") for q in form.get("questions", [])):
             hint = "numbers, comma-separated"
         self.line(
             self._c("2", f"     (answer with {hint}, a label, or your own words)")
@@ -364,21 +373,40 @@ def parse_answer_line(line: str, question: dict) -> dict:
     return answer
 
 
-def read_answer(question: dict, input_fn=input) -> dict:
-    """Prompt for an answer until a non-empty one is given.
+def read_form_answers(form: dict, input_fn=input, print_fn=print) -> list[dict]:
+    """Walk a form's questions in the terminal, with back and skip.
 
-    Ctrl+C propagates (the REPL turns it into cancelling the run - the
-    blocked ask_user is released the same way); Ctrl+D degrades to an
-    explicit "no answer came".
+    Returns one answer entry per question. "b" goes back to the previous
+    question (its answer is asked again - nothing was sent yet), a blank
+    line skips the question, and anything else is parsed like the lone
+    questions always were. Nothing leaves the terminal until the whole
+    form is walked: this is the wizard's back button, terminal edition.
     """
-    while True:
+    questions = form.get("questions", [])
+    answers: list[dict] = []
+    position = 0
+    while position < len(questions):
+        question = questions[position]
+        if len(questions) > 1:
+            print_fn(f"[{position + 1}/{len(questions)}] {question.get('question', '')}")
+            for oposition, option in enumerate(question.get("options", []), start=1):
+                line = f"   {oposition}) {option.get('label', '')}"
+                if option.get("description"):
+                    line += f" — {option['description']}"
+                print_fn(line)
         try:
             line = input_fn("answer> ").strip()
         except EOFError:
-            return {"text": "(the input was closed without an answer)"}
-        answer = parse_answer_line(line, question)
-        if answer:
-            return answer
+            answers.append({"text": "(the input was closed without an answer)"})
+            answers.extend({} for _ in questions[position + 1:])
+            break
+        if line == "b" and position > 0 and answers:
+            answers.pop()
+            position -= 1
+            continue
+        answers.append(parse_answer_line(line, question) if line else {})
+        position += 1
+    return answers
 
 
 # ---------------------------------------------------------------------------
@@ -680,8 +708,8 @@ def run_embedded(args, history=None) -> int:
 def _make_answer_fn(daemon):
     """Collect and submit terminal answers for questions the agent asks."""
 
-    def answer(ask_id: str, question: dict) -> None:
-        payload = read_answer(question)
+    def answer(ask_id: str, form: dict) -> None:
+        payload = {"answers": read_form_answers(form)}
         try:
             daemon.answer_question(
                 ask_id, json.dumps(payload, ensure_ascii=False)
@@ -790,8 +818,8 @@ def run_dbus(args, history=None) -> int:
 def _make_dbus_answer_fn(iface):
     """Like _make_answer_fn, but the answer travels over D-Bus."""
 
-    def answer(ask_id: str, question: dict) -> None:
-        payload = read_answer(question)
+    def answer(ask_id: str, form: dict) -> None:
+        payload = {"answers": read_form_answers(form)}
         try:
             iface.AnswerQuestion(ask_id, json.dumps(payload, ensure_ascii=False))
         except Exception as exc:

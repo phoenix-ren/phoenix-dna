@@ -25,9 +25,10 @@ ColumnLayout {
     // chooses checkboxes over radio buttons.
     property var question: ({})
 
-    // Whether the "skip the rest" escape hatch shows. The wizard offers
-    // it; a lone question times out instead.
-    property bool showSkip: false
+    // Whether the own submit row shows. The inline card uses it; the
+    // wizard hides it and provides Back / Next / Submit chrome instead
+    // (its submit sends every question's answers at once).
+    property bool showSubmit: true
 
     // Emitted when the user answers: the 0-based indices of the chosen
     // options (may be empty) and their own words (may be empty). The
@@ -67,8 +68,17 @@ ColumnLayout {
         submitted(checkedOptions, ownAnswer.text);
     }
 
-    function skip() {
-        submitted([], "skip the remaining questions and proceed with your best judgment");
+    // The wizard navigates between questions: it snapshots the inputs
+    // when leaving a question (selected indices + own words) and
+    // restores them when coming back - the back button must not eat an
+    // answer the user already typed.
+    function currentState() {
+        return { "selected": checkedOptions, "text": ownAnswer.text };
+    }
+
+    function setState(state) {
+        checkedOptions = (state && state.selected) || [];
+        ownAnswer.text = (state && state.text) || "";
     }
 
     Repeater {
@@ -149,6 +159,7 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true
         spacing: Kirigami.Units.smallSpacing
+        visible: inputs.showSubmit
 
         // The user's own words: always offered (the model is told never
         // to add an "other" option), and enough on their own. Enter
@@ -175,17 +186,6 @@ ColumnLayout {
             text: i18n("Send answer")
             enabled: inputs.canSend
             onClicked: inputs.submit()
-        }
-
-        // The escape hatch: answers with a skip text the model reads,
-        // so it stops asking and proceeds with its best judgment.
-        PC3.Button {
-            objectName: "skipButton"
-
-            visible: inputs.showSkip
-            icon.name: "media-skip-forward"
-            text: i18n("Skip the rest")
-            onClicked: inputs.skip()
         }
     }
 }

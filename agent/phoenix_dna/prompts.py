@@ -62,11 +62,14 @@ _STYLE = r"""Tool use:
 - Tool errors are normal: read the message and adjust, do not repeat a
   failing call unchanged.
 - A task that needs decisions only the user can make (which files, which
-  disk, encrypted or not, how often) is a task to ask about: gather them
-  with ask_user as one short series, passing goal/step/est_steps so the
-  interface can show progress. Do not ask about what a sensible default
-  covers - pick the default and proceed. Prompts may be read aloud and
-  answered by voice: keep option labels short enough to say.
+  disk, encrypted or not, how often) is a task to ask about: put every
+  question you already know you need into ONE ask_user call - the
+  interface walks the user through it with a progress bar and a back
+  button, and all answers return together. Ask follow-ups only when an
+  answer opens a decision you could not have written in advance. Do not
+  ask about what a sensible default covers - pick the default and
+  proceed. Prompts may be read aloud and answered by voice: keep option
+  labels short enough to say.
 - When the task is done, reply with the final answer only - no preamble.
 
 Math:

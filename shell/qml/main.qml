@@ -342,34 +342,35 @@ PlasmoidItem {
         onStopSpeakingRequested:
             Phoenix.PhoenixController.agent.stopSpeaking()
 
-        // The question the running prompt is blocked on (ask_user): the
+        // The form the running prompt is blocked on (ask_user): the
         // bridge fills it from the daemon's QuestionAsked and empties it
-        // when the question is answered, times out or the run ends; the
-        // window renders it as the question card above the input bar.
-        pendingQuestion: Phoenix.PhoenixController.agent.pendingQuestion
+        // when the form is answered, times out or the run ends. One
+        // question renders as the card above the input bar; several open
+        // the wizard view.
+        pendingForm: Phoenix.PhoenixController.agent.pendingForm
 
-        // The wizard state of a question series: while the bridge keeps
-        // it active, the window shows the wizard view — one question at
-        // a time, with progress and the answers so far — instead of the
-        // conversation.
-        wizard: Phoenix.PhoenixController.agent.wizardState
+        // The wizard summary of a multi-question form: while the bridge
+        // keeps it active, the window shows the wizard view — one
+        // question at a time, instant back, exact progress — instead of
+        // the conversation.
+        wizardSummary: Phoenix.PhoenixController.agent.wizardState
 
         // The card's and the wizard's answers go straight back to the
-        // daemon: chosen option indices plus the user's own words, as
-        // AnswerQuestion.
-        onAnswerSubmitted: (selected, text) =>
-            Phoenix.PhoenixController.agent.answerQuestion(selected, text)
+        // daemon as one AnswerQuestion call per form.
+        onFormSubmitted: (answers) =>
+            Phoenix.PhoenixController.agent.submitAnswers(answers)
 
         // The same toggle the panel widget's record button performs.
         onRecordClicked: Phoenix.PhoenixController.toggleRecording()
 
         onSubmitted: (text) => {
-            // While the run is blocked on a question, the input bar
-            // answers it — typed or dictated, in the user's own words —
-            // instead of queuing another prompt behind the blocked run.
-            // The model interprets free text ("the second one",
-            // "actually cancel"), so the spoken path needs no parsing.
-            if (Phoenix.PhoenixController.agent.answerQuestion([], text)) {
+            // While the run is blocked on a form, the input bar answers
+            // its first unanswered question — typed or dictated, in the
+            // user's own words — instead of queuing another prompt
+            // behind the blocked run. The model interprets free text
+            // ("the second one", "actually cancel"), so the spoken path
+            // needs no parsing.
+            if (Phoenix.PhoenixController.agent.submitAnswers([{ "text": text }])) {
                 // The transcript is consumed: it became an answer, not a
                 // prompt (submitText's clearing, done here because the
                 // answer path bypasses it).

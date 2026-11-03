@@ -102,15 +102,17 @@ def test_confirm_question_is_harness_authored():
     events: list[dict] = []
     confirmer, coordinator = make_confirmer(events)
 
-    thread = answer_when_asked(coordinator, events, {"selected": [0]})
+    thread = answer_when_asked(coordinator, events, {"answers": [{"selected": [0]}]})
     allowed, why = confirmer.confirm("rm -rf /tmp/scratch")
     thread.join(timeout=5)
 
     assert allowed is True
     asked = [e for e in events if e["kind"] == "question_asked"][0]
-    question = asked["question"]
+    form = asked["question"]
     # the load-bearing properties: daemon-authored, fixed options
-    assert question["harness"] is True
+    assert form["harness"] is True
+    assert len(form["questions"]) == 1
+    question = form["questions"][0]
     assert [o["label"] for o in question["options"]] == ["Allow", "Deny"]
     assert "rm -rf /tmp/scratch" in question["question"]
     assert question["header"] == "Root command"
@@ -120,7 +122,7 @@ def test_confirm_denied():
     events: list[dict] = []
     confirmer, coordinator = make_confirmer(events)
 
-    thread = answer_when_asked(coordinator, events, {"selected": [1]})
+    thread = answer_when_asked(coordinator, events, {"answers": [{"selected": [1]}]})
     allowed, why = confirmer.confirm("mkfs.vfat /dev/sdc1")
     thread.join(timeout=5)
 
@@ -192,7 +194,7 @@ def test_bash_allowed_command_runs_as_root(config, fake_sudo):
     events: list[dict] = []
     confirmer, coordinator = make_confirmer(events)
 
-    thread = answer_when_asked(coordinator, events, {"selected": [0]})
+    thread = answer_when_asked(coordinator, events, {"answers": [{"selected": [0]}]})
     result = make_root_bash(fake_sudo, confirmer).execute(
         {"command": "echo sudo-$FAKE_SUDO_OK > /tmp/confirm-marker"}
     )
@@ -232,10 +234,13 @@ def test_daemon_root_confirm_denied(config, fake_sudo, tmp_path):
         assert wait_for(lambda: events_of(events, "question_asked"), timeout=5)
         asked = events_of(events, "question_asked")[0]
         assert asked["question"]["harness"] is True
-        assert asked["question"]["options"][0]["label"] == "Allow"
+        assert asked["question"]["questions"][0]["options"][0]["label"] == "Allow"
 
         assert (
-            daemon.answer_question(asked["ask_id"], '{"selected": [1]}') is True
+            daemon.answer_question(
+                asked["ask_id"], '{"answers": [{"selected": [1]}]}'
+            )
+            is True
         )
 
         assert wait_for(lambda: events_of(events, "run_finished"), timeout=5)

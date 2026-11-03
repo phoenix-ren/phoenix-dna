@@ -89,33 +89,31 @@ Window {
     // prompt.
     property var attachments: []
 
-    // The question the running prompt is blocked on (ask_user): a map
-    // with askId, question, options ([{label, description}]), and header,
-    // multiple, goal, step, estSteps when the model gave them. Bound by
-    // the shell to the agent bridge's pendingQuestion; {} while no
-    // question is waiting.
-    property var pendingQuestion: ({})
+    // The form the running prompt is blocked on (ask_user): a map with
+    // askId, questions ([{question, header, options, multiple}]) and
+    // optionally goal / harness. Bound by the shell to the agent
+    // bridge's pendingForm; {} while no form is waiting. One question
+    // renders as the inline card; several open the wizard view.
+    property var pendingForm: ({})
 
-    // The wizard state (a series of questions): {active, goal, step,
-    // estSteps, waiting, answers}. While active, the conversation gives
-    // way to the wizard view — one question at a time, with progress.
-    // Bound by the shell to the agent bridge's wizardState; {} while no
-    // wizard is (or was) in flight.
-    property var wizard: ({})
+    // The wizard summary from the bridge ({active, goal, count}); {}
+    // while no wizard is in flight. Bound by the shell.
+    property var wizardSummary: ({})
 
-    // Whether a question is waiting — the question card is on screen.
-    readonly property bool questionPending: pendingQuestion
-        && pendingQuestion.askId !== undefined
+    // Whether a form is waiting — a card or the wizard is on screen.
+    readonly property bool formPending: pendingForm
+        && pendingForm.askId !== undefined
 
-    // Whether the wizard view owns the window's centre: the bridge keeps
-    // it up across the gaps between a series' questions.
-    readonly property bool wizardActive: wizard.active === true
+    // Whether the wizard view owns the window's centre: a form of
+    // several questions.
+    readonly property bool wizardActive: formPending
+        && (pendingForm.questions ?? []).length >= 2
 
-    // Emitted when the user answers the pending question: the 0-based
-    // indices of the chosen options (may be empty) and their own words
-    // (may be empty). The shell routes both to the agent bridge, which
-    // sends them as AnswerQuestion over D-Bus.
-    signal answerSubmitted(var selected, string text)
+    // Emitted when the user submits a form's answers: one
+    // {selected, text} map per question, in order (the card's single
+    // question is a form of one). The shell routes it to the agent
+    // bridge, which sends it as AnswerQuestion over D-Bus.
+    signal formSubmitted(var answers)
 
     // Emitted when the user picks a file to attach to the follow-up.
     signal attachmentAdded(url file)
@@ -998,14 +996,12 @@ Window {
             }
 
             // ---- The wizard view -------------------------------------------
-            // A series of questions (ask_user with goal/step/est_steps)
-            // takes over the window's centre: one question at a time, a
-            // progress bar towards "the agent has what it needs", the
-            // answers collected so far, and a skip that tells the agent
-            // to proceed on its judgment. The bridge keeps the wizard up
-            // across the gaps between the series' questions; when the
-            // agent stops asking and goes to work, the conversation
-            // returns.
+            // A form of several questions (one ask_user call) takes over
+            // the window's centre: one question at a time, instant back,
+            // exact progress — all client-side, because the whole form
+            // arrived at once. Nothing is sent until the user submits;
+            // then every answer leaves together, and when the agent
+            // stops asking and goes to work, the conversation returns.
             WizardView {
                 id: wizardView
 
@@ -1013,26 +1009,27 @@ Window {
                 Layout.fillHeight: true
                 visible: resultsWindow.wizardActive
 
-                wizard: resultsWindow.wizard
-                question: resultsWindow.pendingQuestion
+                form: resultsWindow.pendingForm
+                wizard: resultsWindow.wizardSummary
 
-                onSubmitted: (selected, text) =>
-                    resultsWindow.answerSubmitted(selected, text)
+                onSubmitted: (answers) =>
+                    resultsWindow.formSubmitted(answers)
             }
 
             // ---- The agent's lone question ---------------------------------
-            // ask_user blocks the run on this question; when it is not
-            // part of a wizard series, the card under the conversation is
-            // how it is answered (the options, own-words field and send
-            // live in QuestionInputs, shared with the wizard view).
-            // Answering, a timeout or the run's end takes it away.
+            // ask_user blocks the run on this form; when it is a form of
+            // one question (or a harness confirmation), the card under
+            // the conversation is how it is answered (the options,
+            // own-words field and send live in QuestionInputs, shared
+            // with the wizard view). Answering, a timeout or the run's
+            // end takes it away.
             Rectangle {
                 id: questionCard
 
                 Layout.fillWidth: true
                 implicitHeight: questionBody.implicitHeight
                                 + 2 * Kirigami.Units.largeSpacing
-                visible: resultsWindow.questionPending
+                visible: resultsWindow.formPending
                          && !resultsWindow.wizardActive
 
                 // Themed like the conversation's bubbles (see
@@ -1042,7 +1039,7 @@ Window {
                 radius: Kirigami.Units.smallSpacing * 2
                 color: PhoenixTheme.cardFill
                 border.width: 1
-                border.color: resultsWindow.pendingQuestion.harness === true
+                border.color: resultsWindow.pendingForm.harness === true
                     ? PhoenixTheme.errorColor
                     : PhoenixTheme.cardBorderColor
 
@@ -1059,41 +1056,32 @@ Window {
                     // make that visible — this is the system asking.
                     Kirigami.Heading {
                         level: 5
-                        visible: resultsWindow.pendingQuestion.harness === true
+                        visible: resultsWindow.pendingForm.harness === true
                         color: PhoenixTheme.errorColor
 
                         text: i18n("System confirmation — required before the command runs")
                     }
 
-                    // The wizard context, when the model gave the
-                    // metadata on a lone question: "Question 2 of ~4 ·
-                    // what is collected". (A real series shows the
-                    // wizard view instead of this card.)
+                    // The form's goal, when the model gave one, names
+                    // what the lone question collects.
                     Kirigami.Heading {
                         level: 5
                         visible: text.length > 0
                         color: PhoenixTheme.secondaryTextColor
 
-                        text: {
-                            const question = resultsWindow.pendingQuestion;
-                            if (question.step === undefined) {
-                                return "";
-                            }
-                            let context = i18n("Question %1 of ~%2",
-                                               question.step,
-                                               question.estSteps ?? question.step);
-                            if (question.goal) {
-                                context += " · " + question.goal;
-                            }
-                            return context;
-                        }
+                        text: resultsWindow.pendingForm.goal ?? ""
                     }
 
                     Kirigami.Heading {
                         level: 4
                         visible: text.length > 0
                         color: PhoenixTheme.subheadingTextColor
-                        text: resultsWindow.pendingQuestion.header ?? ""
+
+                        text: {
+                            const questions = resultsWindow.pendingForm.questions ?? [];
+                            return questions.length > 0
+                                ? (questions[0].header ?? "") : "";
+                        }
                     }
 
                     Kirigami.SelectableLabel {
@@ -1101,7 +1089,11 @@ Window {
 
                         Layout.fillWidth: true
 
-                        text: resultsWindow.pendingQuestion.question ?? ""
+                        text: {
+                            const questions = resultsWindow.pendingForm.questions ?? [];
+                            return questions.length > 0
+                                ? (questions[0].question ?? "") : "";
+                        }
                         textFormat: TextEdit.PlainText
                         wrapMode: Text.WordWrap
                         font.weight: Font.DemiBold
@@ -1111,13 +1103,18 @@ Window {
                     // The options, the own-words field and the send:
                     // shared with the wizard view.
                     QuestionInputs {
+                        id: cardInputs
+
                         Layout.fillWidth: true
                         Layout.topMargin: Kirigami.Units.smallSpacing
 
-                        question: resultsWindow.pendingQuestion
+                        question: {
+                            const questions = resultsWindow.pendingForm.questions ?? [];
+                            return questions.length > 0 ? questions[0] : {};
+                        }
 
                         onSubmitted: (selected, text) =>
-                            resultsWindow.answerSubmitted(selected, text)
+                            resultsWindow.formSubmitted([{ selected, text }])
                     }
 
                     Text {
@@ -1368,7 +1365,7 @@ Window {
                             readOnly: resultsWindow.listening || resultsWindow.transcribing
                             placeholderText: resultsWindow.transcribing ? i18n("Transcribing…")
                                             : resultsWindow.listening ? i18n("Speak now…")
-                                            : resultsWindow.questionPending ? i18n("Answer the question…")
+                                            : resultsWindow.formPending ? i18n("Answer the question…")
                                             : i18n("Ask a follow-up…")
 
                             onTextChanged: if (text !== resultsWindow.transcript) {

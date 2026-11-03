@@ -4,17 +4,27 @@
 """The ask_user tool: a human-in-the-loop tool call.
 
 The same pattern OpenCode's ``question`` and Claude Code's
-``AskUserQuestion`` tools use: the model calls the tool with a question
-and 2-6 options, the tool *blocks the run* (exactly like a bash command
-would) while the frontend renders the options, and the user's answer
-returns as the tool result. The model never sees UI - only the validated
-JSON of the call and the answer that came back.
+``AskUserQuestion`` tools use: the model calls the tool, the tool
+*blocks the run* (exactly like a bash command would) while the frontend
+renders the questions, and the user's answers return as the tool result.
+The model never sees UI - only the validated JSON of the call and the
+answers that came back.
 
-``AskCoordinator`` is the daemon-side half: it owns the pending asks,
+**Batch shape.** One call carries every question the model already knows
+it needs (``questions``), and every answer returns together: the
+interface walks the user through them with a progress bar and a back
+button - all client-side, no round-trip per question - and submits once.
+A call with a single question is a form of one (the inline card);
+follow-up questions, asked only when earlier answers open decisions the
+model could not have written in advance, are just another (small) call.
+The wizard metadata of the sequential era (step/est_steps) is gone: the
+frontend knows the count exactly.
+
+``AskCoordinator`` is the daemon-side half: it owns the pending ask,
 emits the question_asked/question_answered events and hands answers
 (coming in over D-Bus, the REPL, or any other frontend) to the blocked
 tool. One coordinator serves the whole daemon because runs are
-sequential; each question gets its own ``ask_id``.
+sequential; each form gets its own ``ask_id``.
 """
 
 from __future__ import annotations
@@ -35,98 +45,109 @@ log = logging.getLogger("phoenix.ask")
 #: Same order as the bash tool's subprocess poll slice.
 _POLL_SECONDS = 0.1
 
-#: Guards against model-emitted wall-of-text options: labels must stay
-#: UI-shaped (radio buttons, spoken aloud).
+#: Guards against model-emitted wall-of-text questions: labels and
+#: questions must stay UI-shaped (radio buttons, spoken aloud).
 _MAX_LABEL_CHARS = 120
 _MAX_QUESTION_CHARS = 2000
 
+#: How many questions one form may carry, and options per question.
+_MAX_QUESTIONS = 6
+_MIN_OPTIONS = 2
+_MAX_OPTIONS = 6
 
-def _spec() -> ToolSpec:
-    return ToolSpec(
-        name="ask_user",
-        description=(
-            "Ask the user one question with multiple-choice options and "
-            "wait for their answer; the tool result reports what they "
-            "chose and anything they typed themselves. Use it whenever a "
-            "decision belongs to the user (which of several targets, "
-            "formats, scopes, schedules...); choose a sensible default "
-            "yourself only when the choice genuinely has one. Give "
-            "2 to 6 options with short labels "
-            "(a few words) and a longer description when it helps; if "
-            'you recommend one, put it first and add "(recommended)" to '
-            'its label. Do not add an "other" or "type my own" option: '
-            "the user can always write their own answer. A task with "
-            "several such decisions is one short series of questions: "
-            "pass goal (what you are collecting) plus step and "
-            "est_steps on every question so the interface can show "
-            "progress; revise est_steps as you learn."
-        ),
-        parameters={
-            "type": "object",
-            "properties": {
-                "question": {
-                    "type": "string",
-                    "description": "The complete question, as shown to the user",
-                },
-                "options": {
-                    "type": "array",
-                    "description": "2 to 6 choices",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "label": {
-                                "type": "string",
-                                "description": "Concise choice, 1-5 words",
+
+#: The tool description is the model's user manual - it carries when to
+#: ask, the batch discipline, and the option conventions.
+_DESCRIPTION = (
+    "Ask the user questions with multiple-choice options and wait for "
+    "their answers; the tool result reports what they chose and "
+    "anything they typed themselves. Use it whenever a decision "
+    "belongs to the user (which of several targets, formats, scopes, "
+    "schedules...); choose a sensible default yourself only when the "
+    "choice genuinely has one. Put EVERY question you already know you "
+    "need into ONE call - the interface walks the user through them "
+    "with a progress bar and a back button, and all answers return "
+    "together. Ask follow-ups (batched again when you can) only when "
+    "an earlier answer opens a decision you could not have written in "
+    "advance. Give each question 2 to 6 options with short labels (a "
+    "few words) and a longer description when it helps; if you "
+    'recommend one, put it first and add "(recommended)" to its '
+    'label. Do not add an "other" or "type my own" option: the user '
+    "can always write their own answer. A question the user leaves "
+    "blank comes back as (no answer) - do not ask it again, decide "
+    "yourself and say so."
+)
+
+#: The JSON schema: one call, one form.
+_PARAMETERS = {
+    "type": "object",
+    "properties": {
+        "questions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "description": "1 to 6 questions, all asked in this one call",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "question": {
+                        "type": "string",
+                        "description": "The complete question, as shown to the user",
+                    },
+                    "options": {
+                        "type": "array",
+                        "description": "2 to 6 choices",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "label": {
+                                    "type": "string",
+                                    "description": "Concise choice, 1-5 words",
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "What choosing this means",
+                                },
                             },
-                            "description": {
-                                "type": "string",
-                                "description": "What choosing this means",
-                            },
+                            "required": ["label"],
                         },
-                        "required": ["label"],
+                    },
+                    "header": {
+                        "type": "string",
+                        "description": "Short label for the question (a few words)",
+                    },
+                    "multiple": {
+                        "type": "boolean",
+                        "description": "Allow several choices (default: one)",
                     },
                 },
-                "header": {
-                    "type": "string",
-                    "description": "Short label for the question (a few words)",
-                },
-                "multiple": {
-                    "type": "boolean",
-                    "description": "Allow several choices (default: one)",
-                },
-                "goal": {
-                    "type": "string",
-                    "description": "Wizard: what the series of questions collects",
-                },
-                "step": {
-                    "type": "integer",
-                    "description": "Wizard: which question this is, from 1",
-                },
-                "est_steps": {
-                    "type": "integer",
-                    "description": "Wizard: roughly how many questions in total",
-                },
+                "required": ["question", "options"],
             },
-            "required": ["question", "options"],
         },
-    )
+        "goal": {
+            "type": "string",
+            "description": "What the questions collect, shown as the form's title",
+        },
+    },
+    "required": ["questions"],
+}
 
 
 # ---------------------------------------------------------------------------
-# coordinator: pending asks, answers, timeouts, cancellation
+# coordinator: the pending form, answers, timeouts, cancellation
 # ---------------------------------------------------------------------------
 
 
 @dataclass
 class _PendingAsk:
-    question: dict
+    form: dict
     answer: dict | None = None
     status: str = "pending"  # pending -> answered | timeout | cancelled
     run_id: str = ""
 
 
 class AskCoordinator:
-    """Tracks pending ask_user questions and delivers answers to them."""
+    """Tracks the pending ask_user form and delivers its answers."""
 
     def __init__(self, emit):
         self._emit_fn = emit
@@ -138,7 +159,7 @@ class AskCoordinator:
     def ask(
         self,
         run_id: str,
-        question: dict,
+        form: dict,
         *,
         cancel: threading.Event | None = None,
         timeout: float | None = None,
@@ -147,10 +168,11 @@ class AskCoordinator:
 
         Returns ``(answer, status)`` with status ``answered``, ``timeout``
         or ``cancelled``; the answer dict is normalized
-        (``{"selected": [labels], "text": str}``) and empty unless answered.
+        (``{"answers": [{selected, text}, ...]}``) and empty unless
+        answered.
         """
         ask_id = "ask_" + uuid.uuid4().hex[:12]
-        pending = _PendingAsk(question=question, run_id=run_id)
+        pending = _PendingAsk(form=form, run_id=run_id)
         with self._cond:
             self._pending[ask_id] = pending
 
@@ -159,7 +181,9 @@ class AskCoordinator:
                 events.QUESTION_ASKED,
                 run_id=run_id,
                 ask_id=ask_id,
-                question=question,
+                # The payload is the form: {questions, goal, harness?}.
+                # The key keeps its historical name - the wire is stable.
+                question=form,
             )
         )
 
@@ -182,7 +206,7 @@ class AskCoordinator:
             answer = (
                 pending.answer
                 if status == "answered"
-                else {"selected": [], "text": ""}
+                else {"answers": []}
             )
             self._pending.pop(ask_id, None)
 
@@ -200,13 +224,13 @@ class AskCoordinator:
     # -- frontend side (D-Bus main loop, REPL, tests) ------------------------
 
     def answer(self, ask_id: str, answer_json: str) -> bool:
-        """Answer a pending question; False when the answer cannot be used.
+        """Answer a pending form; False when the answer cannot be used.
 
         False covers an unknown ``ask_id`` (already answered, timed out,
         cancelled - or never asked) and payloads that do not resolve
-        against the question (bad indices, unknown labels, several picks
-        on a single-choice question, empty answers). The question keeps
-        waiting either way.
+        against the form (wrong answer count, bad indices, unknown
+        labels, several picks on a single-choice question). The form
+        keeps waiting either way.
         """
         try:
             payload = _parse_payload(answer_json)
@@ -219,7 +243,7 @@ class AskCoordinator:
             if pending is None or pending.status != "pending":
                 return False
             try:
-                resolved = _resolve(pending.question, payload)
+                resolved = _resolve(pending.form, payload)
             except ValueError as exc:
                 log.warning("answer for %s does not resolve: %s", ask_id, exc)
                 return False
@@ -245,46 +269,69 @@ def _parse_payload(answer_json: str) -> dict:
         payload = json.loads(answer_json)
     except ValueError as exc:
         raise ValueError(f"not valid JSON ({exc})") from exc
-    # A bare string is accepted as the user's own words ("gdbus" one-liners).
+    # A bare string is accepted as the user's own words on the first
+    # question ("gdbus" one-liners, a dictated one-word reply).
     if isinstance(payload, str):
-        return {"text": payload}
+        return {"answers": [{"text": payload}]}
     if not isinstance(payload, dict):
         raise ValueError("the answer must be an object or a string")
     return payload
 
 
-def _resolve(question: dict, payload: dict) -> dict:
-    """Normalize a payload against its question; ValueError when invalid."""
-    options = question.get("options", [])
-    raw = payload.get("selected", [])
-    if isinstance(raw, (int, str)):
-        raw = [raw]
+def _resolve(form: dict, payload: dict) -> dict:
+    """Normalize an answer payload against its form; ValueError when invalid.
 
-    labels: list[str] = []
-    for item in raw:
-        if isinstance(item, bool) or not isinstance(item, (int, str)):
-            raise ValueError("selected entries must be indices or labels")
-        if isinstance(item, int):
-            if not 0 <= item < len(options):
-                raise ValueError(f"option index {item} is out of range")
-            labels.append(options[item]["label"])
-            continue
-        label = _match_label(options, item)
-        if label is None:
-            raise ValueError(f"no option labeled {item!r}")
-        labels.append(label)
+    The payload is ``{"answers": [...]}`` with one entry per question, in
+    order; each entry carries ``selected`` (indices or labels) and/or
+    ``text``. A blank entry is a valid answer - the user saw the
+    question and chose not to answer it.
+    """
+    questions = form.get("questions", [])
+    entries = payload.get("answers", [])
+    if not isinstance(entries, list):
+        raise ValueError("answers must be a list, one entry per question")
+    if len(entries) != len(questions):
+        raise ValueError(
+            f"{len(questions)} questions were asked, "
+            f"{len(entries)} answers arrived"
+        )
 
-    if len(labels) > 1 and not question.get("multiple"):
-        raise ValueError("several choices given for a single-choice question")
+    resolved: list[dict] = []
+    for position, (question, entry) in enumerate(zip(questions, entries), start=1):
+        if not isinstance(entry, dict):
+            raise ValueError(f"answer {position} must be an object")
+        raw = entry.get("selected", [])
+        if isinstance(raw, (int, str)):
+            raw = [raw]
 
-    text = payload.get("text", "")
-    if not isinstance(text, str):
-        raise ValueError("text must be a string")
-    text = text.strip()
+        labels: list[str] = []
+        for item in raw:
+            if isinstance(item, bool) or not isinstance(item, (int, str)):
+                raise ValueError(
+                    f"answer {position}: selected entries must be indices or labels"
+                )
+            if isinstance(item, int):
+                if not 0 <= item < len(question.get("options", [])):
+                    raise ValueError(
+                        f"answer {position}: option index {item} is out of range"
+                    )
+                labels.append(question["options"][item]["label"])
+                continue
+            label = _match_label(question.get("options", []), item)
+            if label is None:
+                raise ValueError(f"answer {position}: no option labeled {item!r}")
+            labels.append(label)
 
-    if not labels and not text:
-        raise ValueError("the answer is empty")
-    return {"selected": labels, "text": text}
+        if len(labels) > 1 and not question.get("multiple"):
+            raise ValueError(
+                f"answer {position}: several choices for a single-choice question"
+            )
+
+        text = entry.get("text", "")
+        if not isinstance(text, str):
+            raise ValueError(f"answer {position}: text must be a string")
+        resolved.append({"selected": labels, "text": text.strip()})
+    return {"answers": resolved}
 
 
 def _match_label(options: list[dict], text: str) -> str | None:
@@ -304,9 +351,9 @@ def _match_label(options: list[dict], text: str) -> str | None:
 
 
 class AskUserTool:
-    """Blocks the run until the user answers (or cancel/timeout)."""
+    """Blocks the run until the user answers the form (or cancel/timeout)."""
 
-    spec = _spec()
+    spec = ToolSpec(name="ask_user", description=_DESCRIPTION, parameters=_PARAMETERS)
 
     def __init__(
         self,
@@ -323,15 +370,15 @@ class AskUserTool:
         self, args: dict, *, cancel: threading.Event | None = None
     ) -> ToolResult:
         validate_required(self.spec, args)
-        question = _normalize_question(args)
+        form = _normalize_form(args)
 
         answer, status = self._coordinator.ask(
-            self._run_id, question, cancel=cancel, timeout=self._timeout
+            self._run_id, form, cancel=cancel, timeout=self._timeout
         )
         if status == "cancelled":
             raise ToolError("question cancelled before it was answered")
 
-        details = {"question": question, "answer": None, "ask_status": status}
+        details = {"form": form, "answer": None, "ask_status": status}
         if status == "timeout":
             seconds = self._timeout if self._timeout is not None else 0
             return ToolResult(
@@ -344,83 +391,94 @@ class AskUserTool:
             )
 
         details["answer"] = answer
-        return ToolResult(output=_compose_output(answer), details=details)
+        return ToolResult(output=_compose_output(form, answer), details=details)
 
 
-def _normalize_question(args: dict) -> dict:
+def _normalize_form(args: dict) -> dict:
     """Validate the model's arguments and build the UI-facing payload."""
 
     def bad(message: str) -> ToolError:
         return ToolError(f"the tool call was not executed: {message}")
 
-    question_text = args.get("question")
-    if not isinstance(question_text, str) or not question_text.strip():
-        raise bad("question must be a non-empty string")
-    question_text = question_text.strip()
-    if len(question_text) > _MAX_QUESTION_CHARS:
-        question_text = question_text[:_MAX_QUESTION_CHARS]
+    raw_questions = args.get("questions")
+    if not isinstance(raw_questions, list) or not 1 <= len(raw_questions) <= _MAX_QUESTIONS:
+        raise bad(f"questions must be a list of 1 to {_MAX_QUESTIONS} questions")
 
-    raw_options = args.get("options")
-    if not isinstance(raw_options, list) or not 2 <= len(raw_options) <= 6:
-        raise bad("options must be a list of 2 to 6 choices")
+    questions = []
+    for position, raw in enumerate(raw_questions, start=1):
+        if not isinstance(raw, dict):
+            raise bad(f"question {position} must be an object")
+        where = f"question {position}"
 
-    options = []
-    for position, option in enumerate(raw_options, start=1):
-        if not isinstance(option, dict):
-            raise bad(f"option {position} must be an object with a label")
-        label = option.get("label")
-        if not isinstance(label, str) or not label.strip():
-            raise bad(f"option {position} needs a non-empty label")
-        label = label.strip()[:_MAX_LABEL_CHARS]
-        description = option.get("description") or ""
-        if not isinstance(description, str):
-            raise bad(f"option {position} description must be a string")
-        entry = {"label": label}
-        if description.strip():
-            entry["description"] = description.strip()
-        options.append(entry)
+        question_text = raw.get("question")
+        if not isinstance(question_text, str) or not question_text.strip():
+            raise bad(f"{where}: question must be a non-empty string")
+        question_text = question_text.strip()[:_MAX_QUESTION_CHARS]
 
-    question = {"question": question_text, "options": options}
+        raw_options = raw.get("options")
+        if not isinstance(raw_options, list) or not _MIN_OPTIONS <= len(raw_options) <= _MAX_OPTIONS:
+            raise bad(f"{where}: options must be a list of 2 to 6 choices")
 
-    header = args.get("header")
-    if header is not None:
-        if not isinstance(header, str):
-            raise bad("header must be a string")
-        if header.strip():
-            question["header"] = header.strip()[:_MAX_LABEL_CHARS]
+        options = []
+        for oposition, option in enumerate(raw_options, start=1):
+            if not isinstance(option, dict):
+                raise bad(f"{where}: option {oposition} must be an object with a label")
+            label = option.get("label")
+            if not isinstance(label, str) or not label.strip():
+                raise bad(f"{where}: option {oposition} needs a non-empty label")
+            label = label.strip()[:_MAX_LABEL_CHARS]
+            description = option.get("description") or ""
+            if not isinstance(description, str):
+                raise bad(f"{where}: option {oposition} description must be a string")
+            entry = {"label": label}
+            if description.strip():
+                entry["description"] = description.strip()
+            options.append(entry)
 
-    multiple = args.get("multiple", False)
-    if not isinstance(multiple, bool):
-        raise bad("multiple must be true or false")
-    if multiple:
-        question["multiple"] = True
+        entry = {"question": question_text, "options": options}
+
+        header = raw.get("header")
+        if header is not None:
+            if not isinstance(header, str):
+                raise bad(f"{where}: header must be a string")
+            if header.strip():
+                entry["header"] = header.strip()[:_MAX_LABEL_CHARS]
+
+        multiple = raw.get("multiple", False)
+        if not isinstance(multiple, bool):
+            raise bad(f"{where}: multiple must be true or false")
+        if multiple:
+            entry["multiple"] = True
+
+        questions.append(entry)
+
+    form = {"questions": questions}
 
     goal = args.get("goal")
     if goal is not None:
         if not isinstance(goal, str) or not goal.strip():
             raise bad("goal must be a non-empty string when given")
-        question["goal"] = goal.strip()[:_MAX_QUESTION_CHARS]
+        form["goal"] = goal.strip()[:_MAX_QUESTION_CHARS]
 
-    for name in ("step", "est_steps"):
-        value = args.get(name)
-        if value is None:
-            continue
-        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-            raise bad(f"{name} must be a whole number of 1 or more")
-        question[name] = value
-
-    return question
+    return form
 
 
-def _compose_output(answer: dict) -> str:
-    """What the model reads as the tool result."""
-    selected = answer.get("selected", [])
-    text = answer.get("text", "")
-    parts = []
-    if selected:
-        labels = ", ".join(f'"{label}"' for label in selected)
-        one = len(selected) == 1
-        parts.append(("chose " if one else "chose several: ") + labels)
-    if text:
-        parts.append(f'said "{text}"')
-    return "The user " + " and ".join(parts) + "."
+def _compose_output(form: dict, answer: dict) -> str:
+    """What the model reads as the tool result: one line per question."""
+    lines = []
+    entries = answer.get("answers", [])
+    for position, (question, entry) in enumerate(
+        zip(form.get("questions", []), entries), start=1
+    ):
+        labels = entry.get("selected", [])
+        text = entry.get("text", "")
+        if labels:
+            outcome = "chose " + ", ".join(f'"{label}"' for label in labels)
+            if text:
+                outcome += f' and said "{text}"'
+        elif text:
+            outcome = f'said "{text}"'
+        else:
+            outcome = "(no answer)"
+        lines.append(f"{position}. {question['question']} → {outcome}")
+    return "The user answered your questions:\n" + "\n".join(lines)

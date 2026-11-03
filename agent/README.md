@@ -49,23 +49,33 @@ Sometimes the right action depends on a decision only the user can make. The
 OpenCode's `question` and Claude Code's `AskUserQuestion` tools use, so
 models are already trained on its shape:
 
-1. the model calls `ask_user` with a question, 2-6 short options (each with
-   an optional description) and a `multiple` flag;
-2. the daemon emits `QuestionAsked(run_id, ask_id, question_json)` and the
-   tool waits — exactly like a slow bash command would;
-3. the frontend renders the options (the REPL prints them numbered) and
-   calls `AnswerQuestion(ask_id, answer_json)`;
-4. the tool result tells the model what was chosen, plus anything the user
-   wrote in their own words. Free text is passed through verbatim, so an
-   answer can also be dictated — "the second one" needs no extra parsing,
-   the model interprets it.
+1. the model calls `ask_user` with **every question it already knows it
+   needs** — 1-6 questions, each with 2-6 short options (with optional
+   descriptions) and a `multiple` flag — plus an optional `goal`;
+2. the daemon emits `QuestionAsked(run_id, ask_id, question_json)` with
+   the whole form and the tool waits — exactly like a slow bash command
+   would;
+3. the frontend walks the user through the form (the results window's
+   wizard: one question at a time, instant back, exact progress — all
+   client-side, since the whole form arrived at once; the REPL prints
+   the questions one by one, `b` goes back, a blank line skips) and
+   calls `AnswerQuestion(ask_id, answer_json)` **once**;
+4. the tool result tells the model what was chosen per question, plus
+   anything the user wrote in their own words. Free text is passed
+   through verbatim, so an answer can also be dictated — "the second
+   one" needs no extra parsing, the model interprets it.
 
-`answer_json` is `{"selected": [...], "text": "..."}` where `selected`
-entries are 0-based option indices or exact labels; either part may carry
-the answer alone, and a bare JSON string counts as free text. Answers that
-cannot be used (unknown `ask_id`, already answered, index out of range,
-unknown label, several picks on a single-choice question, empty) return
-`False` — the question keeps waiting and the caller may retry.
+`answer_json` is `{"answers": [...]}` with one entry per question, in
+order; each entry is `{"selected": [...], "text": "..."}` where
+`selected` entries are 0-based option indices or exact labels, either
+part may carry the answer alone, and an **empty entry is a deliberate
+skip** (the model is told there was no answer, not asked again). A bare
+JSON string counts as free text on the first question. Answers that
+cannot be used (unknown `ask_id`, wrong answer count, index out of
+range, unknown label, several picks on a single-choice question) return
+`False` — the form keeps waiting and the caller may retry. Follow-up
+questions — asked only when an answer opens a decision the model could
+not have written in advance — are just another (small) form.
 
 An unanswered question releases the run after `ask_timeout_seconds`
 (default 300, `0` waits forever): the model is told the user may be away
@@ -87,18 +97,16 @@ is told it was not run and must not retry it unchanged. Set
 (`dnf remove` and friends then run as before, on the non-interactive
 flags alone).
 
-**Wizard metadata and the wizard view:** when the model expects several
-questions, it adds `goal` (what is being collected), `step` and
-`est_steps` to every call — `est_steps` may be revised as the agent
-learns, which is why the progress reads "~". A question carrying `step`
-opens the results window's **wizard view**: the conversation gives way
-to one question at a time, with a progress bar, the answers collected
-so far, and a "Skip the rest" escape hatch that answers with a text the
-model reads as "proceed with your best judgment". The bridge keeps the
-view up across the gaps between the series' questions and returns to
-the conversation when the agent stops asking and goes to work (its
-first non-`ask_user` tool call), the question times out or is
-cancelled, or the run ends.
+**The wizard view:** a form of several questions opens the results
+window's wizard view — the conversation gives way to one question at a
+time with a progress bar, the answers collected so far, a **back button**
+and a final "Submit answers". The whole walk is client-side (the form
+arrived at once, so the progress is exact — no "~" estimates — and back
+is instant), and nothing is sent until the user submits: every answer
+leaves together, blanks included as deliberate skips. When the form is
+answered the wizard gives way; a follow-up form (or the agent going to
+work — its first non-`ask_user` tool call) ends it, the run's end
+always does.
 
 The results window renders a pending question as a card above its input
 bar: one radio button per option (checkboxes when `multiple` is set), a
@@ -122,7 +130,7 @@ interface `dna.phoenix.Agent`.
 | `SubmitPrompt` | `sss → s` | `(prompt, mode, session_id)` → `run_id`. Empty `session_id` starts a new session; pass a previous `session_id` (from `RunStarted`) to continue it. Prompts submitted while busy are queued and run in order. |
 | `SubmitPromptWithAttachments` | `ssss → s` | `(prompt, mode, session_id, attachments)` → `run_id`. The same, plus the files the user attached to the prompt: a JSON array of `{"name", "path", "mimeType"}` objects. The daemon copies them into `<data_dir>/attachments/<run_id>/`, inlines the images when the model can see them and extracts the text of PDFs — see `phoenix_dna/attachments.py`. |
 | `Cancel` | `s → b` | Cancel a running prompt (kills its process group) or remove a queued one. |
-| `AnswerQuestion` | `ss → b` | `(ask_id, answer_json)` → whether a pending question was answered. `answer_json` is `{"selected": [0-based index or label, …], "text": "…"}` — see [Asking the user](#asking-the-user-ask_user). |
+| `AnswerQuestion` | `ss → b` | `(ask_id, answer_json)` → whether the pending form was answered. `answer_json` is `{"answers": [{"selected": [0-based index or label, …], "text": "…"}, …]}`, one entry per question — see [Asking the user](#asking-the-user-ask_user). |
 | `SetMode` | `s → s` | `(mode)` → normalized name. Records the widget's mode selection. Selecting `root` shows the KDE password dialog immediately (off the main loop; the credential is cached as usual), switching away from `root` drops the cached password. The plasmoid calls this whenever its mode buttons change state. |
 | `GetModes` | ` → a(sss)` | `(name, description, working_dir)` for root/user. |
 | `GetState` | ` → (ssu)` | `(state, current_run_id, queue_length)`; state is `idle` or `running`. |
@@ -143,8 +151,8 @@ interface `dna.phoenix.Agent`.
 | `ToolCallStarted` | `ssss` | run_id, call_id, tool name, JSON args |
 | `ToolCallFinished` | `sssss` | run_id, call_id, tool, `success|error`, output text |
 | `AuthRequested` / `AuthFinished` | `ss` / `sb` | the root-mode password dialog opened / closed |
-| `QuestionAsked` | `sss` | run_id, ask_id, JSON of the question: `question`, `header`, `options` (`[{label, description}]`), `multiple` — plus `goal`/`step`/`est_steps` wizard metadata when given. The run blocks until answered, cancelled or timed out. |
-| `QuestionAnswered` | `ssss` | run_id, ask_id, status (`answered\|timeout\|cancelled`), JSON of the normalized answer (`{"selected": [labels], "text": "…"}`) |
+| `QuestionAsked` | `sss` | run_id, ask_id, JSON of the form: `questions` (`[{question, header, options: [{label, description}], multiple}]`), an optional `goal`, and `harness: true` for daemon-authored confirmations. The run blocks until answered, cancelled or timed out. |
+| `QuestionAnswered` | `ssss` | run_id, ask_id, status (`answered\|timeout\|cancelled`), JSON of the normalized answers (`{"answers": [{"selected": [labels], "text": "…"}, …]}`) |
 | `SpeechStateChanged` | `s` | the daemon's read-aloud switched between `speaking` and `idle` |
 | `StateChanged` | `ssu` | state, current_run_id, queue_length |
 | `RunFinished` | `sssuuu` | run_id, status (`completed|cancelled|error|max_turns`), final text, turns, tokens in, tokens out |
@@ -255,16 +263,23 @@ Commands: `/mode root|user`, `/new` (fresh session), `/session`, `/modes`,
 `/state`, `/help`, `/quit`. Plain text is submitted in the current mode;
 follow-ups continue the same session; **Ctrl+C while a run is active cancels
 it**; root mode pops the real kdialog password prompt (cached for 15 min).
-When the model asks a question, it is printed with numbered options — answer
-with a number (or several, comma-separated), a label, or your own words:
+When the model asks, every question of the form is walked one by one —
+answer with a number (or several, comma-separated), a label, or your own
+words; `b` goes back to the previous question, a blank line skips it:
 
 ```
 phoenix:user> back up my disk
-  ❓ (step 1 of ~2: backup setup) Which disk should the backup use?
+  ❓ backup setup
+  ❓ (1 of 2) Which disk should the backup use?
      1) /dev/sda — the SSD
      2) /dev/sdb — the spinning one
 answer> 2
-  ✓ The user chose "/dev/sdb".
+[2/2] Encrypt the backup?
+   1) Yes
+   2) No
+answer> b
+answer> 1
+  ✓ The user answered your questions:
 Backing up to /dev/sdb.
 ```
 
