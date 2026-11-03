@@ -364,6 +364,8 @@ class Speaker:
         assert self._engine is not None
         player = self._player
         started = False
+        fed = 0
+        log.info("read aloud: %d characters", len(chunk))
         try:
             for pcm in self._engine.synthesize(chunk):
                 with self._lock:
@@ -374,10 +376,13 @@ class Speaker:
                     started = True
                 if player is not None:
                     player.write(pcm)
+                    fed += len(pcm)
         except PlaybackStopped:
             raise
         except Exception as exc:
             log.warning("synthesis failed: %s", exc)
+        if started:
+            log.info("read aloud: fed %d PCM bytes", fed)
 
 
 def _sentenceish(buffer: str) -> bool:

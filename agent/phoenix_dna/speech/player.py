@@ -158,10 +158,18 @@ class Player:
     def _teardown_locked(self) -> None:
         # SIGKILL, not SIGTERM: an interrupted sentence must fall silent
         # *now*; a graceful drain would finish speaking what the user
-        # asked to stop.
+        # asked to stop. The pipes are closed first — a BufferedWriter
+        # finalized with bytes still buffered would try to flush into
+        # the corpse and complain from the garbage collector.
         for process in (self._resampler, self._sink):
             if process is None:
                 continue
+            for stream in (process.stdin, process.stdout):
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except OSError:
+                        pass
             try:
                 process.kill()
             except Exception:  # pragma: no cover - already gone
