@@ -3,19 +3,30 @@
 
 #include "latexrenderer.h"
 
-#include <QCryptographicHash>
 #include <QDebug>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
+#include <QImage>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QTextBlock>
+#include <QTextBlockFormat>
+#include <QTextCursor>
+#include <QTextDocument>
+#include <QTextFragment>
+#include <QTextImageFormat>
 #include <QTimer>
+#include <QUrl>
+
+#include <QQuickTextDocument>
 
 namespace {
 
-// --- math-span detection (shared by containsLatex and the converter) ------
+// --- math-span detection (shared by containsLatex and the embedder) ------
 
 // All span kinds in one alternation, display delimiters first: a "$$"
 // can never be misread as two "$" spans. The inline "$…$" must hug its
@@ -30,279 +41,14 @@ const QRegularExpression &mathSpanMatcher()
     return matcher;
 }
 
-// Replaces every match of \a re in \a text with what \a transform makes
-// of it.
-QString replaceMatches(
-    const QString &text, const QRegularExpression &re,
-    const std::function<QString(const QRegularExpressionMatch &)> &transform)
+// The Unicode symbols the models write (∫, α, → …) mapped to their math
+// commands — kept in the compile so a formula mixing Unicode and LaTeX
+// still typesets. Gated and inert when the package is missing.
+const char *unicodeTablePreamble()
 {
-    QString result;
-    result.reserve(text.size());
-    qsizetype last = 0;
-    QRegularExpressionMatchIterator it = re.globalMatch(text);
-    while (it.hasNext()) {
-        const QRegularExpressionMatch match = it.next();
-        result += text.mid(last, match.capturedStart() - last);
-        result += transform(match);
-        last = match.capturedEnd();
-    }
-    result += text.mid(last);
-    return result;
-}
-
-// --- LaTeX escaping ---------------------------------------------------------
-
-// LaTeX specials → safe spellings. The backslash goes first (through a
-// placeholder, so the backslashes the other replacements add are not
-// re-escaped), and the two awkward ones get their text commands.
-QString escapeLatexText(const QString &text)
-{
-    QString escaped = text;
-    escaped.replace(QLatin1Char('\\'), QStringLiteral("\x07"));
-    escaped.replace(QLatin1Char('&'), QStringLiteral("\\&"));
-    escaped.replace(QLatin1Char('%'), QStringLiteral("\\%"));
-    escaped.replace(QLatin1Char('$'), QStringLiteral("\\$"));
-    escaped.replace(QLatin1Char('#'), QStringLiteral("\\#"));
-    escaped.replace(QLatin1Char('_'), QStringLiteral("\\_"));
-    escaped.replace(QLatin1Char('{'), QStringLiteral("\\{"));
-    escaped.replace(QLatin1Char('}'), QStringLiteral("\\}"));
-    escaped.replace(QLatin1Char('~'), QStringLiteral("\\textasciitilde{}"));
-    escaped.replace(QLatin1Char('^'), QStringLiteral("\\textasciicircum{}"));
-    escaped.replace(QStringLiteral("\x07"),
-                    QStringLiteral("\\textbackslash{}"));
-    return escaped;
-}
-
-// A URL for \href: only the characters LaTeX would treat as syntax.
-QString escapeLatexUrl(const QString &url)
-{
-    QString escaped = url;
-    escaped.replace(QLatin1Char('%'), QStringLiteral("\\%"));
-    escaped.replace(QLatin1Char('#'), QStringLiteral("\\#"));
-    escaped.replace(QLatin1Char('&'), QStringLiteral("\\&"));
-    return escaped;
-}
-
-// The body of one prose line, with its inline constructs converted.
-// Math and code spans arrive masked (private-use sentinels) and pass
-// through untouched; the caller restores them.
-QString inlineToLatex(const QString &line)
-{
-    QString out = escapeLatexText(line);
-    // Emphasis on the escaped text: the asterisks are not LaTeX
-    // specials, so they survived the escaping above; bold first, so
-    // its markers are gone when the italics pass runs.
-    out.replace(QRegularExpression(QStringLiteral("\\*\\*([^*\n]+)\\*\\*")),
-                QStringLiteral("\\textbf{\\1}"));
-    out.replace(QRegularExpression(QStringLiteral("\\*([^*\n]+)\\*")),
-                QStringLiteral("\\emph{\\1}"));
-    // Links: [text](url) → \href{url}{text}.
-    return replaceMatches(
-        out,
-        QRegularExpression(QStringLiteral("\\[([^\\]\\n]+)\\]\\(([^)\\n]+)\\)")),
-        [](const QRegularExpressionMatch &m) {
-            return QStringLiteral("\\href{%1}{%2}")
-                .arg(escapeLatexUrl(m.captured(2)), m.captured(1));
-        });
-}
-
-// One prose run (fenced code already split off): its math spans are
-// passed through verbatim, its markdown structure (headings, lists,
-// quotes, rules, paragraphs, emphasis, links, code) is converted, and
-// everything else is escaped, so a stray special character cannot fail
-// the compile.
-QString transformProseBlock(const QString &block)
-{
-    // Mask code and math spans: private-use sentinels survive the
-    // escaping and the structure passes, and the raw contents come
-    // back at the end — code LaTeX-escaped in \texttt, math verbatim.
-    QStringList codeSpans;
-    QStringList mathSpans;
-    QString masked;
-    masked.reserve(block.size());
-    qsizetype last = 0;
-    QRegularExpressionMatchIterator it =
-        QRegularExpression(QStringLiteral("`[^`\\n]+`")).globalMatch(block);
-    while (it.hasNext()) {
-        const QRegularExpressionMatch match = it.next();
-        masked += block.mid(last, match.capturedStart() - last);
-        masked += QStringLiteral("\x01%1\x01").arg(codeSpans.size());
-        codeSpans.append(match.captured(0).mid(1, match.capturedLength(0) - 2));
-        last = match.capturedEnd();
-    }
-    it = mathSpanMatcher().globalMatch(block);
-    while (it.hasNext()) {
-        const QRegularExpressionMatch match = it.next();
-        masked += block.mid(last, match.capturedStart() - last);
-        masked += QStringLiteral("\x02%1\x02").arg(mathSpans.size());
-        mathSpans.append(match.captured(0));
-        last = match.capturedEnd();
-    }
-    masked += block.mid(last);
-
-    // Parse the masked lines into LaTeX blocks.
-    QStringList out;
-    QStringList paragraphLines;
-    enum class Mode { None, Itemize, Enumerate, Quote };
-    Mode mode = Mode::None;
-    const auto closeList = [&]() {
-        if (mode == Mode::Itemize) {
-            out << QStringLiteral("\\end{itemize}");
-        } else if (mode == Mode::Enumerate) {
-            out << QStringLiteral("\\end{enumerate}");
-        } else if (mode == Mode::Quote) {
-            out << QStringLiteral("\\end{quote}");
-        }
-        mode = Mode::None;
-    };
-    const auto ensureBlank = [&]() {
-        // LaTeX paragraphs are separated by blank lines.
-        if (!out.isEmpty() && !out.last().isEmpty()) {
-            out << QString();
-        }
-    };
-    const auto flushParagraph = [&]() {
-        if (paragraphLines.isEmpty()) {
-            return;
-        }
-        // A single newline in LaTeX is a space: the soft-wrapped lines
-        // of one markdown paragraph become one LaTeX paragraph.
-        ensureBlank();
-        out << inlineToLatex(paragraphLines.join(QLatin1Char(' ')));
-        paragraphLines.clear();
-    };
-
-    static const QRegularExpression ruleLine(
-        QStringLiteral("^([-*_=])\\1{2,}\\s*$"));
-    static const QRegularExpression headingLine(
-        QStringLiteral("^(#{1,4})\\s+(.*)$"));
-    static const QRegularExpression bulletLine(
-        QStringLiteral("^[-*+]\\s+(.+)$"));
-    static const QRegularExpression numberedLine(
-        QStringLiteral("^\\d{1,3}[.)]\\s+(.+)$"));
-    static const QRegularExpression quoteLine(QStringLiteral("^>\\s?(.*)$"));
-
-    for (const QString &line : std::as_const(masked).split(QLatin1Char('\n'))) {
-        const QString trimmed = line.trimmed();
-        if (trimmed.isEmpty()) {
-            flushParagraph();
-            closeList();
-            continue;
-        }
-        if (ruleLine.match(trimmed).hasMatch()) {
-            flushParagraph();
-            closeList();
-            out << QStringLiteral(
-                "\\noindent\\rule{\\linewidth}{0.4pt}");
-            continue;
-        }
-        const auto heading = headingLine.match(trimmed);
-        if (heading.hasMatch()) {
-            flushParagraph();
-            closeList();
-            static const QStringList commands = {
-                QStringLiteral("section"), QStringLiteral("subsection"),
-                QStringLiteral("subsubsection"),
-                QStringLiteral("paragraph"),
-            };
-            const int level = qBound(1, heading.captured(1).size(), 4);
-            out << QStringLiteral("\\%1*{%2}")
-                       .arg(commands.at(level - 1),
-                            inlineToLatex(heading.captured(2)));
-            continue;
-        }
-        const auto bullet = bulletLine.match(trimmed);
-        if (bullet.hasMatch()) {
-            flushParagraph();
-            if (mode != Mode::Itemize) {
-                closeList();
-                ensureBlank();
-                out << QStringLiteral("\\begin{itemize}");
-                mode = Mode::Itemize;
-            }
-            out << QStringLiteral("\\item %1")
-                       .arg(inlineToLatex(bullet.captured(1)));
-            continue;
-        }
-        const auto numbered = numberedLine.match(trimmed);
-        if (numbered.hasMatch()) {
-            flushParagraph();
-            if (mode != Mode::Enumerate) {
-                closeList();
-                ensureBlank();
-                out << QStringLiteral("\\begin{enumerate}");
-                mode = Mode::Enumerate;
-            }
-            out << QStringLiteral("\\item %1")
-                       .arg(inlineToLatex(numbered.captured(1)));
-            continue;
-        }
-        const auto quote = quoteLine.match(trimmed);
-        if (quote.hasMatch()) {
-            flushParagraph();
-            if (mode != Mode::Quote) {
-                closeList();
-                ensureBlank();
-                out << QStringLiteral("\\begin{quote}");
-                mode = Mode::Quote;
-            }
-            out << inlineToLatex(quote.captured(1));
-            continue;
-        }
-        if (mode != Mode::None) {
-            closeList();
-        }
-        paragraphLines << trimmed;
-    }
-    flushParagraph();
-    closeList();
-
-    QString body = out.join(QLatin1Char('\n'));
-    // Restore the masked spans: math verbatim (its delimiters included
-    // — LaTeX understands all four kinds), code escaped in \texttt.
-    for (int i = mathSpans.size() - 1; i >= 0; --i) {
-        body.replace(QStringLiteral("\x02%1\x02").arg(i), mathSpans.at(i));
-    }
-    for (int i = codeSpans.size() - 1; i >= 0; --i) {
-        body.replace(QStringLiteral("\x01%1\x01").arg(i),
-                     QStringLiteral("\\texttt{%1}")
-                         .arg(escapeLatexText(codeSpans.at(i))));
-    }
-    return body;
-}
-
-// The document preamble: geometry, math packages, hyperref for links,
-// and a table mapping the Unicode symbols the models emit (∫, α, → …)
-// to their math commands. Every optional package is gated with
-// IfFileExists and gets a providecommand fallback, so a minimal TeX
-// install still compiles — the mapping table simply degrades to a
-// no-op and an uncovered symbol turns into a blank instead of a
-// failed answer.
-const char *documentPreamble()
-{
-    return R"TEX(\documentclass[11pt]{article}
-\IfFileExists{geometry.sty}{\usepackage[a4paper,margin=1.8cm]{geometry}}{}
-\IfFileExists{amsmath.sty}{\usepackage{amsmath}}{
-% Without amsmath, the amsmath-only commands the models write have
-% plain LaTeX equivalents good enough for these answers.
-\providecommand{\tfrac}[2]{\frac{#1}{#2}}
-\providecommand{\dfrac}[2]{\frac{#1}{#2}}
-\providecommand{\text}[1]{\textrm{#1}}
-\providecommand{\boldsymbol}[1]{\mathbf{#1}}
-}
-\IfFileExists{amssymb.sty}{\usepackage{amssymb}}{}
-\IfFileExists{newunicodechar.sty}{\usepackage{newunicodechar}}{}
+    return R"TEX(\IfFileExists{newunicodechar.sty}{\usepackage{newunicodechar}}{}
 \providecommand{\newunicodechar}[2]{}
-\IfFileExists{lmodern.sty}{\usepackage{lmodern}}{}
-\IfFileExists{hyperref.sty}{\usepackage{hyperref}}{}
-\providecommand{\href}[2]{#2}
-\pagestyle{empty}
-\setlength{\parindent}{0pt}
-\setlength{\parskip}{0.55em}
-\emergencystretch=3em
 \newunicodechar{×}{\ensuremath{\times}}
-\newunicodechar{÷}{\ensuremath{\div}}
-\newunicodechar{±}{\ensuremath{\pm}}
 \newunicodechar{⋅}{\ensuremath{\cdot}}
 \newunicodechar{·}{\ensuremath{\cdot}}
 \newunicodechar{≤}{\ensuremath{\leq}}
@@ -329,12 +75,6 @@ const char *documentPreamble()
 \newunicodechar{⇔}{\ensuremath{\Leftrightarrow}}
 \newunicodechar{⟶}{\ensuremath{\longrightarrow}}
 \newunicodechar{↦}{\ensuremath{\mapsto}}
-\newunicodechar{∧}{\ensuremath{\land}}
-\newunicodechar{∨}{\ensuremath{\lor}}
-\newunicodechar{¬}{\ensuremath{\neg}}
-\newunicodechar{∀}{\ensuremath{\forall}}
-\newunicodechar{∃}{\ensuremath{\exists}}
-\newunicodechar{∅}{\ensuremath{\varnothing}}
 \newunicodechar{ℏ}{\ensuremath{\hbar}}
 \newunicodechar{ℓ}{\ensuremath{\ell}}
 \newunicodechar{ℝ}{\ensuremath{\mathbb{R}}}
@@ -363,21 +103,117 @@ const char *documentPreamble()
 \newunicodechar{Γ}{\ensuremath{\Gamma}}
 \newunicodechar{Σ}{\ensuremath{\Sigma}}
 \newunicodechar{Θ}{\ensuremath{\Theta}}
-\newunicodechar{…}{\textellipsis}
-\newunicodechar{–}{\textendash}
-\newunicodechar{—}{\textemdash}
-\newunicodechar{‘}{\textquoteleft}
-\newunicodechar{’}{\textquoteright}
-\newunicodechar{“}{\textquotedblleft}
-\newunicodechar{”}{\textquotedblright}
-\begin{document}
-\begin{flushleft}
 )TEX";
 }
 
-const char *documentPostamble()
+// One document, every formula on its own page: a generous page so no
+// formula spills onto a second one, tiny margins, and each span kept
+// in its own kind (inline math stays inline-style, display stays
+// display-style — read off the span's own delimiters).
+QString buildFormulaTex(const QStringList &spans)
 {
-    return "\n\\end{flushleft}\n\\end{document}\n";
+    QString body;
+    body += QStringLiteral("\\documentclass[11pt]{article}\n");
+    body += QStringLiteral(
+        "\\IfFileExists{geometry.sty}{\\usepackage[paperwidth=24cm,"
+        "paperheight=16cm,margin=1mm]{geometry}}{}\n");
+    body += QStringLiteral("\\IfFileExists{amsmath.sty}{\\usepackage{amsmath}}{\n"
+                           "\\providecommand{\\tfrac}[2]{\\frac{#1}{#2}}\n"
+                           "\\providecommand{\\dfrac}[2]{\\frac{#1}{#2}}\n"
+                           "\\providecommand{\\text}[1]{\\textrm{#1}}\n"
+                           "\\providecommand{\\boldsymbol}[1]{\\mathbf{#1}}\n"
+                           "}\n");
+    body += QStringLiteral("\\IfFileExists{amssymb.sty}{\\usepackage{amssymb}}{}\n");
+    body += QString::fromUtf8(unicodeTablePreamble());
+    body += QStringLiteral("\\pagestyle{empty}\\parindent0pt\n\\begin{document}\n");
+    for (int i = 0; i < spans.size(); ++i) {
+        // The span arrives with its delimiters; rebuild it as either
+        // inline math or display math, dropping the delimiter style it
+        // came in.
+        const QString &span = spans.at(i);
+        QString inner;
+        bool isDisplay = false;
+        if (span.startsWith(QLatin1String("$$"))) {
+            inner = span.mid(2, span.size() - 4);
+            isDisplay = true;
+        } else if (span.startsWith(QLatin1String("\\["))) {
+            inner = span.mid(2, span.size() - 4);
+            isDisplay = true;
+        } else if (span.startsWith(QLatin1String("\\("))) {
+            inner = span.mid(2, span.size() - 4);
+        } else {
+            inner = span.mid(1, span.size() - 2);
+        }
+        if (i > 0) {
+            body += QStringLiteral("\\newpage\n");
+        }
+        body += isDisplay ? QStringLiteral("\\[%1\\]\n").arg(inner)
+                          : QStringLiteral("$%1$\n").arg(inner);
+    }
+    body += QStringLiteral("\\end{document}\n");
+    return body;
+}
+
+// The markdown with every span replaced by an image reference. Display
+// formulas get their own paragraph; inline ones flow in the text.
+QString markdownWithImages(const QString &markdown)
+{
+    QString result;
+    result.reserve(markdown.size());
+    qsizetype last = 0;
+    int index = 0;
+    QRegularExpressionMatchIterator it =
+        mathSpanMatcher().globalMatch(markdown);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch match = it.next();
+        result += markdown.mid(last, match.capturedStart() - last);
+        const bool display = match.capturedStart(1) >= 0
+            || match.capturedStart(2) >= 0;
+        const QString ref =
+            QStringLiteral("![formula](phoenixformula-%1)").arg(index);
+        result += display ? QStringLiteral("\n\n%1\n\n").arg(ref) : ref;
+        ++index;
+    }
+    result += markdown.mid(last);
+    return result;
+}
+
+// The rendered page cropped to its ink (anything darker than paper),
+// as a tinted alpha mask: the formula's coverage becomes transparency,
+// the colour is \a ink, the background vanishes.
+QImage formulaImage(const QImage &page, const QColor &ink)
+{
+    int left = page.width(), top = page.height(), right = -1, bottom = -1;
+    for (int y = 0; y < page.height(); ++y) {
+        const QRgb *line = reinterpret_cast<const QRgb *>(page.scanLine(y));
+        for (int x = 0; x < page.width(); ++x) {
+            const QRgb px = line[x];
+            // LaTeX ink is black on white; anti-aliased edges are in
+            // between, so anything clearly darker than paper is ink.
+            if (qGray(px) < 200) {
+                if (x < left) left = x;
+                if (x > right) right = x;
+                if (y < top) top = y;
+                if (y > bottom) bottom = y;
+            }
+        }
+    }
+    if (right < 0) {
+        return {};
+    }
+    QImage out = page.copy(left, top, right - left + 1, bottom - top + 1)
+                     .convertToFormat(QImage::Format_ARGB32);
+    const QRgb inkRgb = qRgba(ink.red(), ink.green(), ink.blue(), 255);
+    for (int y = 0; y < out.height(); ++y) {
+        QRgb *line = reinterpret_cast<QRgb *>(out.scanLine(y));
+        for (int x = 0; x < out.width(); ++x) {
+            // Luminance → alpha: black ink is opaque, paper is gone.
+            const int alpha = 255 - qGray(line[x]);
+            line[x] = qRgba(qRed(inkRgb), qGreen(inkRgb), qBlue(inkRgb),
+                            alpha);
+        }
+    }
+    return out;
 }
 
 } // namespace
@@ -386,7 +222,9 @@ LatexRenderer::LatexRenderer(QObject *parent) : QObject(parent) {}
 
 bool LatexRenderer::isAvailable() const
 {
-    return !engine().isEmpty();
+    // Both halves of the pipeline: the engine that typesets the
+    // formulas and the rasterizer that turns the pages into images.
+    return !engine().isEmpty() && !rasterizer().isEmpty();
 }
 
 QString LatexRenderer::engine() const
@@ -424,6 +262,20 @@ QString LatexRenderer::engine() const
     return m_engine;
 }
 
+QString LatexRenderer::rasterizer() const
+{
+    if (!m_rasterizerResolved) {
+        m_rasterizer = QStandardPaths::findExecutable(
+            QStringLiteral("pdftoppm"));
+        if (m_rasterizer.isEmpty()) {
+            qWarning() << "LatexRenderer: pdftoppm (poppler-utils) not "
+                          "found — answers keep LaTeX verbatim.";
+        }
+        m_rasterizerResolved = true;
+    }
+    return m_rasterizer;
+}
+
 QString LatexRenderer::cacheDir() const
 {
     static QString dir;
@@ -435,7 +287,7 @@ QString LatexRenderer::cacheDir() const
     }
     QDir().mkpath(dir);
     if (!pruned) {
-        // Compiled answers of days past are of no value; keep the
+        // Compiled formulas of days past are of no value; keep the
         // cache from growing forever.
         const QFileInfoList entries = QDir(dir).entryInfoList(
             {QStringLiteral("*.tex"), QStringLiteral("*.pdf"),
@@ -467,125 +319,295 @@ bool LatexRenderer::containsLatex(const QString &text) const
         || mathSpanMatcher().match(text).hasMatch();
 }
 
-QString LatexRenderer::toLatexBody(const QString &markdown) const
+void LatexRenderer::embedFormulas(int requestId,
+                                  QQuickTextDocument *document,
+                                  const QString &markdown,
+                                  const QColor &ink,
+                                  qreal fontPixelSize,
+                                  qreal paragraphSpacing)
 {
-    QStringList body;
-    QStringList proseLines;
-    QStringList fenceLines;
-    bool inFence = false;
-    const auto flushProse = [&]() {
-        if (proseLines.isEmpty()) {
-            return;
-        }
-        body << transformProseBlock(proseLines.join(QLatin1Char('\n')));
-        proseLines.clear();
-    };
-    for (const QString &line : markdown.split(QLatin1Char('\n'))) {
-        const QString trimmed = line.trimmed();
-        if (trimmed.startsWith(QStringLiteral("```"))
-            || trimmed.startsWith(QStringLiteral("~~~"))) {
-            if (!inFence) {
-                flushProse();
-                inFence = true;
-                fenceLines.clear();
-            } else {
-                inFence = false;
-                if (!fenceLines.isEmpty()) {
-                    body << QStringLiteral("\\begin{verbatim}");
-                    body << fenceLines;
-                    body << QStringLiteral("\\end{verbatim}");
-                }
-                fenceLines.clear();
-            }
-            continue;
-        }
-        if (inFence) {
-            fenceLines << line;
-        } else {
-            proseLines << line;
-        }
-    }
-    flushProse();
-    // An unclosed fence keeps its content verbatim, too.
-    if (!fenceLines.isEmpty()) {
-        body << QStringLiteral("\\begin{verbatim}");
-        body << fenceLines;
-        body << QStringLiteral("\\end{verbatim}");
-    }
-    return body.join(QLatin1Char('\n'));
-}
+    Pending pending;
+    pending.requestId = requestId;
+    pending.document = document;
+    pending.markdown = markdown;
+    pending.ink = ink;
+    pending.fontPixelSize = fontPixelSize;
+    pending.paragraphSpacing = paragraphSpacing;
 
-void LatexRenderer::render(int requestId, const QString &markdown)
-{
-    const QString engineBin = engine();
-    if (engineBin.isEmpty()) {
-        // Delivered asynchronously: a synchronous emit from inside the
-        // invokable never reaches QML handlers when the call was made
-        // from some contexts (a Repeater delegate, observed in the
-        // field) — every emit of this class goes through the event
-        // loop for that reason.
-        QMetaObject::invokeMethod(
-            this, [this, requestId] {
-                Q_EMIT failed(requestId,
-                              QStringLiteral(
-                                  "No TeX engine found — install one "
-                                  "(e.g. dnf install texlive-scheme-basic) "
-                                  "to render math."));
-            },
-            Qt::QueuedConnection);
+    // Collect the spans, keeping their kind.
+    QRegularExpressionMatchIterator it =
+        mathSpanMatcher().globalMatch(markdown);
+    while (it.hasNext()) {
+        pending.spans.append(it.next().captured(0));
+    }
+    if (pending.spans.isEmpty()) {
+        // Nothing to embed: done, and nothing to fail.
+        QMetaObject::invokeMethod(this, [this, requestId] {
+            Q_EMIT embedded(requestId);
+        }, Qt::QueuedConnection);
+        return;
+    }
+    if (!document) {
+        // Formulas without a view to land in: the caller went away
+        // between the binding and the call.
+        failLater(requestId,
+                  QStringLiteral("No document to embed the formulas in."));
         return;
     }
 
-    // Content-addressed cache: the same answer compiles once, and a
-    // reopened window finds its PDF already there.
+    const QString engineBin = engine();
+    if (engineBin.isEmpty()) {
+        failLater(requestId,
+                  QStringLiteral("No TeX engine found — install one (e.g. "
+                                 "dnf install texlive-scheme-basic) to "
+                                 "render math."));
+        return;
+    }
+    if (rasterizer().isEmpty()) {
+        failLater(requestId,
+                  QStringLiteral("pdftoppm not found — install "
+                                 "poppler-utils to render math."));
+        return;
+    }
+
+    // Content-addressed cache over the span list: the same formulas
+    // compile once, whatever text surrounds them.
+    QString spanKey;
+    for (const QString &span : pending.spans) {
+        spanKey += span + QChar::Nbsp;
+    }
     const QString dir = cacheDir();
     const QString hash = QString::fromLatin1(
-        QCryptographicHash::hash(markdown.toUtf8(),
+        QCryptographicHash::hash(spanKey.toUtf8(),
                                  QCryptographicHash::Sha256)
             .toHex()
             .left(24));
     const QString texPath = dir + QLatin1Char('/') + hash
         + QLatin1String(".tex");
-    const QString pdfPath = dir + QLatin1Char('/') + hash
-        + QLatin1String(".pdf");
-    if (QFileInfo::exists(pdfPath)) {
-        // Cache hit: same rule as above — the emit goes through the
-        // event loop, never synchronously out of the invokable.
-        QMetaObject::invokeMethod(
-            this, [this, requestId, pdfPath] {
-                Q_EMIT rendered(requestId, QUrl::fromLocalFile(pdfPath));
-            },
-            Qt::QueuedConnection);
+    const QString pdfPath = dir + QLatin1Char('/') + hash + QLatin1String(".pdf");
+    const QString pageDir = dir + QLatin1Char('/') + hash
+        + QLatin1String(".pages");
+    pending.pdfPath = pdfPath;
+
+    // Already rasterized? Straight to the embed — still through the
+    // event loop (see the header).
+    const QFileInfoList readyPages = QDir(pageDir).entryInfoList(
+        {QStringLiteral("page-*.png")}, QDir::Files, QDir::Name);
+    if (QFileInfo::exists(pdfPath) && readyPages.size() >= pending.spans.size()) {
+        m_pending.insert(requestId, pending);
+        const QString pages = pageDir;
+        QMetaObject::invokeMethod(this, [this, requestId, pages] {
+            const auto it = m_pending.constFind(requestId);
+            if (it != m_pending.constEnd()) {
+                finishEmbed(it.value(), pages);
+                m_pending.erase(it);
+            }
+        }, Qt::QueuedConnection);
         return;
     }
 
-    QString document = QString::fromUtf8(documentPreamble());
-    // pdflatex has no native UTF-8: declare the encoding (a symbol
-    // outside the table still fails the compile → verbatim fallback).
-    if (QFileInfo(engineBin).fileName().startsWith(
-            QStringLiteral("pdflatex"))) {
-        document.insert(document.indexOf(QLatin1Char('\n')),
-                        QStringLiteral(
-                            "\n\\usepackage[utf8]{inputenc}\n\\usepackage[T1]"
-                            "{fontenc}"));
+    if (QFileInfo::exists(pdfPath)) {
+        // Compiled before, but the pages are not rasterized (or the
+        // formulas changed count): rasterize what is there.
+        m_pending.insert(requestId, pending);
+        rasterize(requestId, pdfPath);
+        return;
     }
-    document += toLatexBody(markdown);
-    document += QString::fromUtf8(documentPostamble());
 
     QFile texFile(texPath);
     if (!texFile.open(QIODevice::WriteOnly | QIODevice::Truncate)
-        || texFile.write(document.toUtf8()) < 0) {
-        Q_EMIT failed(requestId, texFile.errorString());
+        || texFile.write(buildFormulaTex(pending.spans).toUtf8()) < 0) {
+        failLater(requestId, texFile.errorString());
         return;
     }
     texFile.close();
 
-    compile(requestId, engineBin, texPath, pdfPath);
+    m_pending.insert(requestId, pending);
+    compile(requestId, texPath, pdfPath);
 }
 
-void LatexRenderer::compile(int requestId, const QString &engineBin,
-                            const QString &texPath, const QString &pdfPath)
+void LatexRenderer::finishEmbed(const Pending &pending,
+                                const QString &pageDir)
 {
+    QTextDocument *doc = pending.document
+        ? pending.document->textDocument()
+        : nullptr;
+    if (!doc) {
+        // The view went away while the pipeline ran — nothing to do.
+        return;
+    }
+
+    // One PNG per formula, in page order.
+    const QFileInfoList pages = QDir(pageDir).entryInfoList(
+        {QStringLiteral("page-*.png")}, QDir::Files, QDir::Name);
+    if (pages.size() < pending.spans.size()) {
+        failLater(pending.requestId,
+                  QStringLiteral("Formula pages did not come out as "
+                                 "expected."));
+        return;
+    }
+
+    // Register every tinted image before the markdown lands, so the
+    // importer finds them. The pages were rasterized at 216 dpi —
+    // three pixels per point — and the formulas were compiled at 11pt
+    // (≈14.67px at 96dpi); the answer is set at fontPixelSize logical
+    // pixels. Image pixels per logical pixel:
+    const qreal renderScale = 3;
+    const qreal pixelPerLogical =
+        renderScale * (72.0 / 96.0) / (pending.fontPixelSize / 14.67);
+    int embeddedCount = 0;
+    for (int i = 0; i < pending.spans.size(); ++i) {
+        QImage page(pages.at(i).absoluteFilePath());
+        if (page.isNull()) {
+            continue;
+        }
+        const QImage image = formulaImage(page, pending.ink);
+        if (image.isNull()) {
+            continue;
+        }
+        doc->addResource(QTextDocument::ImageResource,
+                         QUrl(QStringLiteral("phoenixformula-%1").arg(i)),
+                         image);
+        ++embeddedCount;
+    }
+    if (embeddedCount == 0) {
+        failLater(pending.requestId,
+                  QStringLiteral("No formulas survived rendering."));
+        return;
+    }
+
+    doc->setMarkdown(markdownWithImages(pending.markdown));
+
+    // Second pass: scale the images (the importer takes the raw pixel
+    // size), and centre the display formulas' paragraphs.
+    QTextCursor cursor(doc);
+    for (QTextBlock block = doc->begin(); block.isValid();
+         block = block.next()) {
+        bool sawImage = false;
+        bool textBeside = false;
+        for (auto it = block.begin(); !it.atEnd(); ++it) {
+            const QTextFragment fragment = it.fragment();
+            if (fragment.charFormat().isImageFormat()) {
+                QTextImageFormat imageFormat =
+                    fragment.charFormat().toImageFormat();
+                const int width =
+                    qRound(imageFormat.width() / pixelPerLogical);
+                const int height =
+                    qRound(imageFormat.height() / pixelPerLogical);
+                if (width > 0 && height > 0) {
+                    imageFormat.setWidth(width);
+                    imageFormat.setHeight(height);
+                    cursor.setPosition(fragment.position());
+                    cursor.setPosition(fragment.position()
+                                           + fragment.length(),
+                                       QTextCursor::KeepAnchor);
+                    cursor.setCharFormat(imageFormat);
+                    sawImage = true;
+                }
+            } else if (!fragment.text().trimmed().isEmpty()) {
+                textBeside = true;
+            }
+        }
+        if (sawImage && !textBeside) {
+            // A display formula, alone in its paragraph: centred.
+            QTextBlockFormat centre = block.blockFormat();
+            centre.setAlignment(Qt::AlignHCenter);
+            cursor.setPosition(block.position());
+            cursor.setBlockFormat(centre);
+        }
+    }
+
+    // The same paragraph spacing the native view applies, so the
+    // answer's rhythm survives the formula pass.
+    for (QTextBlock block = doc->begin(); block.isValid();
+         block = block.next()) {
+        if (block.textList()) {
+            continue;
+        }
+        const bool first = block == doc->begin();
+        const bool last = !block.next().isValid();
+        QTextBlockFormat format = block.blockFormat();
+        const qreal top = first ? 0 : pending.paragraphSpacing / 2;
+        const qreal bottom = last ? 0 : pending.paragraphSpacing / 2;
+        if (format.topMargin() == top && format.bottomMargin() == bottom) {
+            continue;
+        }
+        format.setTopMargin(top);
+        format.setBottomMargin(bottom);
+        cursor.setPosition(block.position());
+        cursor.setBlockFormat(format);
+    }
+
+    QMetaObject::invokeMethod(this, [this, pending] {
+        Q_EMIT embedded(pending.requestId);
+    }, Qt::QueuedConnection);
+}
+
+void LatexRenderer::failLater(int requestId, const QString &reason)
+{
+    QMetaObject::invokeMethod(this, [this, requestId, reason] {
+        Q_EMIT failed(requestId, reason);
+    }, Qt::QueuedConnection);
+}
+
+void LatexRenderer::rasterize(int requestId, const QString &pdfPath)
+{
+    const QString pageDir =
+        pdfPath.left(pdfPath.size() - 4) + QLatin1String(".pages");
+    QDir().mkpath(pageDir);
+    auto *process = new QProcess(this);
+    connect(process, &QProcess::finished, this,
+            [this, requestId, pageDir, process](int exitCode,
+                                                QProcess::ExitStatus status) {
+                process->deleteLater();
+                const auto it = m_pending.constFind(requestId);
+                if (it == m_pending.constEnd()) {
+                    return;
+                }
+                if (status == QProcess::NormalExit && exitCode == 0) {
+                    finishEmbed(it.value(), pageDir);
+                    m_pending.erase(it);
+                    return;
+                }
+                m_pending.erase(it);
+                failLater(requestId,
+                          QStringLiteral(
+                              "Rasterizing the formulas failed (pdftoppm "
+                              "exit %1).")
+                              .arg(exitCode));
+            });
+    connect(process, &QProcess::errorOccurred, this,
+            [this, requestId, process](QProcess::ProcessError) {
+                process->deleteLater();
+                m_pending.remove(requestId);
+                failLater(requestId,
+                          QStringLiteral(
+                              "pdftoppm could not be started."));
+            });
+    QTimer::singleShot(10000, process, [this, requestId, process] {
+        if (process->state() == QProcess::NotRunning) {
+            return;
+        }
+        process->kill();
+        process->deleteLater();
+        m_pending.remove(requestId);
+        failLater(requestId,
+                  QStringLiteral("Rasterizing timed out."));
+    });
+    // 216 dpi = three pixels per point: crisp on hidpi, cropped to the
+    // ink right after.
+    process->setWorkingDirectory(QFileInfo(pdfPath).absolutePath());
+    process->start(rasterizer(),
+                   {QStringLiteral("-png"),
+                    QStringLiteral("-r"), QStringLiteral("216"),
+                    QFileInfo(pdfPath).fileName(),
+                    pageDir + QLatin1String("/page")});
+}
+
+void LatexRenderer::compile(int requestId, const QString &texPath,
+                            const QString &pdfPath)
+{
+    const QString engineBin = engine();
     auto *process = new QProcess(this);
     // One failure report per run, whichever of the three signals brings
     // the news (start failure, kill, or a nonzero exit).
@@ -601,8 +623,8 @@ void LatexRenderer::compile(int requestId, const QString &engineBin,
                 process->deleteLater();
                 if (status == QProcess::NormalExit && exitCode == 0
                     && QFileInfo::exists(pdfPath)) {
-                    Q_EMIT rendered(requestId,
-                                    QUrl::fromLocalFile(pdfPath));
+                    // Typeset; now the pages become images.
+                    rasterize(requestId, pdfPath);
                     return;
                 }
                 // The engine's first complaint from the log, when there
@@ -624,7 +646,8 @@ void LatexRenderer::compile(int requestId, const QString &engineBin,
                 }
                 qWarning() << "LatexRenderer: compile failed for" << texPath
                            << "-" << reason;
-                Q_EMIT failed(requestId, reason);
+                m_pending.remove(requestId);
+                failLater(requestId, reason);
             });
     connect(process, &QProcess::errorOccurred, this,
             [this, requestId, process, done](QProcess::ProcessError error) {
@@ -633,11 +656,12 @@ void LatexRenderer::compile(int requestId, const QString &engineBin,
                 }
                 *done = true;
                 process->deleteLater();
-                Q_EMIT failed(requestId,
-                              error == QProcess::FailedToStart
-                                  ? QStringLiteral(
-                                      "The TeX engine could not be started.")
-                                  : process->errorString());
+                m_pending.remove(requestId);
+                failLater(requestId,
+                          error == QProcess::FailedToStart
+                              ? QStringLiteral(
+                                    "The TeX engine could not be started.")
+                              : process->errorString());
             });
     // A stuck compile must not haunt the process table forever.
     QTimer::singleShot(30000, process, [this, requestId, process, done] {
@@ -647,8 +671,9 @@ void LatexRenderer::compile(int requestId, const QString &engineBin,
         *done = true;
         process->kill();
         process->deleteLater();
-        Q_EMIT failed(requestId,
-                      QStringLiteral("LaTeX timed out after 30 s"));
+        m_pending.remove(requestId);
+        failLater(requestId,
+                  QStringLiteral("LaTeX timed out after 30 s"));
     });
     process->setWorkingDirectory(QFileInfo(texPath).absolutePath());
     process->start(engineBin,
