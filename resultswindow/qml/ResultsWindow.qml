@@ -5,7 +5,6 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Dialogs
 import QtQuick.Layouts
-import QtQuick.Pdf
 import QtCore
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
@@ -60,10 +59,11 @@ import org.phoenixdna.theme
  *
  * The answer's math takes a two-stage path: while the run streams, the
  * Markdown view shows the LaTeX verbatim; when the run finishes and the
- * answer carries math, the whole answer is compiled to PDF via LaTeX
- * (LatexRenderer) and the Markdown card swaps itself out for the
- * rendered pages. A failed compile — no engine installed, a formula
- * LaTeX rejects — keeps the verbatim view.
+ * answer carries math, the math spans are compiled by LaTeX and swapped
+ * in as tinted images inside the very same Markdown document — the text
+ * around them stays native, with the app's font, size, margins, lists
+ * and this one scrollbar. A failed compile — no engine installed, a
+ * formula LaTeX rejects — keeps the verbatim view and says why.
  */
 Window {
     id: resultsWindow
@@ -413,23 +413,23 @@ Window {
                             required property string thinking
                             required property int toolCount
 
-                            // ---- The answer as PDF ------------------------
+                            // ---- The answer's math, rendered -------------
                             // While the run streams, the answer shows as
                             // native Markdown with its LaTeX verbatim.
                             // When the run finishes and the answer carries
-                            // LaTeX, the whole answer is handed to the
-                            // LaTeX renderer; once the PDF is ready, the
-                            // markdown card is swapped out for it. A
+                            // LaTeX, the math spans are compiled and
+                            // swapped in as tinted images — the text
+                            // around them stays native: the app's font,
+                            // size, margins, lists and scrolling. A
                             // failed compile (no engine installed, a
                             // formula LaTeX rejects) keeps the verbatim
                             // view — no retry storm.
-                            property int pdfToken: -1
-                            property url answerPdf
-                            property string pdfFailedReason: ""
+                            property int formulaToken: -1
+                            property string formulaFailedReason: ""
 
-                            readonly property bool wantsPdf: !running
+                            readonly property bool wantsFormulas: !running
                                 && result.length > 0
-                                && pdfToken < 0
+                                && formulaToken < 0
                                 && LatexRenderer.available
                                 && LatexRenderer.containsLatex(result)
 
@@ -439,34 +439,66 @@ Window {
                             // window starts with both already set), so
                             // the guard above — not the caller — decides
                             // whether a request goes out.
-                            onRunningChanged: maybeRenderPdf()
-                            onResultChanged: maybeRenderPdf()
-                            Component.onCompleted: maybeRenderPdf()
+                            onRunningChanged: maybeEmbedFormulas()
+                            onResultChanged: {
+                                // A result that changes again after the
+                                // formulas went in (a late correction)
+                                // resets the round: the verbatim binding
+                                // re-applies, the guard re-arms.
+                                if (formulaToken > 0) {
+                                    formulaToken = -1
+                                    formulaFailedReason = ""
+                                }
+                                maybeEmbedFormulas()
+                            }
+                            Component.onCompleted: maybeEmbedFormulas()
 
-                            function maybeRenderPdf() {
-                                if (!wantsPdf) {
+                            function maybeEmbedFormulas() {
+                                if (!wantsFormulas) {
                                     return
                                 }
-                                pdfToken = resultsWindow.nextPdfToken()
-                                LatexRenderer.render(pdfToken, result)
+                                formulaToken = resultsWindow.nextPdfToken()
+                                LatexRenderer.embedFormulas(
+                                    formulaToken, resultLabel.textDocument,
+                                    result, PhoenixTheme.primaryTextColor,
+                                    resultLabel.font.pixelSize,
+                                    resultsWindow.paragraphSpacing)
+                            }
+
+                            // A theme switch re-tints the formulas: the
+                            // compiled pages are cached, so this is an
+                            // instant re-render in the other ink, never a
+                            // recompile.
+                            function reembedFormulas() {
+                                if (formulaToken < 0 || !resultLabel) {
+                                    return
+                                }
+                                LatexRenderer.embedFormulas(
+                                    resultsWindow.nextPdfToken(),
+                                    resultLabel.textDocument, result,
+                                    PhoenixTheme.primaryTextColor,
+                                    resultLabel.font.pixelSize,
+                                    resultsWindow.paragraphSpacing)
                             }
 
                             Connections {
                                 target: LatexRenderer
 
-                                function onRendered(token, pdf) {
-                                    if (token === exchange.pdfToken) {
-                                        exchange.answerPdf = pdf
-                                    }
-                                }
-
                                 function onFailed(token, reason) {
                                     // -2: requested, failed, never again
                                     // for this result.
-                                    if (token === exchange.pdfToken) {
-                                        exchange.pdfToken = -2
-                                        exchange.pdfFailedReason = reason
+                                    if (token === exchange.formulaToken) {
+                                        exchange.formulaToken = -2
+                                        exchange.formulaFailedReason = reason
                                     }
+                                }
+                            }
+
+                            Connections {
+                                target: PhoenixTheme
+
+                                function onIsDarkChanged() {
+                                    exchange.reembedFormulas()
                                 }
                             }
 
@@ -474,16 +506,17 @@ Window {
                             // they can die mid-flight (they did, in the
                             // field — a streaming delta's stack overflow
                             // took the finished-flag handler with it),
-                            // so while the exchange runs, or a wanted PDF
-                            // has not been requested yet, re-check every
-                            // second. Once the PDF is requested the net
-                            // stops: wantsPdf turns false on its own.
+                            // so while the exchange runs, or wanted
+                            // formulas have not been requested yet,
+                            // re-check every second. Once the request is
+                            // out the net stops: wantsFormulas turns
+                            // false on its own.
                             Timer {
                                 interval: 1000
                                 repeat: true
                                 running: exchange.running
-                                         || exchange.wantsPdf
-                                onTriggered: exchange.maybeRenderPdf()
+                                         || exchange.wantsFormulas
+                                onTriggered: exchange.maybeEmbedFormulas()
                             }
 
                             Layout.preferredWidth: column.width
@@ -729,33 +762,21 @@ Window {
                                     readonly property int padding:
                                         Kirigami.Units.smallSpacing * 2
 
-                                    // Whether the compiled PDF replaced
-                                    // the verbatim Markdown view.
-                                    readonly property bool showPdf:
-                                        exchange.answerPdf.toString().length > 0
-
-                                    // NOTE: implicit sizes, not width — a
+                                    // Hug the text, but wrap (and so stop
+                                    // growing) at nearly the whole row:
+                                    // the answer is the main text of the
+                                    // window and may use the width.
+                                    // NOTE: implicitWidth, not width — a
                                     // ColumnLayout sizes its children
                                     // from their implicit size, and a
                                     // width binding here would be clobbered
-                                    // on the first layout pass. The PDF
-                                    // gets the full card width outright,
-                                    // with a reading height its pages
-                                    // scroll inside.
-                                    implicitWidth: Math.round(
-                                        exchange.width * 0.96)
-                                    implicitHeight: answerCard.showPdf
-                                        ? Math.max(
-                                              Kirigami.Units.gridUnit * 12,
-                                              Math.min(
-                                                  Math.round(
-                                                      exchange.width * 0.96
-                                                      * 1.05),
-                                                  Math.round(
-                                                      Screen.desktopAvailableHeight
-                                                      * 0.55)))
-                                        : resultLabel.implicitHeight
-                                            + 2 * answerCard.padding
+                                    // on the first layout pass.
+                                    implicitWidth: Math.min(
+                                        exchange.width * 0.96,
+                                        resultLabel.implicitWidth
+                                            + 2 * answerCard.padding)
+                                    implicitHeight: resultLabel.implicitHeight
+                                        + 2 * answerCard.padding
 
                                     radius: Kirigami.Units.smallSpacing * 2
                                     color: PhoenixTheme.cardFill
@@ -768,12 +789,14 @@ Window {
 
                                         anchors.fill: parent
                                         anchors.margins: answerCard.padding
-                                        visible: !answerCard.showPdf
 
-                                        // While the run streams — and for
-                                        // as long as a PDF render takes —
-                                        // the answer shows as Markdown,
-                                        // its LaTeX verbatim.
+                                        // The answer as Markdown, its
+                                        // LaTeX verbatim — until the run
+                                        // finishes and the formulas are
+                                        // compiled into tinted images
+                                        // inside this very document (the
+                                        // text around them stays this
+                                        // native view).
                                         text: exchange.result
                                         textFormat: TextEdit.MarkdownText
                                         wrapMode: Text.WordWrap
@@ -796,22 +819,6 @@ Window {
                                             textDocument,
                                             resultsWindow.paragraphSpacing)
                                     }
-
-                                    // The finished answer, compiled by
-                                    // LaTeX: swaps in when the PDF is
-                                    // ready, and its pages scroll (and
-                                    // zoom) when they outgrow the card.
-                                    PdfDocument {
-                                        id: answerPdfDocument
-                                        source: exchange.answerPdf
-                                    }
-
-                                    PdfMultiPageView {
-                                        anchors.fill: parent
-                                        anchors.margins: answerCard.padding
-                                        visible: answerCard.showPdf
-                                        document: answerPdfDocument
-                                    }
                                 }
 
                                 // When a compile fails, the verbatim view
@@ -820,10 +827,10 @@ Window {
                                 // diagnosable instead of mysterious.
                                 Kirigami.SelectableLabel {
                                     Layout.fillWidth: true
-                                    visible: exchange.pdfFailedReason.length > 0
+                                    visible: exchange.formulaFailedReason.length > 0
                                     wrapMode: Text.WordWrap
                                     text: i18n("Math not rendered: %1",
-                                               exchange.pdfFailedReason)
+                                               exchange.formulaFailedReason)
                                     color: PhoenixTheme.secondaryTextColor
                                     font.pixelSize: Math.max(
                                         9, Math.round(
