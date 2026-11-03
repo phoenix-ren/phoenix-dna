@@ -63,6 +63,16 @@ class Config:
     max_output_chars: int = 20_000
     max_read_lines: int = 2000
 
+    # Asking the user: how long an unanswered ask_user question may block
+    # the run before the model is told the user may be away (0 = forever).
+    ask_timeout_seconds: float = 300.0
+
+    # Root mode: destructive bash commands block on a harness-owned
+    # Allow/Deny (fail closed on timeout). Extra regexes that should
+    # count as destructive can be configured.
+    confirm_destructive: bool = True
+    confirm_patterns: list = field(default_factory=list)
+
     # API keys (minimax_api_key / tavily_api_key / exa_api_key)
     keys: dict = field(default_factory=dict)
 
@@ -98,6 +108,10 @@ def _apply_overrides(config: Config, overrides: dict) -> Config:
         try:
             if isinstance(current, bool):
                 value = bool(value)
+            elif isinstance(current, list):
+                # List settings (e.g. confirm_patterns) take either a
+                # single entry or a list of entries, all as strings.
+                value = [str(item) for item in value] if isinstance(value, (list, tuple)) else [str(value)]
             elif current is None:
                 # A tri-state setting (e.g. "vision"): an empty value or
                 # "auto" leaves the automatic behaviour in place.
@@ -203,5 +217,6 @@ def describe(config: Config) -> str:
         f"sudo            : {config.sudo_bin} (credential ttl {config.credential_ttl_seconds:.0f}s)",
         f"kdialog         : {config.kdialog_bin}",
         f"max turns       : {config.max_turns}",
+        f"ask timeout     : {config.ask_timeout_seconds:.0f}s (0 = wait indefinitely)",
     ]
     return "\n".join(lines)

@@ -20,3 +20,9 @@
 # max_output_chars = 20000
 # sudo_bin = "/usr/bin/sudo"
 # kdialog_bin = "/usr/bin/kdialog"
+# ask_timeout_seconds = 300       # unanswered ask_user questions release the
+#                                 # run after this long (0 = wait forever)
+# confirm_destructive = true      # root mode: destructive bash commands need
+#                                 # an explicit Allow (fail closed on timeout)
+# confirm_patterns = []           # extra regexes that count as destructive,
+#                                 # e.g. ["\\bsystemctl\\s+restart\\b"]

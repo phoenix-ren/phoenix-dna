@@ -89,6 +89,34 @@ Window {
     // prompt.
     property var attachments: []
 
+    // The question the running prompt is blocked on (ask_user): a map
+    // with askId, question, options ([{label, description}]), and header,
+    // multiple, goal, step, estSteps when the model gave them. Bound by
+    // the shell to the agent bridge's pendingQuestion; {} while no
+    // question is waiting.
+    property var pendingQuestion: ({})
+
+    // The wizard state (a series of questions): {active, goal, step,
+    // estSteps, waiting, answers}. While active, the conversation gives
+    // way to the wizard view — one question at a time, with progress.
+    // Bound by the shell to the agent bridge's wizardState; {} while no
+    // wizard is (or was) in flight.
+    property var wizard: ({})
+
+    // Whether a question is waiting — the question card is on screen.
+    readonly property bool questionPending: pendingQuestion
+        && pendingQuestion.askId !== undefined
+
+    // Whether the wizard view owns the window's centre: the bridge keeps
+    // it up across the gaps between a series' questions.
+    readonly property bool wizardActive: wizard.active === true
+
+    // Emitted when the user answers the pending question: the 0-based
+    // indices of the chosen options (may be empty) and their own words
+    // (may be empty). The shell routes both to the agent bridge, which
+    // sends them as AnswerQuestion over D-Bus.
+    signal answerSubmitted(var selected, string text)
+
     // Emitted when the user picks a file to attach to the follow-up.
     signal attachmentAdded(url file)
 
@@ -362,6 +390,11 @@ Window {
 
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+
+                // The wizard view replaces the conversation while the
+                // agent is asking its series; a hidden item does not
+                // take layout space, so the two cleanly alternate.
+                visible: !resultsWindow.wizardActive
 
                 contentWidth: width
                 contentHeight: column.implicitHeight
@@ -921,6 +954,141 @@ Window {
                 }
             }
 
+            // ---- The wizard view -------------------------------------------
+            // A series of questions (ask_user with goal/step/est_steps)
+            // takes over the window's centre: one question at a time, a
+            // progress bar towards "the agent has what it needs", the
+            // answers collected so far, and a skip that tells the agent
+            // to proceed on its judgment. The bridge keeps the wizard up
+            // across the gaps between the series' questions; when the
+            // agent stops asking and goes to work, the conversation
+            // returns.
+            WizardView {
+                id: wizardView
+
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: resultsWindow.wizardActive
+
+                wizard: resultsWindow.wizard
+                question: resultsWindow.pendingQuestion
+
+                onSubmitted: (selected, text) =>
+                    resultsWindow.answerSubmitted(selected, text)
+            }
+
+            // ---- The agent's lone question ---------------------------------
+            // ask_user blocks the run on this question; when it is not
+            // part of a wizard series, the card under the conversation is
+            // how it is answered (the options, own-words field and send
+            // live in QuestionInputs, shared with the wizard view).
+            // Answering, a timeout or the run's end takes it away.
+            Rectangle {
+                id: questionCard
+
+                Layout.fillWidth: true
+                implicitHeight: questionBody.implicitHeight
+                                + 2 * Kirigami.Units.largeSpacing
+                visible: resultsWindow.questionPending
+                         && !resultsWindow.wizardActive
+
+                // Themed like the conversation's bubbles (see
+                // PhoenixTheme): the card reads correctly in both the
+                // light and the dark scheme. A harness confirmation
+                // carries the error tint.
+                radius: Kirigami.Units.smallSpacing * 2
+                color: PhoenixTheme.cardFill
+                border.width: 1
+                border.color: resultsWindow.pendingQuestion.harness === true
+                    ? PhoenixTheme.errorColor
+                    : PhoenixTheme.cardBorderColor
+
+                ColumnLayout {
+                    id: questionBody
+
+                    anchors.fill: parent
+                    anchors.margins: Kirigami.Units.largeSpacing
+                    spacing: Kirigami.Units.smallSpacing
+
+                    // A harness-authored confirmation (destructive root
+                    // command): not a question the model made up. The
+                    // warning tint and the fixed Allow/Deny options below
+                    // make that visible — this is the system asking.
+                    Kirigami.Heading {
+                        level: 5
+                        visible: resultsWindow.pendingQuestion.harness === true
+                        color: PhoenixTheme.errorColor
+
+                        text: i18n("System confirmation — required before the command runs")
+                    }
+
+                    // The wizard context, when the model gave the
+                    // metadata on a lone question: "Question 2 of ~4 ·
+                    // what is collected". (A real series shows the
+                    // wizard view instead of this card.)
+                    Kirigami.Heading {
+                        level: 5
+                        visible: text.length > 0
+                        color: PhoenixTheme.secondaryTextColor
+
+                        text: {
+                            const question = resultsWindow.pendingQuestion;
+                            if (question.step === undefined) {
+                                return "";
+                            }
+                            let context = i18n("Question %1 of ~%2",
+                                               question.step,
+                                               question.estSteps ?? question.step);
+                            if (question.goal) {
+                                context += " · " + question.goal;
+                            }
+                            return context;
+                        }
+                    }
+
+                    Kirigami.Heading {
+                        level: 4
+                        visible: text.length > 0
+                        color: PhoenixTheme.subheadingTextColor
+                        text: resultsWindow.pendingQuestion.header ?? ""
+                    }
+
+                    Kirigami.SelectableLabel {
+                        objectName: "questionLabel"
+
+                        Layout.fillWidth: true
+
+                        text: resultsWindow.pendingQuestion.question ?? ""
+                        textFormat: TextEdit.PlainText
+                        wrapMode: Text.WordWrap
+                        font.weight: Font.DemiBold
+                        color: PhoenixTheme.headingTextColor
+                    }
+
+                    // The options, the own-words field and the send:
+                    // shared with the wizard view.
+                    QuestionInputs {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Kirigami.Units.smallSpacing
+
+                        question: resultsWindow.pendingQuestion
+
+                        onSubmitted: (selected, text) =>
+                            resultsWindow.answerSubmitted(selected, text)
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+
+                        text: i18n("The agent is waiting for this answer before it continues.")
+                        font.pixelSize: Math.max(
+                            9, Math.round(
+                                Qt.application.font.pixelSize * 0.8))
+                        color: PhoenixTheme.secondaryTextColor
+                    }
+                }
+            }
+
             // ---- Bottom: the follow-on input bar ------------------------
             // Replicates the two input surfaces of the panel widget so the
             // conversation can continue right where its result is showing:
@@ -1128,6 +1296,7 @@ Window {
                             readOnly: resultsWindow.listening || resultsWindow.transcribing
                             placeholderText: resultsWindow.transcribing ? i18n("Transcribing…")
                                             : resultsWindow.listening ? i18n("Speak now…")
+                                            : resultsWindow.questionPending ? i18n("Answer the question…")
                                             : i18n("Ask a follow-up…")
 
                             onTextChanged: if (text !== resultsWindow.transcript) {

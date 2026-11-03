@@ -330,10 +330,41 @@ PlasmoidItem {
         // header carries that title.
         sessionTitle: Phoenix.PhoenixController.agent.sessionTitle
 
+        // The question the running prompt is blocked on (ask_user): the
+        // bridge fills it from the daemon's QuestionAsked and empties it
+        // when the question is answered, times out or the run ends; the
+        // window renders it as the question card above the input bar.
+        pendingQuestion: Phoenix.PhoenixController.agent.pendingQuestion
+
+        // The wizard state of a question series: while the bridge keeps
+        // it active, the window shows the wizard view — one question at
+        // a time, with progress and the answers so far — instead of the
+        // conversation.
+        wizard: Phoenix.PhoenixController.agent.wizardState
+
+        // The card's and the wizard's answers go straight back to the
+        // daemon: chosen option indices plus the user's own words, as
+        // AnswerQuestion.
+        onAnswerSubmitted: (selected, text) =>
+            Phoenix.PhoenixController.agent.answerQuestion(selected, text)
+
         // The same toggle the panel widget's record button performs.
         onRecordClicked: Phoenix.PhoenixController.toggleRecording()
 
         onSubmitted: (text) => {
+            // While the run is blocked on a question, the input bar
+            // answers it — typed or dictated, in the user's own words —
+            // instead of queuing another prompt behind the blocked run.
+            // The model interprets free text ("the second one",
+            // "actually cancel"), so the spoken path needs no parsing.
+            if (Phoenix.PhoenixController.agent.answerQuestion([], text)) {
+                // The transcript is consumed: it became an answer, not a
+                // prompt (submitText's clearing, done here because the
+                // answer path bypasses it).
+                resultsWindow.transcript = "";
+                return;
+            }
+            // No question pending (or it just ended): a follow-up.
             // Follow-ons keep the pane as the conversation surface: the
             // controller clears both transcript surfaces when the text is
             // submitted (see submitText()), so the follow-up field is left
@@ -341,8 +372,8 @@ PlasmoidItem {
             // query; here we only follow the newest exchange while the
             // answer streams in below the previous ones. A follow-on keeps
             // the session: the daemon continues the conversation on screen.
-            resultsWindow.showLive();
             Phoenix.PhoenixController.submitText(text, false);
+            resultsWindow.showLive();
         }
 
         // The pane persists until closed by hand (button, Esc); a dismissal

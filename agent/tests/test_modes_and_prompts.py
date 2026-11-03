@@ -18,7 +18,8 @@ def test_profiles():
     assert [m.value for m in MODE_PROFILES] == ["root", "user"]
     assert MODE_PROFILES[Mode.ROOT].use_sudo is True
     assert MODE_PROFILES[Mode.USER].use_sudo is False
-    # Both modes carry the web search tools alongside the filesystem ones.
+    # Both modes carry the web search tools alongside the filesystem ones,
+    # and the question tool.
     assert set(MODE_PROFILES[Mode.USER].tool_names) == {
         "bash",
         "read",
@@ -27,6 +28,7 @@ def test_profiles():
         "ls",
         "tavily_search",
         "exa_search",
+        "ask_user",
     }
     assert set(MODE_PROFILES[Mode.ROOT].tool_names) == set(
         MODE_PROFILES[Mode.USER].tool_names
@@ -43,6 +45,9 @@ def test_working_dirs(config, home_dir):
 
 def test_build_toolset_user(config, home_dir):
     tools = build_toolset(MODE_PROFILES[Mode.USER], config, home_dir=home_dir)
+    # without an ask coordinator there is nobody to deliver answers,
+    # so ask_user stays out — but the search tools are in (their keys
+    # are configured); each drops out for its own reason
     assert set(tools) == {
         "bash",
         "read",
@@ -64,6 +69,22 @@ def test_build_toolset_user(config, home_dir):
         "edit",
         "ls",
     }
+
+
+def test_build_toolset_with_ask_coordinator(config, home_dir):
+    from phoenix_dna.tools.ask import AskCoordinator
+
+    coordinator = AskCoordinator(emit=lambda event: None)
+    tools = build_toolset(
+        MODE_PROFILES[Mode.USER],
+        config,
+        home_dir=home_dir,
+        run_id="run_ask",
+        ask_coordinator=coordinator,
+    )
+    assert "ask_user" in tools
+    assert tools["ask_user"]._run_id == "run_ask"
+    assert tools["ask_user"]._timeout == config.ask_timeout_seconds
 
 
 def test_build_toolset_root_requires_cache(config):
@@ -111,6 +132,8 @@ def test_system_prompts(config):
         # without registered search tools the prompt must not advertise any
         assert "tavily_search" not in prompt
         assert "exa_search" not in prompt
+        # every mode can ask the user a question
+        assert "ask_user" in prompt
 
     root = build_system_prompt(MODE_PROFILES[Mode.ROOT])
     assert "sudo" in root and "destructive" in root
