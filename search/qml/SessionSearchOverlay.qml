@@ -78,9 +78,10 @@ PlasmaCore.Dialog {
 
     // The gap between two paragraphs of the agent's Markdown, which Qt
     // renders with none at all (see MarkdownDocument.spaceParagraphs);
-    // about four fifths of a line, so paragraphs read as paragraphs.
+    // a line of the answer's own size, so paragraphs read as
+    // paragraphs and the text breathes with the size it is set in.
     readonly property real paragraphSpacing:
-        Math.round(Qt.application.font.pixelSize * 0.8)
+        PhoenixTheme.answerParagraphSpacing
 
     // Tokens for the formula renders of the stored answers; the
     // delegates match their own token in LatexRenderer's signals.
@@ -415,7 +416,15 @@ PlasmaCore.Dialog {
                         boundsBehavior: Flickable.StopAtBounds
 
                         // The scrollbar for a long session list.
-                        PC3.ScrollBar.vertical: PC3.ScrollBar {}
+                        PC3.ScrollBar.vertical: PC3.ScrollBar {
+                            id: sessionListBar
+                            objectName: "sessionListBar"
+                        }
+
+                        // The scrollbar lies over the list, so the names
+                        // must not run under it.
+                        readonly property real scrollbarInset:
+                            sessionListBar.visible ? sessionListBar.width : 0
 
                         // The selection is the overlay's: the list only
                         // shows it (and scrolls to it).
@@ -432,7 +441,7 @@ PlasmaCore.Dialog {
                             readonly property string previewText:
                                 modelData.preview || ""
 
-                            width: sessionList.width
+                            width: sessionList.width - sessionList.scrollbarInset
                             height: sessionColumn.implicitHeight
                                 + 2 * Kirigami.Units.smallSpacing
                             radius: Kirigami.Units.smallSpacing
@@ -530,12 +539,20 @@ PlasmaCore.Dialog {
                         contentHeight: transcriptColumn.implicitHeight
 
                         // The scrollbar for a long conversation.
-                        PC3.ScrollBar.vertical: PC3.ScrollBar {}
+                        PC3.ScrollBar.vertical: PC3.ScrollBar {
+                            id: transcriptBar
+                            objectName: "transcriptBar"
+                        }
+
+                        // The scrollbar lies over the content, so the
+                        // text must not run under it.
+                        readonly property real scrollbarInset:
+                            transcriptBar.visible ? transcriptBar.width : 0
 
                         ColumnLayout {
                             id: transcriptColumn
 
-                            width: transcript.width
+                            width: transcript.width - transcript.scrollbarInset
                             spacing: Kirigami.Units.largeSpacing
 
                             Repeater {
@@ -754,7 +771,21 @@ PlasmaCore.Dialog {
                                         textFormat: TextEdit.MarkdownText
                                         wrapMode: Text.WordWrap
                                         color: PhoenixTheme.primaryTextColor
+                                        // The agent's own voice, in the
+                                        // family and the size the user
+                                        // chose for this mode (see
+                                        // PhoenixTheme).
+                                        font.family: PhoenixTheme.answerFontFamily
+                                        font.pixelSize: PhoenixTheme.answerFontSize
                                         onTextChanged: Qt.callLater(
+                                            MarkdownDocument.spaceParagraphs,
+                                            textDocument,
+                                            searchOverlay.paragraphSpacing)
+                                        // The spacing follows the size
+                                        // of the text: when the user
+                                        // changes it, the paragraphs are
+                                        // spaced again.
+                                        onFontChanged: Qt.callLater(
                                             MarkdownDocument.spaceParagraphs,
                                             textDocument,
                                             searchOverlay.paragraphSpacing)

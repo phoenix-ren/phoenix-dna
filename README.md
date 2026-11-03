@@ -80,6 +80,19 @@ The panel's gear button opens the settings window, which configures:
   dictation overlay the moment it is made; the panel widget itself keeps
   matching the panel it lives on.
 
+  The same section holds the **font of the agent's answers**, one family
+  and one size per mode — the light mode is meant to be read like a news
+  article, the dark one like a screen that never sleeps. The two are
+  chosen independently of each other and of the colour scheme; the
+  scheme decides which of the two applies. They are stored as
+  `ui_font_light` and `ui_font_dark` (and `ui_font_size_light`,
+  `ui_font_size_dark`) in the same file, and an empty choice means the
+  system's own font and size. Every font the system has is on offer,
+  and a line of sample text below each list shows the face as the
+  answers would be set in it. Only the agent's own words — the answers
+  and the notes it thinks in — are set in them; the chrome around them
+  (labels, buttons, tooltips) always keeps the system's font.
+
 * **API keys** — the LLM key (the agent daemon's MiniMax key) and the
   speech-to-text key, with the speech-to-text provider (MiniMax or OpenAI)
   chosen alongside it. Both are stored in

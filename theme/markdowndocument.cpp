@@ -28,11 +28,15 @@ void MarkdownDocument::spaceParagraphs(QQuickTextDocument *document,
         }
         const bool first = block == doc->begin();
         const bool last = !block.next().isValid();
+        // A heading opens a section: it wants more room above it than
+        // a paragraph does, and it binds to the text it introduces, so
+        // it keeps less room below.
+        const bool heading = block.blockFormat().headingLevel() > 0;
         // Qt does not collapse margins: the wanted gap is split across
         // the two blocks that meet, and the outermost edges stay at the
         // container's own padding.
-        const qreal top = first ? 0 : spacing / 2;
-        const qreal bottom = last ? 0 : spacing / 2;
+        const qreal top = first ? 0 : (heading ? spacing : spacing / 2);
+        const qreal bottom = last ? 0 : (heading ? spacing / 4 : spacing / 2);
         QTextBlockFormat format = block.blockFormat();
         // Idempotence: rewriting an unchanged format would still emit
         // contentsChange, and through the layout cascade that reaches

@@ -44,6 +44,23 @@ Qt::KeyboardModifiers relevantModifiers(int modifiers)
         & (Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier);
 }
 
+/*! \brief The size stored under \a field in keys.json, in pixels.
+ *
+ * Every value of the file is a string, but a hand-edited one may be
+ * a number; both are read, and anything that is not a size at all
+ * comes out as zero — "the size the window would give the answer
+ * anyway". */
+int fontSize(const QJsonObject &keys, const QString &field)
+{
+    const QJsonValue value = keys.value(field);
+    if (value.isDouble()) {
+        return value.toInt();
+    }
+    bool isNumber = false;
+    const int size = value.toString().toInt(&isNumber);
+    return isNumber ? size : 0;
+}
+
 /*! \brief Whether \a key is itself a modifier key. */
 bool isModifierKey(int key)
 {
@@ -155,6 +172,22 @@ void SettingsStore::refresh()
                 ? kThemeDark
                 : kThemeSystem;
 
+    // The fonts of the answers: a family name, or nothing at all (the
+    // system's own font). A hand-edited file with a family that is not
+    // installed is kept as it is — the settings window falls back to
+    // the system's font for it, and the choice becomes selectable again
+    // once the family is there.
+    const QString lightFont = keys.value(QStringLiteral("ui_font_light")).toString();
+    const QString darkFont = keys.value(QStringLiteral("ui_font_dark")).toString();
+
+    // The sizes of the answers, in pixels; zero means "the size the
+    // window would give the answer anyway". A size that makes no
+    // sense is read as that zero rather than as a size of nothing.
+    // The file keeps every value as a string, but a hand-edited one
+    // may well be a number.
+    const int lightFontSize = qMax(0, fontSize(keys, QStringLiteral("ui_font_size_light")));
+    const int darkFontSize = qMax(0, fontSize(keys, QStringLiteral("ui_font_size_dark")));
+
     if (llmKey != m_llmApiKey) {
         m_llmApiKey = llmKey;
         Q_EMIT llmApiKeyChanged();
@@ -170,6 +203,22 @@ void SettingsStore::refresh()
     if (theme != m_theme) {
         m_theme = theme;
         Q_EMIT themeChanged();
+    }
+    if (lightFont != m_lightFont) {
+        m_lightFont = lightFont;
+        Q_EMIT lightFontChanged();
+    }
+    if (darkFont != m_darkFont) {
+        m_darkFont = darkFont;
+        Q_EMIT darkFontChanged();
+    }
+    if (lightFontSize != m_lightFontSize) {
+        m_lightFontSize = lightFontSize;
+        Q_EMIT lightFontSizeChanged();
+    }
+    if (darkFontSize != m_darkFontSize) {
+        m_darkFontSize = darkFontSize;
+        Q_EMIT darkFontSizeChanged();
     }
     refreshEnvironmentFlags();
 }
@@ -434,6 +483,69 @@ bool SettingsStore::saveTheme(const QString &theme)
                    normalized == kThemeLight ? i18n("Light")
                    : normalized == kThemeDark ? i18n("Dark")
                                               : i18n("Follow system")),
+              false);
+    return true;
+}
+
+bool SettingsStore::saveLightFont(const QString &family)
+{
+    return saveAnswerFont(QStringLiteral("ui_font_light"), family, kThemeLight);
+}
+
+bool SettingsStore::saveDarkFont(const QString &family)
+{
+    return saveAnswerFont(QStringLiteral("ui_font_dark"), family, kThemeDark);
+}
+
+bool SettingsStore::saveLightFontSize(int size)
+{
+    return saveAnswerFontSize(QStringLiteral("ui_font_size_light"), size,
+                               kThemeLight);
+}
+
+bool SettingsStore::saveDarkFontSize(int size)
+{
+    return saveAnswerFontSize(QStringLiteral("ui_font_size_dark"), size,
+                               kThemeDark);
+}
+
+bool SettingsStore::saveAnswerFont(const QString &field,
+                                   const QString &family,
+                                   const QString &mode)
+{
+    // An empty family means "the system's own font" and is stored by
+    // removing the field — the same way an emptied API key is stored
+    // by removing its field.
+    if (!writeKeyField(field, family)) {
+        return false;
+    }
+
+    setStatus(family.isEmpty()
+                  ? i18n("The answers are set in the system's font in %1 mode.",
+                         mode == kThemeLight ? i18n("light") : i18n("dark"))
+                  : i18n("The answers are set in %1 in %2 mode.",
+                         family, mode == kThemeLight ? i18n("light")
+                                                     : i18n("dark")),
+              false);
+    return true;
+}
+
+bool SettingsStore::saveAnswerFontSize(const QString &field, int size,
+                                        const QString &mode)
+{
+    // A size of zero means "the size the window would give the answer
+    // anyway" and is stored by removing the field, like an emptied
+    // API key.
+    if (!writeKeyField(field, size > 0 ? QString::number(size) : QString())) {
+        return false;
+    }
+
+    setStatus(size > 0
+                  ? i18n("The answers are set in %1 pixels in %2 mode.",
+                         size, mode == kThemeLight ? i18n("light")
+                                                  : i18n("dark"))
+                  : i18n("The answers keep their own size in %1 mode.",
+                         mode == kThemeLight ? i18n("light") : i18n("dark")),
               false);
     return true;
 }

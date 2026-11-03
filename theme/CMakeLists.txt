@@ -23,6 +23,11 @@ ecm_add_qml_module(org.phoenixdna.theme
     URI org.phoenixdna.theme
     VERSION 1.0
     GENERATE_PLUGIN_SOURCE
+    # Kirigami's theme names the system's own font family, which is what
+    # the agent's answers fall back on when no family is chosen for the
+    # mode a window is in.
+    DEPENDENCIES
+        org.kde.kirigami
     SOURCES
         latexrenderer.cpp
         latexrenderer.h

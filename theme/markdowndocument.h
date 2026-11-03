@@ -23,7 +23,9 @@ class QQuickTextDocument;
  * wall of text — spaceParagraphs() walks the rendered document and
  * gives every non-list block a margin, so paragraphs, headings, quotes
  * and code blocks breathe while list items stay tight (the gap between
- * items belongs to the list, not to each item).
+ * items belongs to the list, not to each item). A heading gets more
+ * room above it than a paragraph and keeps less below: it opens a
+ * section and binds to the text it introduces.
  */
 class MarkdownDocument : public QObject
 {

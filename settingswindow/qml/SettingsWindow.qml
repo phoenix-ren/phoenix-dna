@@ -15,8 +15,10 @@ import org.phoenixdna.theme
  * Three groups:
  *
  *   * Appearance — the colour scheme of the app's own windows: follow
- *     the system, or force light or dark. The choice applies to every
- *     window the moment it is made, through the shared theme singleton.
+ *     the system, or force light or dark, and the font the agent's
+ *     answers are set in, one family per mode. The choice applies to
+ *     every window the moment it is made, through the shared theme
+ *     singleton.
  *
  *   * API keys — the LLM key (the agent daemon's MiniMax key) and the
  *     speech-to-text key, with the speech-to-text provider chosen here
@@ -43,6 +45,23 @@ Window {
     // The colour scheme of the app's windows: "system" (the default),
     // "light" or "dark".
     property string theme: "system"
+
+    // The families the agent's answers are set in, one per mode ("" —
+    // the system's own font — when nothing is chosen).
+    property string lightFont: ""
+    property string darkFont: ""
+
+    // The sizes the agent's answers are set in, in pixels, one per mode
+    // (0 — the size the window would give the answer anyway — when
+    // nothing is chosen).
+    property int lightFontSize: 0
+    property int darkFontSize: 0
+
+    // The families on offer, as they are listed: every one this
+    // system has, with the system's own font first. The list is built
+    // when the window opens, so a family installed in the meantime
+    // shows up.
+    property var fontChoices: []
 
     // The live global bindings, in native notation ("" when unbound).
     property string recordShortcut: ""
@@ -75,6 +94,10 @@ Window {
 
     // ---- Interaction (the shell routes these to the store) ---------------
     signal themeChangeRequested(string theme)
+    signal lightFontChangeRequested(string family)
+    signal darkFontChangeRequested(string family)
+    signal lightFontSizeChangeRequested(int size)
+    signal darkFontSizeChangeRequested(int size)
     signal llmKeySaveRequested(string key)
     signal sttKeySaveRequested(string key)
     signal sttProviderChangeRequested(string provider)
@@ -114,6 +137,21 @@ Window {
             sttKeyFieldEdit.text = window.sttApiKey
             sttProviderCombo.currentIndex = window.sttProvider === "openai" ? 1 : 0
             themeCombo.currentIndex = window.themeIndex(window.theme)
+            // The font list is rebuilt on every opening: what this
+            // system has may have changed since the last look.
+            window.fontChoices = window.buildFontChoices()
+            lightFontCombo.currentIndex =
+                window.fontIndex(window.fontChoices, window.lightFont)
+            darkFontCombo.currentIndex =
+                window.fontIndex(window.fontChoices, window.darkFont)
+            // The sizes: the chosen one, or the size the window would
+            // give the answer anyway.
+            lightFontSizeBox.value = window.lightFontSize > 0
+                ? window.lightFontSize
+                : PhoenixTheme.lightAnswerFontSize
+            darkFontSizeBox.value = window.darkFontSize > 0
+                ? window.darkFontSize
+                : PhoenixTheme.darkAnswerFontSize
         }
     }
 
@@ -122,11 +160,73 @@ Window {
     onSttProviderChanged: sttProviderCombo.currentIndex =
         window.sttProvider === "openai" ? 1 : 0
     onThemeChanged: themeCombo.currentIndex = window.themeIndex(window.theme)
+    onLightFontChanged: lightFontCombo.currentIndex =
+        window.fontIndex(window.fontChoices, window.lightFont)
+    onDarkFontChanged: darkFontCombo.currentIndex =
+        window.fontIndex(window.fontChoices, window.darkFont)
+    onLightFontSizeChanged: lightFontSizeBox.value = window.lightFontSize > 0
+        ? window.lightFontSize
+        : PhoenixTheme.lightAnswerFontSize
+    onDarkFontSizeChanged: darkFontSizeBox.value = window.darkFontSize > 0
+        ? window.darkFontSize
+        : PhoenixTheme.darkAnswerFontSize
 
     // The combo's row for a scheme value ("system" → 0, "light" → 1,
     // "dark" → 2), kept in one place for the two pushes above.
     function themeIndex(theme) {
         return theme === "light" ? 1 : theme === "dark" ? 2 : 0
+    }
+
+    // The families on offer: every one this system has, sorted by name,
+    // with the system's own font first — it needs nothing installed,
+    // and it is where most people want to be anyway.
+    function buildFontChoices() {
+        const families = Qt.fontFamilies()
+        families.sort(function (a, b) {
+            const first = a.toLowerCase()
+            const second = b.toLowerCase()
+            return first < second ? -1 : (first > second ? 1 : 0)
+        })
+        const choices = [{
+            family: "",
+            label: i18n("System default"),
+            note: i18n("The system's own font.")
+        }]
+        for (let i = 0; i < families.length; ++i) {
+            choices.push({
+                family: families[i],
+                label: families[i],
+                note: ""
+            })
+        }
+        return choices
+    }
+
+    // The face a mode's answers are set in — what the preview below
+    // the list is shown in.
+    function previewFamily(dark) {
+        const chosen = dark ? darkFont : lightFont
+        return chosen.length > 0 ? chosen : PhoenixTheme.systemFontFamily
+    }
+
+    // The size the preview is shown in: the one chosen for the mode,
+    // kept within what the window can show without growing.
+    function previewSize(dark) {
+        const size = dark ? PhoenixTheme.darkAnswerFontSize
+                          : PhoenixTheme.lightAnswerFontSize
+        return Math.max(9, Math.min(size, 28))
+    }
+
+    // The row of a family in the list. A family that is not on this
+    // system — or one that is no longer offered — has no row of its
+    // own and falls back to the system's font.
+    function fontIndex(choices, family) {
+        for (let i = 0; i < choices.length; ++i) {
+            if (choices[i].family === family) {
+                return i
+            }
+        }
+        return 0
     }
 
     // Closing from the title bar hides instead of destroying: the shell
@@ -236,6 +336,209 @@ Window {
                         text: i18n("Applies to this window, the conversation "
                             + "window and the session search. The panel widget "
                             + "itself keeps matching the panel it lives in.")
+                    }
+
+                    // ---- The fonts of the answers -------------------------
+                    // One family and one size per mode: the light mode
+                    // is meant to be read like a news article, the dark
+                    // one like a screen that never sleeps. The two are
+                    // chosen independently of each other and of the
+                    // colour scheme — the scheme decides which of the
+                    // two applies.
+                    //
+                    // A grid, so the two rows line up: the same
+                    // columns, the same widths.
+                    GridLayout {
+                        Layout.fillWidth: true
+                        columns: 4
+                        columnSpacing: Kirigami.Units.smallSpacing
+                        rowSpacing: Kirigami.Units.smallSpacing
+
+                        PC3.Label {
+                            text: i18n("Light mode font")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.ComboBox {
+                            id: lightFontCombo
+                            objectName: "lightFontCombo"
+
+                            // The two lists share a column, so they
+                            // are as wide as each other.
+                            Layout.preferredWidth: Kirigami.Units.gridUnit * 14
+
+                            model: window.fontChoices
+                            textRole: "label"
+
+                            // Every entry is shown in its own face: a
+                            // name says little about a font, the
+                            // letterforms say everything.
+                            delegate: PC3.ItemDelegate {
+                                required property var model
+                                required property int index
+
+                                width: ListView.view.width
+                                text: model.label
+                                highlighted: lightFontCombo.highlightedIndex
+                                    === index
+                                font.family: model.family.length > 0
+                                    ? model.family
+                                    : PhoenixTheme.systemFontFamily
+                            }
+
+                            onActivated: (index) =>
+                                window.lightFontChangeRequested(
+                                    window.fontChoices[index].family)
+                        }
+
+                        // The Plasma popup grows to the height of the
+                        // whole list — and the list is every font on
+                        // the system, taller than the screen, so it
+                        // cannot be scrolled. Its height is capped
+                        // here, and its width is half as much wider
+                        // again, so the longer family names are
+                        // readable.
+                        Binding {
+                            target: lightFontCombo.popup
+                            property: "width"
+                            value: lightFontCombo.width * 1.5
+                        }
+                        Binding {
+                            target: lightFontCombo.popup
+                            property: "height"
+                            value: Math.min(
+                                lightFontCombo.popup.contentItem.contentHeight,
+                                Screen.desktopAvailableHeight * 0.6)
+                        }
+
+                        PC3.Label {
+                            text: i18n("px")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.SpinBox {
+                            id: lightFontSizeBox
+                            objectName: "lightFontSizeBox"
+
+                            Layout.preferredWidth: Kirigami.Units.gridUnit * 5
+                            from: 8
+                            to: 48
+                            // Only the user's own changes are stored
+                            // (valueModified); a value set from here
+                            // is the store's, not the user's.
+                            onValueModified:
+                                window.lightFontSizeChangeRequested(value)
+                        }
+
+                        // The face itself, in a line of text: the
+                        // choice is seen, not only named.
+                        PC3.Label {
+                            Layout.columnSpan: 4
+                            Layout.fillWidth: true
+                            // Inset from the controls above it, so the
+                            // sample is read as a sample and not as
+                            // another label of the form.
+                            Layout.leftMargin: Kirigami.Units.gridUnit * 2
+
+                            text: i18n("The quick brown fox jumps over the lazy dog")
+                            color: PhoenixTheme.primaryTextColor
+                            font.family: window.previewFamily(false)
+                            font.pixelSize: window.previewSize(false)
+                            elide: Text.ElideRight
+                        }
+
+                        PC3.Label {
+                            text: i18n("Dark mode font")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.ComboBox {
+                            id: darkFontCombo
+                            objectName: "darkFontCombo"
+
+                            // The two lists share a column, so they
+                            // are as wide as each other.
+                            Layout.preferredWidth: Kirigami.Units.gridUnit * 14
+
+                            model: window.fontChoices
+                            textRole: "label"
+
+                            // The same preview as the light mode's
+                            // list: the face, shown in its own
+                            // letterforms.
+                            delegate: PC3.ItemDelegate {
+                                required property var model
+                                required property int index
+
+                                width: ListView.view.width
+                                text: model.label
+                                highlighted: darkFontCombo.highlightedIndex
+                                    === index
+                                font.family: model.family.length > 0
+                                    ? model.family
+                                    : PhoenixTheme.systemFontFamily
+                            }
+
+                            onActivated: (index) =>
+                                window.darkFontChangeRequested(
+                                    window.fontChoices[index].family)
+                        }
+
+                        // The same two corrections as the light mode's
+                        // list: a height that can be scrolled and a
+                        // width that fits the names.
+                        Binding {
+                            target: darkFontCombo.popup
+                            property: "width"
+                            value: darkFontCombo.width * 1.5
+                        }
+                        Binding {
+                            target: darkFontCombo.popup
+                            property: "height"
+                            value: Math.min(
+                                darkFontCombo.popup.contentItem.contentHeight,
+                                Screen.desktopAvailableHeight * 0.6)
+                        }
+
+                        PC3.Label {
+                            text: i18n("px")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.SpinBox {
+                            id: darkFontSizeBox
+                            objectName: "darkFontSizeBox"
+
+                            Layout.preferredWidth: Kirigami.Units.gridUnit * 5
+                            from: 8
+                            to: 48
+                            onValueModified:
+                                window.darkFontSizeChangeRequested(value)
+                        }
+
+                        PC3.Label {
+                            Layout.columnSpan: 4
+                            Layout.fillWidth: true
+                            Layout.leftMargin: Kirigami.Units.gridUnit * 2
+
+                            text: i18n("The quick brown fox jumps over the lazy dog")
+                            color: PhoenixTheme.primaryTextColor
+                            font.family: window.previewFamily(true)
+                            font.pixelSize: window.previewSize(true)
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    HintLabel {
+                        Layout.fillWidth: true
+                        text: i18n("These set the font of the agent's answers "
+                            + "alone; the rest of the window keeps the system's "
+                            + "font. Whichever mode the window is in decides "
+                            + "which of the two applies. In the light mode a "
+                            + "serif belongs there — Newsreader was drawn for "
+                            + "news articles, and Noto Serif is on every "
+                            + "system; on a dark ground a serif is tiring, so a "
+                            + "sans does.")
                     }
 
                     Kirigami.Separator {

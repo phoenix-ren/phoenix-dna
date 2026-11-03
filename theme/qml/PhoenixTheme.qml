@@ -4,6 +4,7 @@
 pragma Singleton
 
 import QtQuick
+import org.kde.kirigami as Kirigami
 
 /*
  * The shared colour palette of the app's own windows.
@@ -34,6 +35,10 @@ import QtQuick
  * The dark values are the ones the windows used to hardcode; the light
  * ones are their counterparts, built from black overlays the way the
  * dark ones are built from white ones.
+ *
+ * The font of the agent's answers lives here too, for the same reason:
+ * one place decides what the agent's own words look like in either
+ * mode, and every window that shows an answer reads it from here.
  */
 QtObject {
     // ---- The mode ---------------------------------------------------------
@@ -127,4 +132,89 @@ QtObject {
     readonly property color errorColor: isDark ? "#f66151" : "#c01c28"
     readonly property color successColor: isDark ? "#57e389" : "#15803d"
     readonly property color warningColor: isDark ? "#f67400" : "#b45309"
+
+    // ---- The agent's font --------------------------------------------------
+    // The font the agent's own words are set in — the answers and the
+    // notes it thinks in. The chrome around them (labels, buttons,
+    // tooltips) keeps the system's font: the voice of the agent is the
+    // one thing in the window that is set apart.
+    //
+    // Two families, one per mode: the light mode is meant to be read
+    // like a news article, the dark one like a screen that never sleeps.
+    // The two are chosen independently of each other and of the scheme
+    // above — whether the desktop is dark or light decides which of
+    // them applies, nothing else does.
+    //
+    // Written by the shell (the settings store owns the persisted
+    // values); "" means "the system's own font", 0 means "the size the
+    // window would give the answer anyway".
+    property string lightFont: ""
+    property string darkFont: ""
+    property int lightFontSize: 0
+    property int darkFontSize: 0
+
+    // The system's own font family, as the desktop's theme names it.
+    // Kirigami's theme follows the Plasma theme, so this changes with
+    // it; the generic fallback covers a desktop that names no family
+    // of its own.
+    readonly property string systemFontFamily: {
+        const family = Kirigami.Theme.defaultFont.family
+        return family.length > 0 ? family : "Sans Serif"
+    }
+
+    // The app's own text size, in pixels, as the app font names it.
+    // The app font carries either a pixel size or a point size, and
+    // only the first of the two can be used as one.
+    readonly property int appFontSize: Qt.application.font.pixelSize
+
+    // The app's own text size in pixels, whether the app font names it
+    // in pixels or in points: the desktop's theme is the fallback for
+    // the latter, and a plain 12 the last one. This is what the
+    // settings window shows as the size the answers would be set in.
+    readonly property int appTextSize: {
+        if (appFontSize > 0) {
+            return appFontSize
+        }
+        const themed = Kirigami.Theme.defaultFont.pixelSize
+        return themed > 0 ? themed : 12
+    }
+
+    // The family the agent's answers are set in right now: the one
+    // chosen for the mode the windows currently run in, or the system's
+    // own when nothing is chosen for it.
+    readonly property string answerFontFamily: {
+        const chosen = isDark ? darkFont : lightFont
+        return chosen.length > 0 ? chosen : systemFontFamily
+    }
+
+    // The size the answers are set in right now, in pixels: the one
+    // chosen for the mode the windows currently run in, or the app's
+    // own text size — a little larger, the answer being the one text
+    // the window exists for.
+    readonly property int answerFontSize: {
+        const chosen = isDark ? darkFontSize : lightFontSize
+        return chosen > 0 ? chosen : Math.round(appFontSize * 1.12)
+    }
+
+    // The same size for a mode, for the settings window to show what
+    // the answers would be set in.
+    readonly property int lightAnswerFontSize:
+        lightFontSize > 0 ? lightFontSize : Math.round(appTextSize * 1.12)
+    readonly property int darkAnswerFontSize:
+        darkFontSize > 0 ? darkFontSize : Math.round(appTextSize * 1.12)
+
+    // The notes the agent thinks in: smaller than the answer, since
+    // they are context and not the result.
+    readonly property int notesFontSize: {
+        const chosen = isDark ? darkFontSize : lightFontSize
+        return chosen > 0 ? Math.round(chosen * 0.76)
+                          : Math.round(appFontSize * 0.85)
+    }
+
+    // The gap between two paragraphs of the answer: a line and a
+    // quarter of the answer's own size, so the text breathes with it
+    // — and a heading opens its section with more room than a
+    // paragraph gets.
+    readonly property int answerParagraphSpacing:
+        Math.round(answerFontSize * 1.25)
 }

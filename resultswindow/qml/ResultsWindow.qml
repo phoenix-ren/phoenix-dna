@@ -130,9 +130,10 @@ Window {
 
     // The gap between two paragraphs of the agent's Markdown, which Qt
     // renders with none at all (see MarkdownDocument.spaceParagraphs);
-    // about four fifths of a line, so paragraphs read as paragraphs.
+    // a line of the answer's own size, so paragraphs read as
+    // paragraphs and the text breathes with the size it is set in.
     readonly property real paragraphSpacing:
-        Math.round(Qt.application.font.pixelSize * 0.8)
+        PhoenixTheme.answerParagraphSpacing
 
     // Tokens for the formula renders of finished answers; the delegates
     // match their own token in LatexRenderer's signals.
@@ -357,6 +358,7 @@ Window {
 
             Flickable {
                 id: scroller
+                objectName: "scroller"
 
                 Layout.fillWidth: true
                 Layout.fillHeight: true
@@ -366,7 +368,16 @@ Window {
                 clip: true
 
                 // The scrollbar for a conversation longer than the pane.
-                PC3.ScrollBar.vertical: PC3.ScrollBar {}
+                PC3.ScrollBar.vertical: PC3.ScrollBar {
+                    id: verticalBar
+                    objectName: "verticalBar"
+                }
+
+                // The scrollbar lies over the content, so the text must
+                // not run under it: the conversation is inset by its
+                // width while it is there.
+                readonly property real scrollbarInset:
+                    verticalBar.visible ? verticalBar.width : 0
 
                 // Terminal behaviour: keep the newest exchange in view —
                 // the conversation flows downwards. Scrolling up to read
@@ -387,7 +398,7 @@ Window {
 
                 ColumnLayout {
                     id: column
-                    width: scroller.width
+                    width: scroller.width - scroller.scrollbarInset
                     spacing: Kirigami.Units.largeSpacing
 
                     // One delegate per prompt/answer pair, oldest first:
@@ -611,6 +622,14 @@ Window {
                                             MarkdownDocument.spaceParagraphs,
                                             textDocument,
                                             resultsWindow.paragraphSpacing)
+                                        // The spacing follows the size
+                                        // of the text: when the user
+                                        // changes it, the paragraphs are
+                                        // spaced again.
+                                        onFontChanged: Qt.callLater(
+                                            MarkdownDocument.spaceParagraphs,
+                                            textDocument,
+                                            resultsWindow.paragraphSpacing)
                                     }
                                 }
 
@@ -702,10 +721,13 @@ Window {
                                     textFormat: TextEdit.MarkdownText
                                     wrapMode: Text.WordWrap
                                     color: PhoenixTheme.secondaryTextColor
+                                    // The agent's own words, in the
+                                    // family's voice as well — the
+                                    // notes are prose, not chrome.
+                                    font.family: PhoenixTheme.answerFontFamily
                                     // Smaller than the answer: context,
                                     // not the result.
-                                    font.pixelSize: Math.round(
-                                        Qt.application.font.pixelSize * 0.85)
+                                    font.pixelSize: PhoenixTheme.notesFontSize
                                     onTextChanged: Qt.callLater(
                                         MarkdownDocument.spaceParagraphs,
                                         textDocument, resultsWindow.paragraphSpacing)
@@ -809,8 +831,7 @@ Window {
                                     // Larger than the rest of the
                                     // window: this is the text the
                                     // user came for.
-                                    font.pixelSize: Math.round(
-                                        Qt.application.font.pixelSize * 1.12)
+                                    font.pixelSize: PhoenixTheme.answerFontSize
                                     // Re-space after every change: the
                                     // answer streams in as deltas,
                                     // each rebuilding the document.

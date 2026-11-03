@@ -168,6 +168,30 @@ PlasmoidItem {
         }
     }
 
+    // The fonts of the agent's answers: one family per mode, both
+    // chosen independently of the colour scheme above. The theme
+    // singleton resolves which of the two the windows currently use.
+    Binding {
+        target: PhoenixTheme
+        property: "lightFont"
+        value: Phoenix.PhoenixController.settings.lightFont
+    }
+    Binding {
+        target: PhoenixTheme
+        property: "darkFont"
+        value: Phoenix.PhoenixController.settings.darkFont
+    }
+    Binding {
+        target: PhoenixTheme
+        property: "lightFontSize"
+        value: Phoenix.PhoenixController.settings.lightFontSize
+    }
+    Binding {
+        target: PhoenixTheme
+        property: "darkFontSize"
+        value: Phoenix.PhoenixController.settings.darkFontSize
+    }
+
     // Opens the prompt editor for a query the user types rather than
     // dictates: the same overlay the microphone opens, but with the
     // keyboard in it and nothing being recorded.
@@ -399,6 +423,14 @@ PlasmoidItem {
         // out to every window through the theme singleton.
         theme: Phoenix.PhoenixController.settings.theme
 
+        // The fonts of the agent's answers, one family and one size per
+        // mode; the store persists them and the Bindings above fan
+        // them out the same way.
+        lightFont: Phoenix.PhoenixController.settings.lightFont
+        darkFont: Phoenix.PhoenixController.settings.darkFont
+        lightFontSize: Phoenix.PhoenixController.settings.lightFontSize
+        darkFontSize: Phoenix.PhoenixController.settings.darkFontSize
+
         // The live global bindings, as the panel buttons' tooltips show
         // them. Re-binds in System Settings update these too.
         recordShortcut: Phoenix.PhoenixController.recordShortcut
@@ -426,6 +458,14 @@ PlasmoidItem {
             Phoenix.PhoenixController.settings.saveSttProvider(provider)
         onThemeChangeRequested: (theme) =>
             Phoenix.PhoenixController.settings.saveTheme(theme)
+        onLightFontChangeRequested: (family) =>
+            Phoenix.PhoenixController.settings.saveLightFont(family)
+        onDarkFontChangeRequested: (family) =>
+            Phoenix.PhoenixController.settings.saveDarkFont(family)
+        onLightFontSizeChangeRequested: (size) =>
+            Phoenix.PhoenixController.settings.saveLightFontSize(size)
+        onDarkFontSizeChangeRequested: (size) =>
+            Phoenix.PhoenixController.settings.saveDarkFontSize(size)
 
         // role is "record", "screenshot", "search" or "prompt"; the store
         // dispatches to the matching KGlobalAccel action.

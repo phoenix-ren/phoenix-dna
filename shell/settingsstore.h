@@ -39,6 +39,14 @@ class QTimer;
  * the shared theme singleton every window reads, so a change applies
  * to all of them the moment it is made.
  *
+ * The two fonts of the agent's answers belong here too: the family the
+ * answers are set in in light mode and the one they are set in in dark
+ * mode, stored as "ui_font_light" and "ui_font_dark", and the sizes
+ * they are set in, stored as "ui_font_size_light" and
+ * "ui_font_size_dark". They are chosen independently of the colour
+ * scheme — the scheme decides which of the two applies, nothing else
+ * does.
+ *
  * Everything the user does is answered with a statusMessage (errors in
  * statusIsError), which the settings window shows. Success messages fade
  * out by themselves; errors stay until the next action.
@@ -60,6 +68,30 @@ class SettingsStore : public QObject
     /*! \brief The colour scheme of the app's windows: "system" (default),
      *  "light" or "dark". */
     Q_PROPERTY(QString theme READ theme NOTIFY themeChanged)
+
+    /*! \brief The family the agent's answers are set in, in light mode.
+     *
+     * Empty when nothing is chosen — the system's own font then. */
+    Q_PROPERTY(QString lightFont READ lightFont NOTIFY lightFontChanged)
+
+    /*! \brief The family the agent's answers are set in, in dark mode.
+     *
+     * Empty when nothing is chosen — the system's own font then. */
+    Q_PROPERTY(QString darkFont READ darkFont NOTIFY darkFontChanged)
+
+    /*! \brief The size the agent's answers are set in, in light mode,
+     *  in pixels.
+     *
+     * Zero when nothing is chosen — the size the window would give the
+     * answer anyway then. */
+    Q_PROPERTY(int lightFontSize READ lightFontSize NOTIFY lightFontSizeChanged)
+
+    /*! \brief The size the agent's answers are set in, in dark mode,
+     *  in pixels.
+     *
+     * Zero when nothing is chosen — the size the window would give the
+     * answer anyway then. */
+    Q_PROPERTY(int darkFontSize READ darkFontSize NOTIFY darkFontSizeChanged)
 
     /*! \brief The keys.json field behind llmApiKey, shown by the UI. */
     Q_PROPERTY(QString llmKeyField READ llmKeyField CONSTANT)
@@ -101,6 +133,10 @@ public:
     QString sttApiKey() const { return m_sttApiKey; }
     QString sttProvider() const { return m_sttProvider; }
     QString theme() const { return m_theme; }
+    QString lightFont() const { return m_lightFont; }
+    QString darkFont() const { return m_darkFont; }
+    int lightFontSize() const { return m_lightFontSize; }
+    int darkFontSize() const { return m_darkFontSize; }
     QString llmKeyField() const { return QStringLiteral("minimax_api_key"); }
     QString sttKeyField() const;
     QString keysFilePath() const;
@@ -143,11 +179,31 @@ public:
      *  window follows it immediately through the theme singleton. */
     Q_INVOKABLE bool saveTheme(const QString &theme);
 
+    /*! \brief Stores the family the agent's answers are set in, in light
+     *  mode; an empty family restores the system's own font. */
+    Q_INVOKABLE bool saveLightFont(const QString &family);
+
+    /*! \brief Stores the family the agent's answers are set in, in dark
+     *  mode; an empty family restores the system's own font. */
+    Q_INVOKABLE bool saveDarkFont(const QString &family);
+
+    /*! \brief Stores the size the agent's answers are set in, in light
+     *  mode; zero restores the size the window would give them. */
+    Q_INVOKABLE bool saveLightFontSize(int size);
+
+    /*! \brief Stores the size the agent's answers are set in, in dark
+     *  mode; zero restores the size the window would give them. */
+    Q_INVOKABLE bool saveDarkFontSize(int size);
+
 Q_SIGNALS:
     void llmApiKeyChanged();
     void sttApiKeyChanged();
     void sttProviderChanged();
     void themeChanged();
+    void lightFontChanged();
+    void darkFontChanged();
+    void lightFontSizeChanged();
+    void darkFontSizeChanged();
     void keysEnvironmentChanged();
     void statusMessageChanged();
     void statusIsErrorChanged();
@@ -161,6 +217,22 @@ Q_SIGNALS:
 
 private:
     QAction *actionForRole(const QString &role) const;
+
+    /*! \brief Stores the family the answers are set in, under \a field,
+     *  and says so; \a mode ("light"/"dark") is what the message names.
+     *
+     * An empty family removes the field again, which is how the
+     * system's own font is stored. */
+    bool saveAnswerFont(const QString &field, const QString &family,
+                        const QString &mode);
+
+    /*! \brief Stores the size the answers are set in, under \a field,
+     *  and says so; \a mode ("light"/"dark") is what the message names.
+     *
+     * A size of zero removes the field again, which is how "the size
+     * the window would give the answer anyway" is stored. */
+    bool saveAnswerFontSize(const QString &field, int size,
+                            const QString &mode);
 
     /*! \brief Announces that the binding of \a role changed, through the
      *  signal that belongs to it. */
@@ -188,6 +260,10 @@ private:
     QString m_sttApiKey;
     QString m_sttProvider = QStringLiteral("minimax");
     QString m_theme = QStringLiteral("system");
+    QString m_lightFont;
+    QString m_darkFont;
+    int m_lightFontSize = 0;
+    int m_darkFontSize = 0;
     QString m_statusMessage;
     bool m_llmKeyFromEnvironment = false;
     bool m_sttKeyFromEnvironment = false;

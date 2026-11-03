@@ -955,10 +955,17 @@ void LatexRenderer::embedImages(const Pending &pending,
         }
         if (!block.textList()) {
             // The same paragraph spacing the native view applies, so
-            // the answer's rhythm survives the formula pass.
+            // the answer's rhythm survives the formula pass: a heading
+            // opens its section with more room above and keeps less
+            // below, just as it does there.
             const bool last = !block.next().isValid();
-            const qreal top = first ? 0 : pending.paragraphSpacing / 2;
-            const qreal bottom = last ? 0 : pending.paragraphSpacing / 2;
+            const bool heading = format.headingLevel() > 0;
+            const qreal top = first ? 0
+                                    : (heading ? pending.paragraphSpacing
+                                               : pending.paragraphSpacing / 2);
+            const qreal bottom = last ? 0
+                                      : (heading ? pending.paragraphSpacing / 4
+                                                 : pending.paragraphSpacing / 2);
             if (format.topMargin() != top || format.bottomMargin() != bottom) {
                 format.setTopMargin(top);
                 format.setBottomMargin(bottom);
