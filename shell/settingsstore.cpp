@@ -78,6 +78,24 @@ bool isModifierKey(int key)
     }
 }
 
+/*! \brief Whether a keys.json value means true.
+ *
+ * The settings window writes strings ("true"/"false"), but a
+ * hand-edited file may carry a real boolean; both are read, exactly
+ * like config.py's bool casting. */
+bool truthyValue(const QJsonValue &value)
+{
+    if (value.isBool()) {
+        return value.toBool();
+    }
+    if (value.isDouble()) {
+        return value.toInt() != 0;
+    }
+    const QString text = value.toString().trimmed().toLower();
+    return text == QLatin1String("true") || text == QLatin1String("1")
+        || text == QLatin1String("yes") || text == QLatin1String("on");
+}
+
 /*! \brief "Ctrl+Alt+Shift+Meta" for the set bits — the string spelling of
  *  a modifiers-only sequence, as the first-run defaults are built. */
 QString modifierString(Qt::KeyboardModifiers modifiers)
@@ -188,6 +206,20 @@ void SettingsStore::refresh()
     const int lightFontSize = qMax(0, fontSize(keys, QStringLiteral("ui_font_size_light")));
     const int darkFontSize = qMax(0, fontSize(keys, QStringLiteral("ui_font_size_dark")));
 
+    // Read-aloud: the same entries the daemon's config.py reads (see
+    // its _TTS_KEY_FIELDS). The file writes strings; a hand-edited real
+    // boolean is honoured too. "stream" is the only other mode than the
+    // default "final" (see Speaker for what they mean).
+    const bool speechEnabled = truthyValue(keys.value(QStringLiteral("tts_enabled")));
+    QString speechReadMode = keys.value(QStringLiteral("tts_read_mode")).toString();
+    if (speechReadMode.compare(QStringLiteral("stream"), Qt::CaseInsensitive) != 0) {
+        speechReadMode = QStringLiteral("final");
+    }
+    QString speechVoice = keys.value(QStringLiteral("tts_voice")).toString();
+    if (speechVoice.isEmpty()) {
+        speechVoice = QStringLiteral("English_expressive_narrator");
+    }
+
     if (llmKey != m_llmApiKey) {
         m_llmApiKey = llmKey;
         Q_EMIT llmApiKeyChanged();
@@ -220,6 +252,18 @@ void SettingsStore::refresh()
         m_darkFontSize = darkFontSize;
         Q_EMIT darkFontSizeChanged();
     }
+    if (speechEnabled != m_speechEnabled) {
+        m_speechEnabled = speechEnabled;
+        Q_EMIT speechEnabledChanged();
+    }
+    if (speechReadMode != m_speechReadMode) {
+        m_speechReadMode = speechReadMode;
+        Q_EMIT speechReadModeChanged();
+    }
+    if (speechVoice != m_speechVoice) {
+        m_speechVoice = speechVoice;
+        Q_EMIT speechVoiceChanged();
+    }
     refreshEnvironmentFlags();
 }
 
@@ -239,10 +283,16 @@ void SettingsStore::refreshEnvironmentFlags()
     const bool stt = m_sttProvider == kSttProviderOpenAI
         ? overrides("OPENAI_API_KEY", "PHOENIX_OPENAI_API_KEY")
         : overrides("MINIMAX_API_KEY", "PHOENIX_MINIMAX_API_KEY");
+    const bool speech = overrides("TTS_API_KEY", "PHOENIX_TTS_API_KEY")
+        || !qEnvironmentVariableIsEmpty("PHOENIX_TTS_ENABLED")
+        || !qEnvironmentVariableIsEmpty("PHOENIX_TTS_READ_MODE")
+        || !qEnvironmentVariableIsEmpty("PHOENIX_TTS_VOICE");
 
-    if (llm != m_llmKeyFromEnvironment || stt != m_sttKeyFromEnvironment) {
+    if (llm != m_llmKeyFromEnvironment || stt != m_sttKeyFromEnvironment
+        || speech != m_speechFromEnvironment) {
         m_llmKeyFromEnvironment = llm;
         m_sttKeyFromEnvironment = stt;
+        m_speechFromEnvironment = speech;
         Q_EMIT keysEnvironmentChanged();
     }
 }
@@ -507,6 +557,45 @@ bool SettingsStore::saveDarkFontSize(int size)
 {
     return saveAnswerFontSize(QStringLiteral("ui_font_size_dark"), size,
                                kThemeDark);
+}
+
+bool SettingsStore::saveSpeechEnabled(bool enabled)
+{
+    if (!writeKeyField(QStringLiteral("tts_enabled"),
+                       enabled ? QStringLiteral("true") : QStringLiteral("false"))) {
+        return false;
+    }
+    setStatus(enabled ? i18n("The agent will read its answers aloud.")
+                      : i18n("The agent will stay silent."),
+              false);
+    return true;
+}
+
+bool SettingsStore::saveSpeechReadMode(const QString &mode)
+{
+    const QString normalized = mode.compare(QStringLiteral("stream"), Qt::CaseInsensitive) == 0
+        ? QStringLiteral("stream")
+        : QStringLiteral("final");
+    if (!writeKeyField(QStringLiteral("tts_read_mode"), normalized)) {
+        return false;
+    }
+    setStatus(normalized == QLatin1String("stream")
+                  ? i18n("Answers will be spoken as they are generated.")
+                  : i18n("Answers will be spoken once they are complete."),
+              false);
+    return true;
+}
+
+bool SettingsStore::saveSpeechVoice(const QString &voice)
+{
+    const QString trimmed = voice.trimmed();
+    if (!writeKeyField(QStringLiteral("tts_voice"), trimmed)) {
+        return false;
+    }
+    setStatus(i18n("Read-aloud voice set to %1.",
+                   trimmed.isEmpty() ? i18n("the default") : trimmed),
+              false);
+    return true;
 }
 
 bool SettingsStore::saveAnswerFont(const QString &field,

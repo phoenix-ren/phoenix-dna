@@ -196,3 +196,28 @@ def test_stop_speaking_is_safe_when_idle(client):
     iface.StopSpeaking()
     enabled, state = iface.GetSpeechState()
     assert str(state) == "idle"
+
+
+def test_reload_speech_reflects_keys_json_changes(client, service, tmp_path):
+    """The settings window's flow: write keys.json, call ReloadSpeech."""
+    import json as _json
+
+    bus, iface = client
+    keys_file = service._daemon.config.config_dir / "keys.json"
+    keys_file.parent.mkdir(parents=True, exist_ok=True)
+
+    def write_keys(enabled: bool) -> None:
+        keys_file.write_text(
+            _json.dumps({"tts_enabled": enabled, "minimax_api_key": "k"})
+        )
+
+    try:
+        write_keys(True)
+        iface.ReloadSpeech()
+        enabled, _state = iface.GetSpeechState()
+        assert bool(enabled) is True
+    finally:
+        write_keys(False)
+        iface.ReloadSpeech()
+    enabled, _state = iface.GetSpeechState()
+    assert bool(enabled) is False

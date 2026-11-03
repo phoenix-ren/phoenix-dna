@@ -1058,3 +1058,10 @@ void AgentBridge::stopSpeaking()
         m_speech->stop();
     }
 }
+
+void AgentBridge::reloadSpeech()
+{
+    if (m_speech != nullptr) {
+        m_speech->reload();
+    }
+}

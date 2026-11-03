@@ -131,6 +131,7 @@ interface `dna.phoenix.Agent`.
 | `SpeakText` | `s → ` | Speak an arbitrary string on demand (the results pane's "Read aloud"). The text is normalized and segmented exactly like an answer — math is spoken as mathematics, code fences are skipped. A no-op when speech is not enabled. |
 | `StopSpeaking` | ` → ` | Interrupt playback immediately and drop what is queued. |
 | `GetSpeechState` | ` → bs` | `(enabled, state)`; state is `idle` or `speaking`. |
+| `ReloadSpeech` | ` → ` | Re-read the configuration (keys.json's `tts_*` entries included) and rebuild the speech pipeline. What the settings window calls after saving, so changes apply without a service restart. |
 | `Ping` | ` → s` | Version string. |
 
 ### Signals

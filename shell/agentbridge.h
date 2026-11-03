@@ -351,6 +351,11 @@ public:
      * through here. */
     Q_INVOKABLE void stopSpeaking();
 
+    /*! \brief Applies the speech settings the settings window just
+     *  saved (see Speaker::reload), then refreshes this bridge's
+     *  speechAvailable / agentSpeaking so the pane reacts at once. */
+    Q_INVOKABLE void reloadSpeech();
+
     /*! \brief Answers the question the running prompt is blocked on.
      *
      * \a selected are the chosen options, as 0-based indices into the

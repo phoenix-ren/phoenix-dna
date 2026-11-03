@@ -87,6 +87,20 @@ void Speaker::stop()
     QDBusConnection::sessionBus().asyncCall(message);
 }
 
+void Speaker::reload()
+{
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("ReloadSpeech"));
+    auto *watcher =
+        new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *call) {
+        call->deleteLater();
+        if (!call->error().isValid()) {
+            probeState();
+        }
+    });
+}
+
 void Speaker::onSpeechStateChanged(const QString &state)
 {
     setSpeaking(state == QLatin1String("speaking"));

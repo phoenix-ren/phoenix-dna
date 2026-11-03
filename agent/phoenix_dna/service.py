@@ -370,6 +370,17 @@ if dbus is not None:
             state = self._daemon.speech_state()
             return (bool(state["enabled"]), str(state["state"]))
 
+        @dbus.service.method(INTERFACE, in_signature="", out_signature="")
+        def ReloadSpeech(self):
+            """Re-read the configuration and rebuild the speech pipeline.
+
+            What the settings window asks for after saving: a flipped
+            read-aloud toggle (or voice, or read mode) applies at once,
+            without restarting the service — and disabling mid-utterance
+            falls silent.
+            """
+            self._daemon.reload_speech()
+
 
 def run_service(daemon) -> None:
     """Own the bus name and run until SIGINT/SIGTERM."""

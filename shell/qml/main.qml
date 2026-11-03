@@ -393,14 +393,22 @@ PlasmoidItem {
         // overlay takes over as the transcript surface so the follow-on can
         // still be verified and sent — and its submission must keep the
         // pane's session intent (follow-up), not restart the session.
-        onDismissed: if (resultsWindow.listening) {
-            dictationOverlay.followUp = true;
-            dictationOverlay.transcript = Phoenix.PhoenixController.partialTranscript;
-            dictationOverlay.listening = Phoenix.PhoenixController.recording;
-            dictationOverlay.transcribing = Phoenix.PhoenixController.transcribing;
-            dictationOverlay.statusMessage = Phoenix.PhoenixController.statusMessage;
-            dictationOverlay.inputAnchor = root;
-            dictationOverlay.visible = true;
+        //
+        // The dismissal also stops any read-aloud in flight: the audio
+        // is the daemon's (not the window's), so it would keep speaking
+        // into an empty screen otherwise — putting the window away is
+        // the clearest "enough" a user can give.
+        onDismissed: {
+            resultsWindow.stopSpeakingRequested()
+            if (resultsWindow.listening) {
+                dictationOverlay.followUp = true;
+                dictationOverlay.transcript = Phoenix.PhoenixController.partialTranscript;
+                dictationOverlay.listening = Phoenix.PhoenixController.recording;
+                dictationOverlay.transcribing = Phoenix.PhoenixController.transcribing;
+                dictationOverlay.statusMessage = Phoenix.PhoenixController.statusMessage;
+                dictationOverlay.inputAnchor = root;
+                dictationOverlay.visible = true;
+            }
         }
     }
 
@@ -493,6 +501,16 @@ PlasmoidItem {
         statusMessage: Phoenix.PhoenixController.settings.statusMessage
         statusIsError: Phoenix.PhoenixController.settings.statusIsError
 
+        // Read-aloud: what the store holds, for the window to show.
+        // Applying is two steps below — the store writes keys.json, and
+        // the agent bridge asks the daemon to rebuild its speech
+        // pipeline, so a flipped toggle speaks (or falls silent) at
+        // once.
+        speechEnabled: Phoenix.PhoenixController.settings.speechEnabled
+        speechReadMode: Phoenix.PhoenixController.settings.speechReadMode
+        speechVoice: Phoenix.PhoenixController.settings.speechVoice
+        speechFromEnvironment: Phoenix.PhoenixController.settings.speechFromEnvironment
+
         onLlmKeySaveRequested: (key) =>
             Phoenix.PhoenixController.settings.saveLlmApiKey(key)
         onSttKeySaveRequested: (key) =>
@@ -516,6 +534,26 @@ PlasmoidItem {
             Phoenix.PhoenixController.settings.applyShortcut(role, key, modifiers)
         onShortcutClearRequested: (role) =>
             Phoenix.PhoenixController.settings.clearShortcut(role)
+
+        // Each speech setting: persist it, then make the daemon re-read
+        // it. The reload also re-probes the daemon's state, so the
+        // results pane's "Read aloud" affordance appears (or goes)
+        // immediately.
+        onSpeechEnabledChangeRequested: (enabled) => {
+            Phoenix.PhoenixController.settings.saveSpeechEnabled(enabled)
+            Phoenix.PhoenixController.agent.reloadSpeech()
+        }
+        onSpeechReadModeChangeRequested: (mode) => {
+            Phoenix.PhoenixController.settings.saveSpeechReadMode(mode)
+            Phoenix.PhoenixController.agent.reloadSpeech()
+        }
+        onSpeechVoiceChangeRequested: (voice) => {
+            Phoenix.PhoenixController.settings.saveSpeechVoice(voice)
+            Phoenix.PhoenixController.agent.reloadSpeech()
+        }
+        onSpeechTestRequested:
+            Phoenix.PhoenixController.agent.speakText(
+                i18n("This is how the agent's answers will sound."))
     }
 
     compactRepresentation: Phoenix.CompactRepresentation {
