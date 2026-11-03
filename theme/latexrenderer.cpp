@@ -22,6 +22,8 @@
 #include <QTimer>
 #include <QUrl>
 
+#include <QtConcurrent/QtConcurrentRun>
+
 #include <QQuickTextDocument>
 
 namespace {
@@ -399,7 +401,7 @@ void LatexRenderer::embedFormulas(int requestId,
         QMetaObject::invokeMethod(this, [this, requestId, pages] {
             const auto it = m_pending.constFind(requestId);
             if (it != m_pending.constEnd()) {
-                finishEmbed(it.value(), pages);
+                processPages(it.value(), pages);
                 m_pending.erase(it);
             }
         }, Qt::QueuedConnection);
@@ -426,8 +428,115 @@ void LatexRenderer::embedFormulas(int requestId,
     compile(requestId, texPath, pdfPath);
 }
 
-void LatexRenderer::finishEmbed(const Pending &pending,
-                                const QString &pageDir)
+void LatexRenderer::failLater(int requestId, const QString &reason)
+{
+    QMetaObject::invokeMethod(this, [this, requestId, reason] {
+        Q_EMIT failed(requestId, reason);
+    }, Qt::QueuedConnection);
+}
+
+void LatexRenderer::rasterize(int requestId, const QString &pdfPath)
+{
+    const QString pageDir =
+        pdfPath.left(pdfPath.size() - 4) + QLatin1String(".pages");
+    QDir().mkpath(pageDir);
+    auto *process = new QProcess(this);
+    connect(process, &QProcess::finished, this,
+            [this, requestId, pageDir, process](int exitCode,
+                                                QProcess::ExitStatus status) {
+                process->deleteLater();
+                const auto it = m_pending.constFind(requestId);
+                if (it == m_pending.constEnd()) {
+                    return;
+                }
+                if (status == QProcess::NormalExit && exitCode == 0) {
+                    processPages(it.value(), pageDir);
+                    m_pending.erase(it);
+                    return;
+                }
+                m_pending.erase(it);
+                failLater(requestId,
+                          QStringLiteral(
+                              "Rasterizing the formulas failed (pdftoppm "
+                              "exit %1).")
+                              .arg(exitCode));
+            });
+    connect(process, &QProcess::errorOccurred, this,
+            [this, requestId, process](QProcess::ProcessError) {
+                process->deleteLater();
+                m_pending.remove(requestId);
+                failLater(requestId,
+                          QStringLiteral(
+                              "pdftoppm could not be started."));
+            });
+    // Rasterizing many pages takes their own time; a fixed short cap
+    // would cut long essays off.
+    QTimer::singleShot(60000, process, [this, requestId, process] {
+        if (process->state() == QProcess::NotRunning) {
+            return;
+        }
+        process->kill();
+        process->deleteLater();
+        m_pending.remove(requestId);
+        failLater(requestId,
+                  QStringLiteral("Rasterizing timed out."));
+    });
+    // 216 dpi = three pixels per point: crisp on hidpi, cropped to the
+    // ink right after.
+    process->setWorkingDirectory(QFileInfo(pdfPath).absolutePath());
+    process->start(rasterizer(),
+                   {QStringLiteral("-png"),
+                    QStringLiteral("-r"), QStringLiteral("216"),
+                    QFileInfo(pdfPath).fileName(),
+                    pageDir + QLatin1String("/page")});
+}
+
+void LatexRenderer::processPages(const Pending &pending,
+                                 const QString &pageDir)
+{
+    const QString pageDirCapture = pageDir;
+    const int requestId = pending.requestId;
+    // Everything here is image arithmetic on plain data — safe off the
+    // GUI thread, and it is the expensive half.
+    QtConcurrent::run([this, requestId, pageDirCapture, spans = pending.spans,
+                       ink = pending.ink]() {
+        const QFileInfoList pages = QDir(pageDirCapture).entryInfoList(
+            {QStringLiteral("page-*.png")}, QDir::Files, QDir::Name);
+        QList<QImage> images;
+        if (pages.size() >= spans.size()) {
+            for (int i = 0; i < spans.size(); ++i) {
+                const QImage page(pages.at(i).absoluteFilePath());
+                if (page.isNull()) {
+                    images.append(QImage());
+                    continue;
+                }
+                images.append(formulaImage(page, ink));
+            }
+        }
+        // Back to the GUI thread for the document half; if the shell
+        // went away meanwhile, the context takes the request with it.
+        QMetaObject::invokeMethod(
+            this,
+            [this, requestId, images] {
+                const auto it = m_pendingByImages.find(requestId);
+                // The pending record was stashed below before the
+                // worker started; retrieve and finish on the GUI side.
+                if (it == m_pendingByImages.end()) {
+                    return;
+                }
+                Pending pending = it.value();
+                m_pendingByImages.erase(it);
+                embedImages(pending, images);
+            },
+            Qt::QueuedConnection);
+    });
+    // The worker needs the pending record after this function returns;
+    // keep it under the id the GUI-side lambda looks up.
+    m_pendingByImages.insert(requestId, pending);
+}
+
+void LatexRenderer::embedImages(const Pending &pending,
+                                const QList<QImage> &images)
 {
     QTextDocument *doc = pending.document
         ? pending.document->textDocument()
@@ -436,11 +545,7 @@ void LatexRenderer::finishEmbed(const Pending &pending,
         // The view went away while the pipeline ran — nothing to do.
         return;
     }
-
-    // One PNG per formula, in page order.
-    const QFileInfoList pages = QDir(pageDir).entryInfoList(
-        {QStringLiteral("page-*.png")}, QDir::Files, QDir::Name);
-    if (pages.size() < pending.spans.size()) {
+    if (images.size() < pending.spans.size()) {
         failLater(pending.requestId,
                   QStringLiteral("Formula pages did not come out as "
                                  "expected."));
@@ -457,11 +562,7 @@ void LatexRenderer::finishEmbed(const Pending &pending,
         renderScale * (72.0 / 96.0) / (pending.fontPixelSize / 14.67);
     int embeddedCount = 0;
     for (int i = 0; i < pending.spans.size(); ++i) {
-        QImage page(pages.at(i).absoluteFilePath());
-        if (page.isNull()) {
-            continue;
-        }
-        const QImage image = formulaImage(page, pending.ink);
+        const QImage &image = images.at(i);
         if (image.isNull()) {
             continue;
         }
@@ -543,67 +644,6 @@ void LatexRenderer::finishEmbed(const Pending &pending,
     }, Qt::QueuedConnection);
 }
 
-void LatexRenderer::failLater(int requestId, const QString &reason)
-{
-    QMetaObject::invokeMethod(this, [this, requestId, reason] {
-        Q_EMIT failed(requestId, reason);
-    }, Qt::QueuedConnection);
-}
-
-void LatexRenderer::rasterize(int requestId, const QString &pdfPath)
-{
-    const QString pageDir =
-        pdfPath.left(pdfPath.size() - 4) + QLatin1String(".pages");
-    QDir().mkpath(pageDir);
-    auto *process = new QProcess(this);
-    connect(process, &QProcess::finished, this,
-            [this, requestId, pageDir, process](int exitCode,
-                                                QProcess::ExitStatus status) {
-                process->deleteLater();
-                const auto it = m_pending.constFind(requestId);
-                if (it == m_pending.constEnd()) {
-                    return;
-                }
-                if (status == QProcess::NormalExit && exitCode == 0) {
-                    finishEmbed(it.value(), pageDir);
-                    m_pending.erase(it);
-                    return;
-                }
-                m_pending.erase(it);
-                failLater(requestId,
-                          QStringLiteral(
-                              "Rasterizing the formulas failed (pdftoppm "
-                              "exit %1).")
-                              .arg(exitCode));
-            });
-    connect(process, &QProcess::errorOccurred, this,
-            [this, requestId, process](QProcess::ProcessError) {
-                process->deleteLater();
-                m_pending.remove(requestId);
-                failLater(requestId,
-                          QStringLiteral(
-                              "pdftoppm could not be started."));
-            });
-    QTimer::singleShot(10000, process, [this, requestId, process] {
-        if (process->state() == QProcess::NotRunning) {
-            return;
-        }
-        process->kill();
-        process->deleteLater();
-        m_pending.remove(requestId);
-        failLater(requestId,
-                  QStringLiteral("Rasterizing timed out."));
-    });
-    // 216 dpi = three pixels per point: crisp on hidpi, cropped to the
-    // ink right after.
-    process->setWorkingDirectory(QFileInfo(pdfPath).absolutePath());
-    process->start(rasterizer(),
-                   {QStringLiteral("-png"),
-                    QStringLiteral("-r"), QStringLiteral("216"),
-                    QFileInfo(pdfPath).fileName(),
-                    pageDir + QLatin1String("/page")});
-}
-
 void LatexRenderer::compile(int requestId, const QString &texPath,
                             const QString &pdfPath)
 {
@@ -663,8 +703,12 @@ void LatexRenderer::compile(int requestId, const QString &texPath,
                                     "The TeX engine could not be started.")
                               : process->errorString());
             });
-    // A stuck compile must not haunt the process table forever.
-    QTimer::singleShot(30000, process, [this, requestId, process, done] {
+    // A stuck compile must not haunt the process table forever — but
+    // an essay's formulas are many pages, and the engine needs a
+    // moment per page: the cap grows with the formula count.
+    const int compileBudget = qMin(
+        180000, 30000 + 400 * m_pending.value(requestId).spans.size());
+    QTimer::singleShot(compileBudget, process, [this, requestId, process, done] {
         if (*done) {
             return;
         }

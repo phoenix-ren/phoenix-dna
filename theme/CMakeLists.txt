@@ -11,7 +11,14 @@
 # Markdown view's paragraphs; LatexRenderer compiles a finished answer
 # (Markdown + LaTeX math) to PDF via a TeX engine.
 
-find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
+find_package(Qt6 ${QT_MIN_VERSION} REQUIRED COMPONENTS
+    Core
+    Concurrent
+    Gui
+    Qml
+    Quick
+    QuickControls2
+)
 
 ecm_add_qml_module(org.phoenixdna.theme
     URI org.phoenixdna.theme
@@ -37,5 +44,10 @@ ecm_target_qml_sources(org.phoenixdna.theme
 
 ecm_finalize_qml_module(org.phoenixdna.theme)
 
-# QQuickTextDocument (Quick) and QTextDocument (Gui) of the helpers.
-target_link_libraries(org.phoenixdna.theme PRIVATE Qt6::Gui Qt6::Quick)
+# QQuickTextDocument (Quick) and QTextDocument (Gui) of the helpers;
+# QtConcurrent takes the pixel work off the GUI thread.
+target_link_libraries(org.phoenixdna.theme PRIVATE
+    Qt6::Concurrent
+    Qt6::Gui
+    Qt6::Quick
+)

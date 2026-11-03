@@ -5,6 +5,7 @@
 
 #include <QColor>
 #include <QHash>
+#include <QImage>
 #include <QObject>
 #include <QPointer>
 #include <QString>
@@ -106,13 +107,25 @@ private:
                  const QString &pdfPath);
 
     /*! \brief Turns the compiled \a pdfPath into one PNG per formula
-     *  page (pdftoppm), asynchronously; on success finishEmbed()
-     *  embeds them. */
+     *  page (pdftoppm), asynchronously; on success the pixel work
+     *  continues in a worker thread. */
     void rasterize(int requestId, const QString &pdfPath);
 
-    /*! \brief Load the rasterized pages, tint and embed them into the
-     *  pending document. */
-    void finishEmbed(const Pending &pending, const QString &pageDir);
+    /*! \brief The pixel half of the embed — loading, cropping and
+     *  tinting the pages — off the GUI thread: an essay carries a
+     *  hundred formulas, each page rasterized at three pixels per
+     *  point, and scanning that on the main thread froze the shell
+     *  for the duration. When the images are ready, embedImages()
+     *  takes over back on the GUI thread. */
+    void processPages(const Pending &pending, const QString &pageDir);
+
+    /*! \brief The document half of the embed, on the GUI thread: the
+     *  tinted images become resources, the Markdown is rewritten with
+     *  their references, and the sizes are fitted to the answer's
+     *  font. Only this touches the QTextDocument — documents are not
+     *  thread-safe, and this part is O(text + images), not
+     *  O(pixels). */
+    void embedImages(const Pending &pending, const QList<QImage> &images);
 
     /*! \brief Report a failure for \a requestId — through the event
      *  loop, like every emit of this class. */
@@ -122,5 +135,9 @@ private:
     mutable QString m_rasterizer;
     mutable bool m_engineResolved = false;
     mutable bool m_rasterizerResolved = false;
+
+    /*! \brief The requests whose pixel work is running on a worker;
+     *  looked up when the images come back to the GUI thread. */
+    QHash<int, Pending> m_pendingByImages;
     QHash<int, Pending> m_pending;
 };
