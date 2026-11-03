@@ -20,7 +20,7 @@
  * rich text — the app's font, size, margins, lists, scrolling and
  * selection, all untouched. Only the math spans ($…$, $$…$$, \(…\),
  * \[…\]) are compiled: one LaTeX run per finished answer, every formula
- * on its own page, the pages rendered through QtPdf and cropped to
+ * on its own page, the pages rendered through pdftoppm and cropped to
  * their ink. Each cropped image becomes an alpha mask tinted with the
  * caller's ink colour — light-mode text colour or dark-mode text colour
  * — over a transparent background, so the formula sits on whatever the
@@ -32,6 +32,19 @@
  * already shows them. Failures — no engine installed, a formula LaTeX
  * rejects, a timeout — emit failed(requestId, reason) and the document
  * keeps its verbatim Markdown.
+ *
+ * Three details of the document's contract are worth knowing, because
+ * they are not obvious and each of them broke the feature once:
+ *
+ *  * The images are registered under a scheme-qualified URL
+ *    ("phoenixformula://0"). A bare name is resolved against the
+ *    document's base URL — the QML file's own directory — and the
+ *    lookup then misses, and the view tries to open the name as a
+ *    file, once per formula, per relayout.
+ *  * The images are registered *after* the Markdown is written: the
+ *    import clears the document's resource table.
+ *  * The Markdown importer does not carry an image's size into the
+ *    character format; the size is set here, in logical pixels.
  */
 class LatexRenderer : public QObject
 {
@@ -141,7 +154,12 @@ private:
      *  LaTeX verbatim), and the sizes are fitted to the answer's
      *  font. Only this touches the QTextDocument — documents are not
      *  thread-safe, and this part is O(text + images), not
-     *  O(pixels). */
+     *  O(pixels).
+     *
+     *  The order matters: the Markdown is written first (the import
+     *  clears the document's resource table), the images are
+     *  registered after it, and the sizing and the spacing go into a
+     *  single edit block. */
     void embedImages(const Pending &pending, const QList<QImage> &images);
 
     /*! \brief Report a failure for \a requestId — through the event
@@ -150,13 +168,26 @@ private:
 
     /*! \brief One in-flight pixel fan-out: the request it belongs to,
      *  the images that have come back so far (null = still pending or
-     *  failed — the formula keeps its LaTeX), and how many of the
-     *  pool jobs have delivered. */
+     *  failed — the formula keeps its LaTeX), how many of the pool
+     *  jobs have delivered, and how many were started at all (a
+     *  rasterizer that came out short starts fewer jobs — the join
+     *  counts those, not the formula count). */
     struct RenderJob
     {
         Pending pending;
         QList<QImage> images;
         int delivered = 0;
+        int submitted = 0;
+    };
+
+    /*! \brief The newest request per document. A theme switch starts a
+     *  second render of the same answer in the other ink; when the
+     *  older render lands after the newer one, it must not overwrite
+     *  it — the formula would keep the ink of the theme that is gone. */
+    struct LatestRequest
+    {
+        QPointer<QQuickTextDocument> document;
+        int requestId = -1;
     };
 
     mutable QString m_engine;
@@ -168,4 +199,7 @@ private:
      *  jobs deliver. */
     QHash<int, RenderJob> m_jobs;
     QHash<int, Pending> m_pending;
+
+    /*! \brief The newest request per document (see LatestRequest). */
+    QHash<const QQuickTextDocument *, LatestRequest> m_latest;
 };

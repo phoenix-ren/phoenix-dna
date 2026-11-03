@@ -134,12 +134,12 @@ Window {
     readonly property real paragraphSpacing:
         Math.round(Qt.application.font.pixelSize * 0.8)
 
-    // Tokens for the PDF renders of finished answers; the delegates
+    // Tokens for the formula renders of finished answers; the delegates
     // match their own token in LatexRenderer's signals.
-    property int pdfTokens: 0
+    property int formulaTokens: 0
 
-    function nextPdfToken() {
-        return ++pdfTokens
+    function nextFormulaToken() {
+        return ++formulaTokens
     }
 
     // The header of a folded-away section: the thinking notes and the
@@ -432,7 +432,11 @@ Window {
 
                             readonly property bool wantsFormulas: !running
                                 && result.length > 0
-                                && formulaToken < 0
+                                // -1: never requested. -2: requested and
+                                // failed — the verbatim view stays, and
+                                // the answer is not asked again (a retry
+                                // every second would be a storm).
+                                && formulaToken === -1
                                 && LatexRenderer.available
                                 && LatexRenderer.containsLatex(result)
 
@@ -460,7 +464,7 @@ Window {
                                 if (!wantsFormulas) {
                                     return
                                 }
-                                formulaToken = resultsWindow.nextPdfToken()
+                                formulaToken = resultsWindow.nextFormulaToken()
                                 renderProgress = 0
                                 LatexRenderer.embedFormulas(
                                     formulaToken, resultLabel.textDocument,
@@ -472,15 +476,22 @@ Window {
                             // A theme switch re-tints the formulas: the
                             // compiled pages are cached, so this is an
                             // instant re-render in the other ink, never a
-                            // recompile.
+                            // recompile. The token moves with it: the
+                            // render that is on its way must not be
+                            // mistaken for this one's result.
                             function reembedFormulas() {
-                                if (formulaToken < 0 || !resultLabel) {
+                                // Only a rendered answer is re-tinted: an
+                                // answer that was never rendered gets its
+                                // first render from maybeEmbedFormulas(),
+                                // and one that failed is not asked again.
+                                if (formulaToken <= 0 || !resultLabel) {
                                     return
                                 }
+                                formulaToken = resultsWindow.nextFormulaToken()
+                                renderProgress = 0
                                 LatexRenderer.embedFormulas(
-                                    resultsWindow.nextPdfToken(),
-                                    resultLabel.textDocument, result,
-                                    PhoenixTheme.primaryTextColor,
+                                    formulaToken, resultLabel.textDocument,
+                                    result, PhoenixTheme.primaryTextColor,
                                     resultLabel.font.pixelSize,
                                     resultsWindow.paragraphSpacing)
                             }
