@@ -69,8 +69,14 @@ public:
 
 Q_SIGNALS:
     /*! \brief \a requestId finished: the document it was given shows
-     *  the formulas. */
+     *  the formulas that made it in (see embedFormulas for the
+     *  timeout semantics). */
     void embedded(int requestId);
+
+    /*! \brief One more formula of \a requestId came back from the
+     *  pixel pool: \a done of \a total are ready. Fires once per
+     *  formula, on the GUI thread — the ticks a progress bar runs on. */
+    void progress(int requestId, int done, int total);
 
     /*! \brief \a requestId could not be compiled; \a reason carries
      *  the engine's first complaint when there is one. */
@@ -107,21 +113,32 @@ private:
                  const QString &pdfPath);
 
     /*! \brief Turns the compiled \a pdfPath into one PNG per formula
-     *  page (pdftoppm), asynchronously; on success the pixel work
-     *  continues in a worker thread. */
+     *  page (pdftoppm), asynchronously; on success startPageJobs()
+     *  fans the pages out. */
     void rasterize(int requestId, const QString &pdfPath);
 
-    /*! \brief The pixel half of the embed — loading, cropping and
-     *  tinting the pages — off the GUI thread: an essay carries a
-     *  hundred formulas, each page rasterized at three pixels per
-     *  point, and scanning that on the main thread froze the shell
-     *  for the duration. When the images are ready, embedImages()
-     *  takes over back on the GUI thread. */
-    void processPages(const Pending &pending, const QString &pageDir);
+    /*! \brief The pixel half of the embed, one pool job per formula:
+     *  loading its page, cropping it to the ink, tinting it. The jobs
+     *  run on the global pool (a thread per core) and deliver
+     *  themselves back through onImageReady(); assembleJob() joins
+     *  the results — early when every page lands, at the deadline
+     *  with whatever is ready otherwise, the stragglers keeping their
+     *  LaTeX as text. */
+    void startPageJobs(const Pending &pending, const QString &pageDir);
+
+    /*! \brief One pool job delivered its image (or its failure, as a
+     *  null image); on the GUI thread, per delivery. */
+    void onImageReady(int requestId, int index, const QImage &image);
+
+    /*! \brief The join: whatever images are ready by now go into the
+     *  document, the rest stay LaTeX. Idempotent — the deadline and
+     *  the last delivery race, and only one may win. */
+    void assembleJob(int requestId);
 
     /*! \brief The document half of the embed, on the GUI thread: the
      *  tinted images become resources, the Markdown is rewritten with
-     *  their references, and the sizes are fitted to the answer's
+     *  their references (a formula whose image is null keeps its
+     *  LaTeX verbatim), and the sizes are fitted to the answer's
      *  font. Only this touches the QTextDocument — documents are not
      *  thread-safe, and this part is O(text + images), not
      *  O(pixels). */
@@ -131,13 +148,24 @@ private:
      *  loop, like every emit of this class. */
     void failLater(int requestId, const QString &reason);
 
+    /*! \brief One in-flight pixel fan-out: the request it belongs to,
+     *  the images that have come back so far (null = still pending or
+     *  failed — the formula keeps its LaTeX), and how many of the
+     *  pool jobs have delivered. */
+    struct RenderJob
+    {
+        Pending pending;
+        QList<QImage> images;
+        int delivered = 0;
+    };
+
     mutable QString m_engine;
     mutable QString m_rasterizer;
     mutable bool m_engineResolved = false;
     mutable bool m_rasterizerResolved = false;
 
-    /*! \brief The requests whose pixel work is running on a worker;
-     *  looked up when the images come back to the GUI thread. */
-    QHash<int, Pending> m_pendingByImages;
+    /*! \brief The pixel fan-outs in flight, looked up as the pool
+     *  jobs deliver. */
+    QHash<int, RenderJob> m_jobs;
     QHash<int, Pending> m_pending;
 };

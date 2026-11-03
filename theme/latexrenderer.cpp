@@ -19,10 +19,9 @@
 #include <QTextDocument>
 #include <QTextFragment>
 #include <QTextImageFormat>
+#include <QThreadPool>
 #include <QTimer>
 #include <QUrl>
-
-#include <QtConcurrent/QtConcurrentRun>
 
 #include <QQuickTextDocument>
 
@@ -156,9 +155,11 @@ QString buildFormulaTex(const QStringList &spans)
     return body;
 }
 
-// The markdown with every span replaced by an image reference. Display
-// formulas get their own paragraph; inline ones flow in the text.
-QString markdownWithImages(const QString &markdown)
+// The markdown with every span replaced by an image reference — every
+// span whose image is ready (\a ready, in span order): the ones that
+// did not make the deadline keep their LaTeX as text. Display formulas
+// get their own paragraph; inline ones flow in the text.
+QString markdownWithImages(const QString &markdown, const QList<bool> &ready)
 {
     QString result;
     result.reserve(markdown.size());
@@ -169,11 +170,19 @@ QString markdownWithImages(const QString &markdown)
     while (it.hasNext()) {
         const QRegularExpressionMatch match = it.next();
         result += markdown.mid(last, match.capturedStart() - last);
-        const bool display = match.capturedStart(1) >= 0
-            || match.capturedStart(2) >= 0;
-        const QString ref =
-            QStringLiteral("![formula](phoenixformula-%1)").arg(index);
-        result += display ? QStringLiteral("\n\n%1\n\n").arg(ref) : ref;
+        const bool isReady = index < ready.size() && ready.at(index);
+        if (isReady) {
+            const bool display = match.capturedStart(1) >= 0
+                || match.capturedStart(2) >= 0;
+            const QString ref = QStringLiteral(
+                "![formula](phoenixformula-%1)").arg(index);
+            result += display
+                ? QStringLiteral("\n\n%1\n\n").arg(ref)
+                : ref;
+        } else {
+            // A straggler: the LaTeX stays, verbatim.
+            result += match.captured(0);
+        }
         ++index;
     }
     result += markdown.mid(last);
@@ -401,7 +410,7 @@ void LatexRenderer::embedFormulas(int requestId,
         QMetaObject::invokeMethod(this, [this, requestId, pages] {
             const auto it = m_pending.constFind(requestId);
             if (it != m_pending.constEnd()) {
-                processPages(it.value(), pages);
+                startPageJobs(it.value(), pages);
                 m_pending.erase(it);
             }
         }, Qt::QueuedConnection);
@@ -450,7 +459,7 @@ void LatexRenderer::rasterize(int requestId, const QString &pdfPath)
                     return;
                 }
                 if (status == QProcess::NormalExit && exitCode == 0) {
-                    processPages(it.value(), pageDir);
+                    startPageJobs(it.value(), pageDir);
                     m_pending.erase(it);
                     return;
                 }
@@ -491,48 +500,91 @@ void LatexRenderer::rasterize(int requestId, const QString &pdfPath)
                     pageDir + QLatin1String("/page")});
 }
 
-void LatexRenderer::processPages(const Pending &pending,
-                                 const QString &pageDir)
+void LatexRenderer::startPageJobs(const Pending &pending,
+                                  const QString &pageDir)
 {
-    const QString pageDirCapture = pageDir;
-    const int requestId = pending.requestId;
-    // Everything here is image arithmetic on plain data — safe off the
-    // GUI thread, and it is the expensive half.
-    QtConcurrent::run([this, requestId, pageDirCapture, spans = pending.spans,
-                       ink = pending.ink]() {
-        const QFileInfoList pages = QDir(pageDirCapture).entryInfoList(
-            {QStringLiteral("page-*.png")}, QDir::Files, QDir::Name);
-        QList<QImage> images;
-        if (pages.size() >= spans.size()) {
-            for (int i = 0; i < spans.size(); ++i) {
-                const QImage page(pages.at(i).absoluteFilePath());
-                if (page.isNull()) {
-                    images.append(QImage());
-                    continue;
-                }
-                images.append(formulaImage(page, ink));
-            }
-        }
-        // Back to the GUI thread for the document half; if the shell
-        // went away meanwhile, the context takes the request with it.
-        QMetaObject::invokeMethod(
-            this,
-            [this, requestId, images] {
-                const auto it = m_pendingByImages.find(requestId);
-                // The pending record was stashed below before the
-                // worker started; retrieve and finish on the GUI side.
-                if (it == m_pendingByImages.end()) {
-                    return;
-                }
-                Pending pending = it.value();
-                m_pendingByImages.erase(it);
-                embedImages(pending, images);
-            },
-            Qt::QueuedConnection);
+    const QFileInfoList pages = QDir(pageDir).entryInfoList(
+        {QStringLiteral("page-*.png")}, QDir::Files, QDir::Name);
+    RenderJob job;
+    job.pending = pending;
+    job.images.resize(qMax(pages.size(), pending.spans.size()));
+    const int jobId = pending.requestId;
+    m_jobs.insert(jobId, job);
+
+    // One pool job per formula: load the page, crop it to its ink,
+    // tint it. The pool is a thread per core, so an essay's formulas
+    // process in parallel instead of down one worker.
+    for (int i = 0; i < pending.spans.size() && i < pages.size(); ++i) {
+        const QString path = pages.at(i).absoluteFilePath();
+        const QColor ink = pending.ink;
+        QThreadPool::globalInstance()->start([this, jobId, i, path, ink] {
+            const QImage page(path);
+            const QImage image =
+                page.isNull() ? QImage() : formulaImage(page, ink);
+            // Delivery is queued to the GUI thread; if the deadline
+            // assembled the job before this lands, the lookup below
+            // finds nothing and the straggler is dropped.
+            QMetaObject::invokeMethod(
+                this,
+                [this, jobId, i, image] {
+                    onImageReady(jobId, i, image);
+                },
+                Qt::QueuedConnection);
+        });
+    }
+
+    // The join deadline — the non-blocking stand-in for waiting on
+    // the futures: like the compile budget it grows with the formula
+    // count, and whatever is ready when it fires is what goes in.
+    const int pixelBudget =
+        qMin(180000, 30000 + 500 * pending.spans.size());
+    QTimer::singleShot(pixelBudget, this, [this, jobId] {
+        assembleJob(jobId);
     });
-    // The worker needs the pending record after this function returns;
-    // keep it under the id the GUI-side lambda looks up.
-    m_pendingByImages.insert(requestId, pending);
+}
+
+void LatexRenderer::onImageReady(int requestId, int index,
+                                 const QImage &image)
+{
+    auto it = m_jobs.find(requestId);
+    if (it == m_jobs.end()) {
+        return;   // deadline won the race; the job is already in
+    }
+    RenderJob &job = it.value();
+    if (index >= 0 && index < job.images.size()) {
+        job.images[index] = image;
+    }
+    ++job.delivered;
+    Q_EMIT progress(requestId, job.delivered, job.images.size());
+    if (job.delivered >= job.images.size()) {
+        assembleJob(requestId);
+    }
+}
+
+void LatexRenderer::assembleJob(int requestId)
+{
+    auto it = m_jobs.find(requestId);
+    if (it == m_jobs.end()) {
+        return;   // already assembled (the deadline and the last
+                  // delivery race; only one may win)
+    }
+    RenderJob job = it.value();
+    m_jobs.erase(it);
+
+    int ready = 0;
+    for (const QImage &image : std::as_const(job.images)) {
+        if (!image.isNull()) {
+            ++ready;
+        }
+    }
+    if (ready == 0) {
+        failLater(requestId,
+                  QStringLiteral("Rendering the formulas timed out."));
+        return;
+    }
+    // A straggler keeps its LaTeX as text: embedImages only swaps the
+    // formulas whose image arrived.
+    embedImages(job.pending, job.images);
 }
 
 void LatexRenderer::embedImages(const Pending &pending,
@@ -577,7 +629,14 @@ void LatexRenderer::embedImages(const Pending &pending,
         return;
     }
 
-    doc->setMarkdown(markdownWithImages(pending.markdown));
+    // The stragglers keep their LaTeX: only the formulas whose image
+    // arrived are swapped.
+    QList<bool> ready;
+    ready.reserve(images.size());
+    for (const QImage &image : images) {
+        ready.append(!image.isNull());
+    }
+    doc->setMarkdown(markdownWithImages(pending.markdown, ready));
 
     // Second pass: scale the images (the importer takes the raw pixel
     // size), and centre the display formulas' paragraphs.
