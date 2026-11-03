@@ -4,6 +4,7 @@
 import QtQuick
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
+import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
 
@@ -20,9 +21,30 @@ import plasma.applet.org.phoenixdna.agent as Phoenix
  *   * the camera button, which photographs a window of the desktop
  *   * the search button, which opens the session search
  *   * the settings button, which opens the settings window
+ *
+ * Every button sits in a PlasmaCore.ToolTipArea rather than carrying a
+ * PC3.ToolTip. The widget-level tooltip Plasma shows for this applet
+ * ("Phoenix DNA") is rendered in one shared tooltip window, and a
+ * ToolTipArea hands that window over to whatever is hovered — so a
+ * button's tooltip replaces the widget's instead of stacking on top of
+ * it, which is what a PC3.ToolTip's separate window would do.
  */
 Item {
     id: root
+
+    // The PlasmoidItem (the applet interface declared in main.qml) this
+    // representation belongs to. plasmashell injects it when it creates the
+    // compact representation; the full representation — the same component,
+    // shown expanded in the popup — receives no injection, hence the null
+    // default instead of a required property (which would abort creation).
+    property PlasmoidItem plasmoidItem: null
+
+    // The buttons' tooltips stand down while the applet is expanded: the
+    // popup owns the cursor then, exactly like the widget-level tooltip
+    // Plasma shows for the rest of the widget (CompactApplet.qml in the
+    // desktop package does `active: !plasmoidItem.expanded`).
+    readonly property bool tooltipsEnabled:
+        plasmoidItem ? !plasmoidItem.expanded : true
 
     // The current privilege mode. Owned by the C++ controller.
     property int mode: Phoenix.PhoenixController.mode
@@ -83,37 +105,50 @@ Item {
                     { mode: Phoenix.AgentMode.User, label: i18n("User") }
                 ]
 
-                delegate: PC3.ToolButton {
-                    id: modeButton
+                delegate: PlasmaCore.ToolTipArea {
+                    id: modeArea
 
                     required property var modelData
-
-                    // Whether this button's mode is the one the controller
-                    // currently runs in.
-                    readonly property bool active: root.mode === modelData.mode
 
                     width: Kirigami.Units.iconSizes.medium
                     height: Kirigami.Units.iconSizes.medium
 
-                    icon.name: Phoenix.PhoenixController.modeIconName(modelData.mode)
-                    icon.width: Kirigami.Units.iconSizes.small
-                    icon.height: Kirigami.Units.iconSizes.small
-                    // The inactive icons take the theme's text colour
-                    // rather than a fixed white: the panel they sit on
-                    // follows the Plasma theme, which may be light.
-                    icon.color: active ? Kirigami.Theme.highlightColor
-                                       : Kirigami.Theme.textColor
+                    // Tooltips pop away from the panel, and stay quiet while
+                    // the applet is expanded, exactly like the widget-level
+                    // tooltip the container shows for the rest of the widget.
+                    location: Plasmoid.location
+                    active: root.tooltipsEnabled
 
-                    // The controller owns the state; the buttons only display
-                    // it. `checked` paints the active mode as pressed/on.
-                    checked: active
+                    mainText: modelData.label
 
-                    onClicked: Phoenix.PhoenixController.mode = modelData.mode
+                    PC3.ToolButton {
+                        id: modeButton
 
-                    Accessible.name: modelData.label
+                        anchors.fill: parent
 
-                    PC3.ToolTip {
-                        text: modelData.label
+                        // Whether this button's mode is the one the controller
+                        // currently runs in. On the button rather than the
+                        // ToolTipArea above, because ToolTipArea already has
+                        // an `active` property of its own.
+                        readonly property bool active:
+                            root.mode === modeArea.modelData.mode
+
+                        icon.name: Phoenix.PhoenixController.modeIconName(modeArea.modelData.mode)
+                        icon.width: Kirigami.Units.iconSizes.small
+                        icon.height: Kirigami.Units.iconSizes.small
+                        // The inactive icons take the theme's text colour
+                        // rather than a fixed white: the panel they sit on
+                        // follows the Plasma theme, which may be light.
+                        icon.color: active ? Kirigami.Theme.highlightColor
+                                           : Kirigami.Theme.textColor
+
+                        // The controller owns the state; the buttons only display
+                        // it. `checked` paints the active mode as pressed/on.
+                        checked: active
+
+                        onClicked: Phoenix.PhoenixController.mode = modeArea.modelData.mode
+
+                        Accessible.name: modeArea.mainText
                     }
                 }
             }
@@ -133,30 +168,39 @@ Item {
         }
 
         // ---- Right: the record button --------------------------------------
-        PC3.ToolButton {
-            id: recordButton
+        PlasmaCore.ToolTipArea {
+            id: recordArea
 
             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-            // The record button becomes a stop button while recording. A
-            // microphone rather than a red circle signals speech input;
-            // no colour tint needed either way.
-            icon.name: root.recording ? "media-playback-stop" : "audio-input-microphone"
-            icon.width: Kirigami.Units.iconSizes.small
-            icon.height: Kirigami.Units.iconSizes.small
+            location: Plasmoid.location
+            active: root.tooltipsEnabled
 
-            onClicked: Phoenix.PhoenixController.toggleRecording()
+            // Mentions the global hotkey when one is bound, so the
+            // pairing of button and shortcut is discoverable without a
+            // detour through System Settings.
+            mainText: {
+                const action = root.recording ? i18n("Stop") : i18n("Record");
+                const hotkey = Phoenix.PhoenixController.recordShortcut;
+                return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
+            }
 
-            PC3.ToolTip {
-                // Mentions the global hotkey when one is bound, so the
-                // pairing of button and shortcut is discoverable without a
-                // detour through System Settings.
-                text: {
-                    const action = root.recording ? i18n("Stop") : i18n("Record");
-                    const hotkey = Phoenix.PhoenixController.recordShortcut;
-                    return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
-                }
+            PC3.ToolButton {
+                id: recordButton
+
+                anchors.fill: parent
+
+                // The record button becomes a stop button while recording. A
+                // microphone rather than a red circle signals speech input;
+                // no colour tint needed either way.
+                icon.name: root.recording ? "media-playback-stop" : "audio-input-microphone"
+                icon.width: Kirigami.Units.iconSizes.small
+                icon.height: Kirigami.Units.iconSizes.small
+
+                onClicked: Phoenix.PhoenixController.toggleRecording()
+
+                Accessible.name: recordArea.mainText
             }
         }
 
@@ -164,39 +208,48 @@ Item {
         // Opens the prompt editor: the query is typed rather than spoken,
         // and nothing is recorded at all. The global hotkey does the same
         // from any application.
-        PC3.ToolButton {
-            id: keyboardButton
-            objectName: "keyboardButton"
+        PlasmaCore.ToolTipArea {
+            id: keyboardArea
 
             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-            icon.name: "input-keyboard"
-            icon.width: Kirigami.Units.iconSizes.small
-            icon.height: Kirigami.Units.iconSizes.small
+            location: Plasmoid.location
+            active: root.tooltipsEnabled
 
-            // The editor is open while the button is pressed: a toggle,
-            // like the search button - pressing it again puts the editor
-            // away again.
-            checked: Phoenix.PhoenixController.promptEditorOpen
-            icon.color: checked ? Kirigami.Theme.highlightColor
-                                : Kirigami.Theme.textColor
+            // Mentions the global hotkey when one is bound, like the
+            // record button's tooltip does.
+            mainText: {
+                const action = i18n("Type a query");
+                const hotkey = Phoenix.PhoenixController.promptShortcut;
+                return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
+            }
 
-            // While the microphone is open the dictation owns the
-            // prompt: the button waits for it to end rather than
-            // fighting it for the overlay.
-            enabled: !root.recording && !root.transcribing
+            PC3.ToolButton {
+                id: keyboardButton
+                objectName: "keyboardButton"
 
-            onClicked: Phoenix.PhoenixController.togglePromptEditor()
+                anchors.fill: parent
 
-            PC3.ToolTip {
-                // Mentions the global hotkey when one is bound, like the
-                // record button's tooltip does.
-                text: {
-                    const action = i18n("Type a query");
-                    const hotkey = Phoenix.PhoenixController.promptShortcut;
-                    return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
-                }
+                icon.name: "input-keyboard"
+                icon.width: Kirigami.Units.iconSizes.small
+                icon.height: Kirigami.Units.iconSizes.small
+
+                // The editor is open while the button is pressed: a toggle,
+                // like the search button - pressing it again puts the editor
+                // away again.
+                checked: Phoenix.PhoenixController.promptEditorOpen
+                icon.color: checked ? Kirigami.Theme.highlightColor
+                                    : Kirigami.Theme.textColor
+
+                // While the microphone is open the dictation owns the
+                // prompt: the button waits for it to end rather than
+                // fighting it for the overlay.
+                enabled: !root.recording && !root.transcribing
+
+                onClicked: Phoenix.PhoenixController.togglePromptEditor()
+
+                Accessible.name: keyboardArea.mainText
             }
         }
 
@@ -204,36 +257,45 @@ Item {
         // The camera photographs a window of the desktop and attaches the
         // picture to the prompt that is being composed; the global
         // shortcut does the same from anywhere.
-        PC3.ToolButton {
-            id: screenshotButton
-            objectName: "screenshotButton"
+        PlasmaCore.ToolTipArea {
+            id: screenshotArea
 
             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-            icon.name: "camera-photo"
-            icon.width: Kirigami.Units.iconSizes.small
-            icon.height: Kirigami.Units.iconSizes.small
-            // While the picker waits for a click, the button says so.
-            icon.color: Phoenix.PhoenixController.screenshotPicker.picking
-                ? Kirigami.Theme.highlightColor
-                : Kirigami.Theme.textColor
+            location: Plasmoid.location
+            active: root.tooltipsEnabled
 
-            onClicked: Phoenix.PhoenixController.startScreenshot()
-
-            PC3.ToolTip {
-                text: {
-                    const picker = Phoenix.PhoenixController.screenshotPicker;
-                    // While the picker is up, the tooltip names the window
-                    // a click would photograph.
-                    if (picker.picking && picker.targetTitle.length > 0) {
-                        return i18n("Screenshot: %1", picker.targetTitle);
-                    }
-                    const shortcut = picker.shortcut;
-                    return shortcut.length > 0
-                        ? i18n("Screenshot a window (%1)", shortcut)
-                        : i18n("Screenshot a window");
+            mainText: {
+                const picker = Phoenix.PhoenixController.screenshotPicker;
+                // While the picker is up, the tooltip names the window
+                // a click would photograph.
+                if (picker.picking && picker.targetTitle.length > 0) {
+                    return i18n("Screenshot: %1", picker.targetTitle);
                 }
+                const shortcut = picker.shortcut;
+                return shortcut.length > 0
+                    ? i18n("Screenshot a window (%1)", shortcut)
+                    : i18n("Screenshot a window");
+            }
+
+            PC3.ToolButton {
+                id: screenshotButton
+                objectName: "screenshotButton"
+
+                anchors.fill: parent
+
+                icon.name: "camera-photo"
+                icon.width: Kirigami.Units.iconSizes.small
+                icon.height: Kirigami.Units.iconSizes.small
+                // While the picker waits for a click, the button says so.
+                icon.color: Phoenix.PhoenixController.screenshotPicker.picking
+                    ? Kirigami.Theme.highlightColor
+                    : Kirigami.Theme.textColor
+
+                onClicked: Phoenix.PhoenixController.startScreenshot()
+
+                Accessible.name: screenshotArea.mainText
             }
         }
 
@@ -241,52 +303,70 @@ Item {
         // Opens the session search: the user's previous sessions on the
         // left, the selected one's queries and responses on the right.
         // A toggle: pressing it while the search is up closes it again.
-        PC3.ToolButton {
-            id: searchButton
-            objectName: "searchButton"
+        PlasmaCore.ToolTipArea {
+            id: searchArea
 
             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-            icon.name: "edit-find"
-            icon.width: Kirigami.Units.iconSizes.small
-            icon.height: Kirigami.Units.iconSizes.small
+            location: Plasmoid.location
+            active: root.tooltipsEnabled
 
-            // The search is open while the button is pressed.
-            checked: Phoenix.PhoenixController.sessionSearchOpen
-            icon.color: checked ? Kirigami.Theme.highlightColor
-                                : Kirigami.Theme.textColor
+            // As with the record button, the global hotkey is named
+            // when one is bound.
+            mainText: {
+                const action = i18n("Search sessions");
+                const hotkey = Phoenix.PhoenixController.searchShortcut;
+                return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
+            }
 
-            onClicked: Phoenix.PhoenixController.toggleSessionSearch()
+            PC3.ToolButton {
+                id: searchButton
+                objectName: "searchButton"
 
-            PC3.ToolTip {
-                // As with the record button, the global hotkey is named
-                // when one is bound.
-                text: {
-                    const action = i18n("Search sessions");
-                    const hotkey = Phoenix.PhoenixController.searchShortcut;
-                    return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
-                }
+                anchors.fill: parent
+
+                icon.name: "edit-find"
+                icon.width: Kirigami.Units.iconSizes.small
+                icon.height: Kirigami.Units.iconSizes.small
+
+                // The search is open while the button is pressed.
+                checked: Phoenix.PhoenixController.sessionSearchOpen
+                icon.color: checked ? Kirigami.Theme.highlightColor
+                                    : Kirigami.Theme.textColor
+
+                onClicked: Phoenix.PhoenixController.toggleSessionSearch()
+
+                Accessible.name: searchArea.mainText
             }
         }
 
         // ---- Far right: the settings button ---------------------------------
         // Opens the settings window: the API keys and the global hotkeys.
-        PC3.ToolButton {
-            id: settingsButton
-            objectName: "settingsButton"
+        PlasmaCore.ToolTipArea {
+            id: settingsArea
 
             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-            icon.name: "settings-configure"
-            icon.width: Kirigami.Units.iconSizes.small
-            icon.height: Kirigami.Units.iconSizes.small
+            location: Plasmoid.location
+            active: root.tooltipsEnabled
 
-            onClicked: root.settingsClicked()
+            mainText: i18n("Settings — API keys and global shortcuts")
 
-            PC3.ToolTip {
-                text: i18n("Settings — API keys and global shortcuts")
+            PC3.ToolButton {
+                id: settingsButton
+                objectName: "settingsButton"
+
+                anchors.fill: parent
+
+                icon.name: "settings-configure"
+                icon.width: Kirigami.Units.iconSizes.small
+                icon.height: Kirigami.Units.iconSizes.small
+
+                onClicked: root.settingsClicked()
+
+                Accessible.name: settingsArea.mainText
             }
         }
     }
