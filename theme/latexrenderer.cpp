@@ -128,12 +128,11 @@ const char *unicodeTablePreamble()
 // in its own kind (inline math stays inline-style, display stays
 // display-style — read off the span's own delimiters).
 //
-// Every formula sits in a picture environment, whose origin is the
-// formula's baseline, and a small rule in the left margin marks that
-// baseline: the renderer finds the mark in the rasterized page and
-// knows where the formula stands — without it, the crop to the ink
-// throws the baseline away and the formula floats above the text it
-// belongs to.
+// Every formula sits in a line of its own, and a small rule that
+// hangs into the left margin marks the line's baseline: the renderer
+// finds the mark in the rasterized page and knows where the formula
+// stands — without it, the crop to the ink throws the baseline away
+// and the formula floats above the text it belongs to.
 QString buildFormulaTex(const QStringList &spans)
 {
     QString body;
@@ -172,15 +171,16 @@ QString buildFormulaTex(const QStringList &spans)
         if (i > 0) {
             body += QStringLiteral("\\newpage\n");
         }
-        // The picture: its origin is the baseline, and the rule in the
-        // margin marks it. The raise keeps the page tidy — the box
-        // takes no room of its own, the ink is where it was typeset.
+        // The formula in the line's own flow, so that the line takes
+        // the room the formula needs — a formula taller than the
+        // page's top margin would otherwise stick out over the page's
+        // edge and be cut off by the rasterizer.
+        //
+        // The mark of the baseline: a rule that hangs into the left
+        // margin, its bottom edge on the line's baseline. It is out of
+        // the way of the ink, and the crop never sees it.
         body += QStringLiteral(
-                    "\\noindent\\raisebox{0pt}[0pt][0pt]{"
-                    "\\begin{picture}(0,0)"
-                    "\\put(-%1pt,0){\\rule{0.6pt}{0.6pt}}"
-                    "\\put(0,0){%2}\n"
-                    "\\end{picture}}\n")
+                    "\\noindent\\llap{\\rule{0.6pt}{0.6pt}\\hspace{%1pt}}%2\n")
                     .arg(kMarkerOffsetPt)
                     .arg(isDisplay
                              ? QStringLiteral("$\\displaystyle %1$").arg(inner)
@@ -497,7 +497,7 @@ void LatexRenderer::embedFormulas(int requestId,
     // compile once, whatever text surrounds them. The version is part
     // of the key: the compiled page changed (the formulas carry their
     // baseline marker now), and the old pages are not interchangeable.
-    QString spanKey = QStringLiteral("baseline-2:");
+    QString spanKey = QStringLiteral("baseline-3:");
     for (const QString &span : pending.spans) {
         spanKey += span + QChar::Nbsp;
     }
