@@ -847,7 +847,7 @@ Window {
                                     Layout.fillWidth: true
                                     visible: exchange.renderProgress >= 0
 
-                                    Kirigami.ProgressBar {
+                                    PC3.ProgressBar {
                                         Layout.preferredWidth:
                                             Kirigami.Units.gridUnit * 8
                                         from: 0
