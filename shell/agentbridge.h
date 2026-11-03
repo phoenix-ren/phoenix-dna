@@ -12,6 +12,8 @@
 
 #include "conversationmodel.h"
 
+class Speaker;
+
 /*!
  * \brief Client for the Python agent service, spoken over DBus.
  *
@@ -223,6 +225,21 @@ public:
      *  in; empty until one has started. */
     QString sessionId() const { return m_sessionId; }
 
+    /*! \brief Whether the daemon is currently reading an answer aloud.
+     *
+     * Backed by the daemon's SpeechStateChanged signal (see Speaker);
+     * the results pane shows its stop control while this is true. */
+    Q_PROPERTY(bool agentSpeaking READ isAgentSpeaking NOTIFY agentSpeakingChanged)
+
+    /*! \brief Whether the daemon's read-aloud is configured.
+     *
+     * The results pane hides its per-message "Read aloud" affordance
+     * while this is false (no key, tts_enabled off, no daemon answer). */
+    Q_PROPERTY(bool speechAvailable READ isSpeechAvailable NOTIFY speechAvailableChanged)
+
+    bool isAgentSpeaking() const;
+    bool isSpeechAvailable() const;
+
     QString sessionTitle() const { return m_sessionTitle; }
 
     QVariantList sessionSummaries() const { return m_sessionSummaries; }
@@ -320,6 +337,20 @@ public:
                                        const QString &mode,
                                        const QString &title);
 
+    /*! \brief Asks the daemon to read \a text aloud (SpeakText).
+     *
+     * The daemon normalizes and segments the text exactly as it does an
+     * answer — math is spoken as mathematics, code fences are skipped.
+     * This is the results pane's per-message "Read aloud" affordance. */
+    Q_INVOKABLE void speakText(const QString &text);
+
+    /*! \brief Asks the daemon to stop reading aloud immediately.
+     *
+     * Both the pane's stop control and the record button's barge-in
+     * (the microphone must not transcribe the agent's own voice) go
+     * through here. */
+    Q_INVOKABLE void stopSpeaking();
+
     /*! \brief Answers the question the running prompt is blocked on.
      *
      * \a selected are the chosen options, as 0-based indices into the
@@ -368,6 +399,12 @@ Q_SIGNALS:
 
     /*! \brief Emitted when the session title changed (or was dropped). */
     void sessionTitleChanged();
+
+    /*! \brief Emitted when the daemon started or stopped reading aloud. */
+    void agentSpeakingChanged();
+
+    /*! \brief Emitted when read-aloud became or stopped being available. */
+    void speechAvailableChanged();
 
     /*! \brief Emitted when the pending question changed: asked, answered,
      *  timed out, cancelled — or dropped with its run. */
@@ -573,6 +610,9 @@ private:
     // selected one.
     QVariantList m_sessionSummaries;
     QVariantList m_sessionMessages;
+    // The daemon-side read-aloud client (see speaker.h): owned here so
+    // every surface reaches it through the same bridge.
+    Speaker *m_speech = nullptr;
     // The question the running prompt is blocked on (ask_user): parsed
     // from QuestionAsked, emptied by QuestionAnswered or the run's end.
     QVariantMap m_pendingQuestion;

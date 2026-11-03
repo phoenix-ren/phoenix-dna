@@ -128,6 +128,9 @@ interface `dna.phoenix.Agent`.
 | `GetState` | ` → (ssu)` | `(state, current_run_id, queue_length)`; state is `idle` or `running`. |
 | `SearchSessions` | `ss → s` | `(user, query)` → JSON array of the user's sessions whose summary name matches the query. The match is fuzzy — every character of the query must occur in the name, in order — so typing narrows the list down; an empty query lists every session, newest first. Each entry carries `id`, `mode`, `title`, `summary` (the name the session is listed under: the title, or the first query when the session was never named), `preview`, `createdAt`, `updatedAt` and `messageCount`. |
 | `GetSessionTranscript` | `ss → s` | `(user, session_id)` → JSON array of the session's messages: `role` (`user` or `assistant`), `content` and `ts`. |
+| `SpeakText` | `s → ` | Speak an arbitrary string on demand (the results pane's "Read aloud"). The text is normalized and segmented exactly like an answer — math is spoken as mathematics, code fences are skipped. A no-op when speech is not enabled. |
+| `StopSpeaking` | ` → ` | Interrupt playback immediately and drop what is queued. |
+| `GetSpeechState` | ` → bs` | `(enabled, state)`; state is `idle` or `speaking`. |
 | `Ping` | ` → s` | Version string. |
 
 ### Signals
@@ -141,6 +144,7 @@ interface `dna.phoenix.Agent`.
 | `AuthRequested` / `AuthFinished` | `ss` / `sb` | the root-mode password dialog opened / closed |
 | `QuestionAsked` | `sss` | run_id, ask_id, JSON of the question: `question`, `header`, `options` (`[{label, description}]`), `multiple` — plus `goal`/`step`/`est_steps` wizard metadata when given. The run blocks until answered, cancelled or timed out. |
 | `QuestionAnswered` | `ssss` | run_id, ask_id, status (`answered\|timeout\|cancelled`), JSON of the normalized answer (`{"selected": [labels], "text": "…"}`) |
+| `SpeechStateChanged` | `s` | the daemon's read-aloud switched between `speaking` and `idle` |
 | `StateChanged` | `ssu` | state, current_run_id, queue_length |
 | `RunFinished` | `sssuuu` | run_id, status (`completed|cancelled|error|max_turns`), final text, turns, tokens in, tokens out |
 

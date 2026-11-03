@@ -9,6 +9,8 @@ API keys are never stored in this repository. They are read from
 * MiniMax:  ``MINIMAX_API_KEY`` / ``PHOENIX_MINIMAX_API_KEY``
 * Tavily:   ``TAVILY_API_KEY``  / ``PHOENIX_TAVILY_API_KEY``
 * Exa:      ``EXA_API_KEY``     / ``PHOENIX_EXA_API_KEY``
+* Speech:   ``PHOENIX_TTS_API_KEY`` / ``TTS_API_KEY`` / keys.json
+  "tts_api_key" — else the MiniMax key is reused (see Config.tts_key).
 """
 
 from __future__ import annotations
@@ -28,7 +30,26 @@ KEY_ENV = {
     "minimax_api_key": ("MINIMAX_API_KEY", "PHOENIX_MINIMAX_API_KEY"),
     "tavily_api_key": ("TAVILY_API_KEY", "PHOENIX_TAVILY_API_KEY"),
     "exa_api_key": ("EXA_API_KEY", "PHOENIX_EXA_API_KEY"),
+    # A dedicated speech key; absent, synthesis falls back to the
+    # MiniMax key (it is the same account either way).
+    "tts_api_key": ("TTS_API_KEY", "PHOENIX_TTS_API_KEY"),
 }
+
+#: The tts_* fields an environment variable can override, spelled
+#: PHOENIX_TTS_<REST> (e.g. PHOENIX_TTS_ENABLED, PHOENIX_TTS_READ_MODE).
+_TTS_ENV_FIELDS = (
+    "tts_enabled",
+    "tts_provider",
+    "tts_model",
+    "tts_endpoint",
+    "tts_voice",
+    "tts_speed",
+    "tts_format",
+    "tts_read_mode",
+    "tts_holdback_sentences",
+    "tts_voice_local",
+    "tts_local_venv",
+)
 
 
 @dataclass(frozen=True)
@@ -73,8 +94,29 @@ class Config:
     confirm_destructive: bool = True
     confirm_patterns: list = field(default_factory=list)
 
-    # API keys (minimax_api_key / tavily_api_key / exa_api_key)
+    # API keys (minimax_api_key / tavily_api_key / exa_api_key /
+    # tts_api_key)
     keys: dict = field(default_factory=dict)
+
+    # Text-to-speech: the daemon reading its own answers aloud (see
+    # speech/speaker.py for what the read modes mean). Disabled by
+    # default — speech is strictly opt-in, and with it off nothing
+    # about the daemon's behaviour changes.
+    tts_enabled: bool = False
+    tts_provider: str = "minimax"  # "minimax" | "local" | "none"
+    tts_model: str = "speech-2.8-turbo"
+    tts_endpoint: str = "https://api.minimax.io/v1/t2a_v2"
+    tts_voice: str = "English_expressive_narrator"
+    tts_speed: float = 1.0
+    tts_format: str = "opus"  # opus (preferred) | mp3 | flac | pcm
+    tts_read_mode: str = "final"  # "final" | "stream"
+    tts_holdback_sentences: int = 1
+    #: Kokoro .onnx (voices.json beside it) or Piper .onnx; Path("")
+    #: means "not set".
+    tts_voice_local: Path = field(default_factory=lambda: Path(""))
+    #: The py3.13 venv the local engine's worker runs in (kokoro-onnx
+    #: cannot be imported by this daemon's interpreter).
+    tts_local_venv: Path = field(default_factory=lambda: Path(""))
 
     def search_keys(self) -> dict:
         """Only the search keys that are actually present."""
@@ -82,6 +124,18 @@ class Config:
             "tavily_search": self.keys.get("tavily_api_key", ""),
             "exa_search": self.keys.get("exa_api_key", ""),
         }
+
+    def tts_key(self) -> str:
+        """The API key speech synthesis uses.
+
+        A dedicated ``tts_api_key`` (keys.json, or PHOENIX_TTS_API_KEY /
+        TTS_API_KEY in the environment) beats the agent's MiniMax key;
+        without one the MiniMax key serves, because the speech API is
+        MiniMax's as well.
+        """
+        return self.keys.get("tts_api_key", "") or self.keys.get(
+            "minimax_api_key", ""
+        )
 
 
 def _load_keys_file(config_dir: Path) -> dict:
@@ -107,7 +161,12 @@ def _apply_overrides(config: Config, overrides: dict) -> Config:
         current = getattr(config, key)
         try:
             if isinstance(current, bool):
-                value = bool(value)
+                # A bool from the environment arrives as a string; the
+                # words that mean false must not become true.
+                if isinstance(value, str):
+                    value = value.strip().lower() in ("1", "true", "yes", "on")
+                else:
+                    value = bool(value)
             elif isinstance(current, list):
                 # List settings (e.g. confirm_patterns) take either a
                 # single entry or a list of entries, all as strings.
@@ -189,6 +248,10 @@ def load_config(
         env_overrides["llm_base_url"] = env["PHOENIX_BASE_URL"]
     if env.get("PHOENIX_LLM_API_KEY"):
         env_overrides["llm_api_key"] = env["PHOENIX_LLM_API_KEY"]
+    for name in _TTS_ENV_FIELDS:
+        env_name = "PHOENIX_" + name.upper()
+        if env.get(env_name):
+            env_overrides[name] = env[env_name]
     config = _apply_overrides(config, env_overrides)
 
     config.data_dir.mkdir(parents=True, exist_ok=True)
@@ -218,5 +281,7 @@ def describe(config: Config) -> str:
         f"kdialog         : {config.kdialog_bin}",
         f"max turns       : {config.max_turns}",
         f"ask timeout     : {config.ask_timeout_seconds:.0f}s (0 = wait indefinitely)",
+        f"tts             : {'on' if config.tts_enabled else 'off'} "
+        f"({config.tts_provider}, {config.tts_read_mode} mode)",
     ]
     return "\n".join(lines)

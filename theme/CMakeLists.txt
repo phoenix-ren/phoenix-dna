@@ -54,3 +54,18 @@ target_link_libraries(org.phoenixdna.theme PRIVATE
     Qt6::Gui
     Qt6::Quick
 )
+
+# Offline check of the shared math-span fixture: the speech daemon's
+# Python detector (agent/phoenix_dna/speech/mathspan.py, exercised by
+# the agent test suite) and this renderer must find the same spans and
+# map the same Unicode symbols, or the daemon would speak different
+# mathematics than the window renders. Both sides run against one JSON
+# fixture; this target is the C++ half of that contract.
+#
+#   mathspantest [fixture.json]
+add_executable(mathspantest mathspantest.cpp)
+target_include_directories(mathspantest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(mathspantest PRIVATE
+    MATHSPAN_FIXTURE="${CMAKE_SOURCE_DIR}/agent/tests/data/mathspans.json")
+target_link_libraries(mathspantest PRIVATE Qt6::Core)
+add_test(NAME mathspantest COMMAND mathspantest)

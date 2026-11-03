@@ -156,6 +156,23 @@ Window {
     // title, so the taskbar entry names the conversation too.
     property string sessionTitle: ""
 
+    // Read-aloud state, bound by the shell to the agent bridge: whether
+    // the daemon's speech is configured at all (the per-message
+    // affordance is hidden when it is not), and whether the daemon is
+    // currently reading something aloud (the stop control shows then).
+    property bool speechAvailable: false
+    property bool agentSpeaking: false
+
+    // Emitted when a message's "Read aloud" is clicked. The shell routes
+    // the text to the daemon's SpeakText; the daemon normalizes and
+    // segments it exactly as it does an answer (math is spoken as
+    // mathematics, code fences are skipped) — the shell never
+    // synthesizes.
+    signal readAloudRequested(string text)
+
+    // Emitted when the stop control interrupts the read-aloud.
+    signal stopSpeakingRequested()
+
     // The gap between two paragraphs of the agent's Markdown, which Qt
     // renders with none at all (see MarkdownDocument.spaceParagraphs);
     // a line of the answer's own size, so paragraphs read as
@@ -947,6 +964,32 @@ Window {
                                                 Qt.application.font.pixelSize * 0.8))
                                         color: PhoenixTheme.secondaryTextColor
                                     }
+
+                                    // Read the answer of this exchange
+                                    // aloud, on demand: the daemon does
+                                    // the speaking (and the math, and
+                                    // the interrupting); hidden unless
+                                    // the daemon's speech is configured.
+                                    PC3.ToolButton {
+                                        id: readAloudButton
+                                        objectName: "readAloudButton"
+
+                                        visible: !exchange.running
+                                            && exchange.result.length > 0
+                                            && resultsWindow.speechAvailable
+                                        enabled: visible
+
+                                        icon.name: "text-to-speech"
+                                        icon.width: Kirigami.Units.iconSizes.small
+                                        icon.height: Kirigami.Units.iconSizes.small
+
+                                        onClicked:
+                                            resultsWindow.readAloudRequested(exchange.result)
+
+                                        PC3.ToolTip {
+                                            text: i18n("Read aloud")
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1200,6 +1243,35 @@ Window {
 
                             PC3.ToolTip {
                                 text: resultsWindow.listening ? i18n("Stop") : i18n("Record a follow-up")
+                            }
+                        }
+
+                        // The read-aloud stop control: the daemon is
+                        // reading an answer (this exchange's or another
+                        // one's, or an ad-hoc SpeakText) and this cuts
+                        // it off. Shown only while it speaks — pressing
+                        // record also stops the speech (barge-in), so
+                        // the microphone never transcribes the agent's
+                        // own voice.
+                        PC3.ToolButton {
+                            id: stopSpeakingButton
+                            objectName: "stopSpeakingButton"
+
+                            visible: resultsWindow.agentSpeaking
+                            enabled: visible
+
+                            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+                            icon.name: "media-playback-stop"
+                            icon.width: Kirigami.Units.iconSizes.small
+                            icon.height: Kirigami.Units.iconSizes.small
+                            display: PC3.AbstractButton.IconOnly
+
+                            onClicked: resultsWindow.stopSpeakingRequested()
+
+                            PC3.ToolTip {
+                                text: i18n("Stop reading")
                             }
                         }
 

@@ -12,6 +12,7 @@ path = [
     "audio_prompt_samples/**",
     "live.png",
     "shell/metadata.json",
+    "agent/tests/data/**",
 ]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Phoenix DNA contributors"

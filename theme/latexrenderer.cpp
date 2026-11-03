@@ -3,6 +3,8 @@
 
 #include "latexrenderer.h"
 
+#include "mathspan.h"  // shared with the speech-side detector
+
 #include <QDebug>
 #include <QCryptographicHash>
 #include <QDir>
@@ -43,85 +45,6 @@ constexpr qreal kMarkerOffsetPt = 10.0;
 // front of the formula.
 constexpr qreal kMarkerStripPt = 15.0;
 
-// --- math-span detection (shared by containsLatex and the embedder) ------
-
-// All span kinds in one alternation, display delimiters first: a "$$"
-// can never be misread as two "$" spans. The inline "$…$" must hug its
-// content, so "$5 and $10" stays currency.
-const QRegularExpression &mathSpanMatcher()
-{
-    static const QRegularExpression matcher(QStringLiteral(
-        "\\\\\\[([\\s\\S]*?)\\\\\\]"
-        "|\\$\\$([\\s\\S]*?)\\$\\$"
-        "|\\\\\\((.+?)\\\\\\)"
-        "|\\$(\\S(?:[^$\\n]*\\S)?)\\$"));
-    return matcher;
-}
-
-// The Unicode symbols the models write (∫, α, → …) mapped to their math
-// commands — kept in the compile so a formula mixing Unicode and LaTeX
-// still typesets. Gated and inert when the package is missing.
-const char *unicodeTablePreamble()
-{
-    return R"TEX(\IfFileExists{newunicodechar.sty}{\usepackage{newunicodechar}}{}
-\providecommand{\newunicodechar}[2]{}
-\newunicodechar{×}{\ensuremath{\times}}
-\newunicodechar{⋅}{\ensuremath{\cdot}}
-\newunicodechar{·}{\ensuremath{\cdot}}
-\newunicodechar{≤}{\ensuremath{\leq}}
-\newunicodechar{≥}{\ensuremath{\geq}}
-\newunicodechar{≠}{\ensuremath{\neq}}
-\newunicodechar{≈}{\ensuremath{\approx}}
-\newunicodechar{≡}{\ensuremath{\equiv}}
-\newunicodechar{∝}{\ensuremath{\propto}}
-\newunicodechar{∈}{\ensuremath{\in}}
-\newunicodechar{∉}{\ensuremath{\notin}}
-\newunicodechar{∞}{\ensuremath{\infty}}
-\newunicodechar{∂}{\ensuremath{\partial}}
-\newunicodechar{∇}{\ensuremath{\nabla}}
-\newunicodechar{√}{\ensuremath{\sqrt}}
-\newunicodechar{∫}{\ensuremath{\int}}
-\newunicodechar{∮}{\ensuremath{\oint}}
-\newunicodechar{∑}{\ensuremath{\sum}}
-\newunicodechar{∏}{\ensuremath{\prod}}
-\newunicodechar{→}{\ensuremath{\rightarrow}}
-\newunicodechar{←}{\ensuremath{\leftarrow}}
-\newunicodechar{↔}{\ensuremath{\leftrightarrow}}
-\newunicodechar{⇒}{\ensuremath{\Rightarrow}}
-\newunicodechar{⇐}{\ensuremath{\Leftarrow}}
-\newunicodechar{⇔}{\ensuremath{\Leftrightarrow}}
-\newunicodechar{⟶}{\ensuremath{\longrightarrow}}
-\newunicodechar{↦}{\ensuremath{\mapsto}}
-\newunicodechar{ℏ}{\ensuremath{\hbar}}
-\newunicodechar{ℓ}{\ensuremath{\ell}}
-\newunicodechar{ℝ}{\ensuremath{\mathbb{R}}}
-\newunicodechar{ℕ}{\ensuremath{\mathbb{N}}}
-\newunicodechar{ℤ}{\ensuremath{\mathbb{Z}}}
-\newunicodechar{ℚ}{\ensuremath{\mathbb{Q}}}
-\newunicodechar{ℂ}{\ensuremath{\mathbb{C}}}
-\newunicodechar{′}{\ensuremath{\prime}}
-\newunicodechar{″}{\ensuremath{\prime\prime}}
-\newunicodechar{α}{\ensuremath{\alpha}}
-\newunicodechar{β}{\ensuremath{\beta}}
-\newunicodechar{γ}{\ensuremath{\gamma}}
-\newunicodechar{δ}{\ensuremath{\delta}}
-\newunicodechar{ε}{\ensuremath{\varepsilon}}
-\newunicodechar{θ}{\ensuremath{\theta}}
-\newunicodechar{λ}{\ensuremath{\lambda}}
-\newunicodechar{μ}{\ensuremath{\mu}}
-\newunicodechar{π}{\ensuremath{\pi}}
-\newunicodechar{ρ}{\ensuremath{\rho}}
-\newunicodechar{σ}{\ensuremath{\sigma}}
-\newunicodechar{τ}{\ensuremath{\tau}}
-\newunicodechar{φ}{\ensuremath{\varphi}}
-\newunicodechar{ω}{\ensuremath{\omega}}
-\newunicodechar{Δ}{\ensuremath{\Delta}}
-\newunicodechar{Ω}{\ensuremath{\Omega}}
-\newunicodechar{Γ}{\ensuremath{\Gamma}}
-\newunicodechar{Σ}{\ensuremath{\Sigma}}
-\newunicodechar{Θ}{\ensuremath{\Theta}}
-)TEX";
-}
 
 // One document, every formula on its own page: a generous page so no
 // formula spills onto a second one, tiny margins, and each span kept

@@ -15,7 +15,12 @@ Responsibilities:
 * (re)name every session with a single LLM call after a completed run, so
   a follow-on that shifts the conversation renames it;
 * forward every agent event to ``emitter`` (called from the worker thread -
-* the D-Bus layer marshals events onto the main loop).
+  the D-Bus layer marshals events onto the main loop);
+* feed those same events to the optional Speaker (see speech/speaker.py),
+  which reads the answers aloud. The Speaker is a constructor argument so
+  tests can inject a fake; by default it is built from the config and is
+  disabled unless ``tts_enabled`` is set, which keeps the no-TTS behaviour
+  byte-for-byte what it always was.
 """
 
 from __future__ import annotations
@@ -46,6 +51,7 @@ from .prompts import (
 from .provider import LLMProvider, build_provider
 from .search import match_sessions
 from .sessions import SessionManager, SessionStore
+from .speech.speaker import Speaker, build_speaker
 from .tools.ask import AskCoordinator
 
 log = logging.getLogger("phoenix.daemon")
@@ -94,6 +100,7 @@ class AgentDaemon:
         title_provider: LLMProvider | None = None,
         password_provider=None,
         emitter=None,
+        speaker: Speaker | None = None,
     ):
         self.config = config
         self._provider = provider or build_provider(config)
@@ -111,6 +118,15 @@ class AgentDaemon:
         )
         self._password_provider = password_provider  # None -> KDialog lazily
         self._emitter = emitter or (lambda event: None)
+        # The Speaker sees every event through _emit and reads the
+        # answers aloud. Built from the config (disabled unless
+        # tts_enabled) or injected — a test's fake keeps the call
+        # sequence deterministic. Its state-change events come back
+        # through this daemon's _emit, so they ride the same queue to
+        # D-Bus as everything else.
+        self._speaker: Speaker = speaker if speaker is not None else build_speaker(
+            config, emitter=self._emit
+        )
         # Pending ask_user questions: the blocked tool waits here while the
         # answer comes in over D-Bus (answer_question). One coordinator
         # serves every run - runs are sequential, one question at a time.
@@ -140,7 +156,28 @@ class AgentDaemon:
         self._emitter = emitter
 
     def _emit(self, event: dict) -> None:
+        # The Speaker first: its retraction logic wants to see the event
+        # before the UI renders it, and it never blocks (buffer + queue).
+        # speech_state_changed comes back in here too and is ignored.
+        self._speaker.handle_event(event)
         self._emitter(event)
+
+    def speak_text(self, text: str) -> None:
+        """Speak an arbitrary string on demand (the SpeakText D-Bus method).
+
+        The text goes through the same normalization and segmentation
+        as an answer, on the Speaker's own thread; an empty or absent
+        speaker (TTS off) makes this a no-op.
+        """
+        self._speaker.speak(text)
+
+    def stop_speaking(self) -> None:
+        """Interrupt playback immediately (the StopSpeaking D-Bus method)."""
+        self._speaker.stop()
+
+    def speech_state(self) -> dict:
+        """The GetSpeechState answer: {"enabled": bool, "state": str}."""
+        return self._speaker.speech_state()
 
     def modes(self) -> list[ModeProfile]:
         return list(MODE_PROFILES.values())
@@ -360,6 +397,7 @@ class AgentDaemon:
             self._cond.notify_all()
         self._thread.join(timeout=timeout)
         self._aux_pool.shutdown(wait=False, cancel_futures=True)
+        self._speaker.close()
 
     # -- worker ----------------------------------------------------------------
 
@@ -454,7 +492,9 @@ class AgentDaemon:
             system_prompt=system_prompt,
             conversation=conversation,
             session_manager=self._sessions,
-            event_sink=self._emitter,
+            # _emit (not the bare emitter) so the Speaker sees the run's
+            # events too — the read policy lives on that funnel.
+            event_sink=self._emit,
             max_turns=self.config.max_turns,
             cancel_event=cancel,
             vision=vision_enabled(self.config),

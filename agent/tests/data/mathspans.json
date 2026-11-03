@@ -1,0 +1,424 @@
+{
+  "comment": [
+    "Shared math-span and Unicode-math fixture. The Python side is",
+    "tested by agent/tests/test_speech_math.py; the C++ side by",
+    "theme/mathspantest.cpp. Both read THIS file, so the daemon's",
+    "spoken spans and the renderer's images cannot drift apart."
+  ],
+  "spans": [
+    {
+      "input": "Euler wrote $e^{i\\pi} + 1 = 0$ in a letter.",
+      "expected": [
+        {
+          "start": 12,
+          "end": 30,
+          "kind": "inline_dollar",
+          "body": "e^{i\\pi} + 1 = 0"
+        }
+      ]
+    },
+    {
+      "input": "It costs $5 and $10, so no math here.",
+      "expected": []
+    },
+    {
+      "input": "The identity $$x^2 + y^2 = z^2$$ is Pythagoras.",
+      "expected": [
+        {
+          "start": 13,
+          "end": 32,
+          "kind": "display_dollar",
+          "body": "x^2 + y^2 = z^2"
+        }
+      ]
+    },
+    {
+      "input": "Behold \\[a + b\\] inline brackets.",
+      "expected": [
+        {
+          "start": 7,
+          "end": 16,
+          "kind": "display_bracket",
+          "body": "a + b"
+        }
+      ]
+    },
+    {
+      "input": "Behold \\(a + b\\) parenthesized.",
+      "expected": [
+        {
+          "start": 7,
+          "end": 16,
+          "kind": "inline_paren",
+          "body": "a + b"
+        }
+      ]
+    },
+    {
+      "input": "A single letter $x$ counts as math.",
+      "expected": [
+        {
+          "start": 16,
+          "end": 19,
+          "kind": "inline_dollar",
+          "body": "x"
+        }
+      ]
+    },
+    {
+      "input": "Spaced $ x $ dollars are currency, not math.",
+      "expected": []
+    },
+    {
+      "input": "Mixed $a$ and $$b$$ kinds.",
+      "expected": [
+        {
+          "start": 6,
+          "end": 9,
+          "kind": "inline_dollar",
+          "body": "a"
+        },
+        {
+          "start": 14,
+          "end": 19,
+          "kind": "display_dollar",
+          "body": "b"
+        }
+      ]
+    },
+    {
+      "input": "Use $$a$$ then $b$ in one line.",
+      "expected": [
+        {
+          "start": 4,
+          "end": 9,
+          "kind": "display_dollar",
+          "body": "a"
+        },
+        {
+          "start": 15,
+          "end": 18,
+          "kind": "inline_dollar",
+          "body": "b"
+        }
+      ]
+    },
+    {
+      "input": "Unicode prose: for α ≤ 3 the series ∑ x converges — no spans.",
+      "expected": []
+    },
+    {
+      "input": "before\n$$\n\\int_0^1 x\\,dx\n$$\nafter",
+      "expected": [
+        {
+          "start": 7,
+          "end": 27,
+          "kind": "display_dollar",
+          "body": "\n\\int_0^1 x\\,dx\n"
+        }
+      ]
+    },
+    {
+      "input": "$5, $10 and $15 are prices.",
+      "expected": []
+    },
+    {
+      "input": "A newline inside $a\nb$ hugs nothing and \\(a\nb\\) cannot span either.",
+      "expected": []
+    },
+    {
+      "input": "Two on one line: $a + b$ and $c + d$.",
+      "expected": [
+        {
+          "start": 17,
+          "end": 24,
+          "kind": "inline_dollar",
+          "body": "a + b"
+        },
+        {
+          "start": 29,
+          "end": 36,
+          "kind": "inline_dollar",
+          "body": "c + d"
+        }
+      ]
+    }
+  ],
+  "unicode": [
+    {
+      "symbol": "×",
+      "latex": "times",
+      "spoken": "times"
+    },
+    {
+      "symbol": "⋅",
+      "latex": "cdot",
+      "spoken": "times"
+    },
+    {
+      "symbol": "·",
+      "latex": "cdot",
+      "spoken": "times"
+    },
+    {
+      "symbol": "≤",
+      "latex": "leq",
+      "spoken": "is less than or equal to"
+    },
+    {
+      "symbol": "≥",
+      "latex": "geq",
+      "spoken": "is greater than or equal to"
+    },
+    {
+      "symbol": "≠",
+      "latex": "neq",
+      "spoken": "is not equal to"
+    },
+    {
+      "symbol": "≈",
+      "latex": "approx",
+      "spoken": "is approximately equal to"
+    },
+    {
+      "symbol": "≡",
+      "latex": "equiv",
+      "spoken": "is identical to"
+    },
+    {
+      "symbol": "∝",
+      "latex": "propto",
+      "spoken": "is proportional to"
+    },
+    {
+      "symbol": "∈",
+      "latex": "in",
+      "spoken": "is in"
+    },
+    {
+      "symbol": "∉",
+      "latex": "notin",
+      "spoken": "is not in"
+    },
+    {
+      "symbol": "∞",
+      "latex": "infty",
+      "spoken": "infinity"
+    },
+    {
+      "symbol": "∂",
+      "latex": "partial",
+      "spoken": "partial"
+    },
+    {
+      "symbol": "∇",
+      "latex": "nabla",
+      "spoken": "nabla"
+    },
+    {
+      "symbol": "√",
+      "latex": "sqrt",
+      "spoken": "the square root of"
+    },
+    {
+      "symbol": "∫",
+      "latex": "int",
+      "spoken": "the integral of"
+    },
+    {
+      "symbol": "∮",
+      "latex": "oint",
+      "spoken": "the contour integral of"
+    },
+    {
+      "symbol": "∑",
+      "latex": "sum",
+      "spoken": "the sum of"
+    },
+    {
+      "symbol": "∏",
+      "latex": "prod",
+      "spoken": "the product of"
+    },
+    {
+      "symbol": "→",
+      "latex": "rightarrow",
+      "spoken": "approaches"
+    },
+    {
+      "symbol": "←",
+      "latex": "leftarrow",
+      "spoken": "from"
+    },
+    {
+      "symbol": "↔",
+      "latex": "leftrightarrow",
+      "spoken": "if and only if"
+    },
+    {
+      "symbol": "⇒",
+      "latex": "Rightarrow",
+      "spoken": "implies"
+    },
+    {
+      "symbol": "⇐",
+      "latex": "Leftarrow",
+      "spoken": "is implied by"
+    },
+    {
+      "symbol": "⇔",
+      "latex": "Leftrightarrow",
+      "spoken": "if and only if"
+    },
+    {
+      "symbol": "⟶",
+      "latex": "longrightarrow",
+      "spoken": "approaches"
+    },
+    {
+      "symbol": "↦",
+      "latex": "mapsto",
+      "spoken": "maps to"
+    },
+    {
+      "symbol": "ℏ",
+      "latex": "hbar",
+      "spoken": "h bar"
+    },
+    {
+      "symbol": "ℓ",
+      "latex": "ell",
+      "spoken": "ell"
+    },
+    {
+      "symbol": "ℝ",
+      "latex": "mathbb{R}",
+      "spoken": "the reals"
+    },
+    {
+      "symbol": "ℕ",
+      "latex": "mathbb{N}",
+      "spoken": "the naturals"
+    },
+    {
+      "symbol": "ℤ",
+      "latex": "mathbb{Z}",
+      "spoken": "the integers"
+    },
+    {
+      "symbol": "ℚ",
+      "latex": "mathbb{Q}",
+      "spoken": "the rationals"
+    },
+    {
+      "symbol": "ℂ",
+      "latex": "mathbb{C}",
+      "spoken": "the complex numbers"
+    },
+    {
+      "symbol": "′",
+      "latex": "prime",
+      "spoken": "prime"
+    },
+    {
+      "symbol": "″",
+      "latex": "prime\\prime",
+      "spoken": "prime prime"
+    },
+    {
+      "symbol": "α",
+      "latex": "alpha",
+      "spoken": "alpha"
+    },
+    {
+      "symbol": "β",
+      "latex": "beta",
+      "spoken": "beta"
+    },
+    {
+      "symbol": "γ",
+      "latex": "gamma",
+      "spoken": "gamma"
+    },
+    {
+      "symbol": "δ",
+      "latex": "delta",
+      "spoken": "delta"
+    },
+    {
+      "symbol": "ε",
+      "latex": "varepsilon",
+      "spoken": "epsilon"
+    },
+    {
+      "symbol": "θ",
+      "latex": "theta",
+      "spoken": "theta"
+    },
+    {
+      "symbol": "λ",
+      "latex": "lambda",
+      "spoken": "lambda"
+    },
+    {
+      "symbol": "μ",
+      "latex": "mu",
+      "spoken": "mu"
+    },
+    {
+      "symbol": "π",
+      "latex": "pi",
+      "spoken": "pi"
+    },
+    {
+      "symbol": "ρ",
+      "latex": "rho",
+      "spoken": "rho"
+    },
+    {
+      "symbol": "σ",
+      "latex": "sigma",
+      "spoken": "sigma"
+    },
+    {
+      "symbol": "τ",
+      "latex": "tau",
+      "spoken": "tau"
+    },
+    {
+      "symbol": "φ",
+      "latex": "varphi",
+      "spoken": "phi"
+    },
+    {
+      "symbol": "ω",
+      "latex": "omega",
+      "spoken": "omega"
+    },
+    {
+      "symbol": "Δ",
+      "latex": "Delta",
+      "spoken": "delta"
+    },
+    {
+      "symbol": "Ω",
+      "latex": "Omega",
+      "spoken": "omega"
+    },
+    {
+      "symbol": "Γ",
+      "latex": "Gamma",
+      "spoken": "gamma"
+    },
+    {
+      "symbol": "Σ",
+      "latex": "Sigma",
+      "spoken": "sigma"
+    },
+    {
+      "symbol": "Θ",
+      "latex": "Theta",
+      "spoken": "theta"
+    }
+  ]
+}
