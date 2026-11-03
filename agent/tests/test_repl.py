@@ -5,11 +5,14 @@
 
 from __future__ import annotations
 
+import json
 import queue
 
 from phoenix_dna.repl import (
     EventPrinter,
     dbus_signal_to_event,
+    parse_answer_line,
+    read_answer,
     wait_for_run,
 )
 
@@ -118,6 +121,133 @@ def test_printer_truncates_long_tool_args_and_output(capsys):
     out = capsys.readouterr().out
     assert "..." in out  # args truncated
     assert "+7 more lines" in out  # 10 lines -> 3 shown + note
+
+
+def test_printer_renders_a_question_and_collects_the_answer(capsys):
+    answered = []
+    printer = EventPrinter(
+        color=False, answer_fn=lambda ask_id, question: answered.append(ask_id)
+    )
+    printer.on_event(
+        {
+            "kind": "question_asked",
+            "run_id": "r",
+            "ask_id": "ask_1",
+            "question": {
+                "question": "Which disk should the backup use?",
+                "header": "Backup disk",
+                "options": [
+                    {"label": "/dev/sda", "description": "the SSD"},
+                    {"label": "/dev/sdb"},
+                ],
+            },
+        }
+    )
+    out = capsys.readouterr().out
+    assert "❓ Which disk should the backup use?" in out
+    assert "1) /dev/sda — the SSD" in out
+    assert "2) /dev/sdb" in out
+    assert "or your own words" in out
+    assert answered == ["ask_1"]
+
+    # wizard metadata is shown as progress context
+    printer.on_event(
+        {
+            "kind": "question_asked",
+            "run_id": "r",
+            "ask_id": "ask_2",
+            "question": {
+                "question": "Encrypt it?",
+                "options": [{"label": "Yes"}, {"label": "No"}],
+                "step": 2,
+                "est_steps": 4,
+                "goal": "backup setup",
+            },
+        }
+    )
+    out = capsys.readouterr().out
+    assert "(step 2 of ~4: backup setup) Encrypt it?" in out
+
+
+def test_printer_badges_harness_confirmations(capsys):
+    printer = EventPrinter(color=False)
+    printer.on_event(
+        {
+            "kind": "question_asked",
+            "run_id": "r",
+            "ask_id": "ask_c",
+            "question": {
+                "question": "Allow this root command to run?\n\n$ rm -rf /tmp/x",
+                "options": [{"label": "Allow"}, {"label": "Deny"}],
+                "harness": True,
+            },
+        }
+    )
+    out = capsys.readouterr().out
+    assert "system confirmation" in out
+    assert "$ rm -rf /tmp/x" in out
+    assert "1) Allow" in out
+    assert "2) Deny" in out
+
+
+def test_parse_answer_line():
+    question = {
+        "options": [{"label": "/dev/sda"}, {"label": "/dev/sdb"}],
+    }
+    assert parse_answer_line("1", question) == {"selected": [0]}
+    assert parse_answer_line("2", question) == {"selected": [1]}
+    assert parse_answer_line("/dev/sdb", question) == {"selected": [1]}
+    assert parse_answer_line("/dev/SDA", question) == {"selected": [0]}
+    assert parse_answer_line("the external one", question) == {
+        "text": "the external one"
+    }
+    assert parse_answer_line("", question) == {}
+    assert parse_answer_line("9", question) == {"text": "9"}
+
+    multi = dict(question, multiple=True)
+    assert parse_answer_line("1, 2", multi) == {"selected": [0, 1]}
+    assert parse_answer_line("2, and hurry", multi) == {
+        "selected": [1],
+        "text": "and hurry",
+    }
+
+
+def test_read_answer_prompts_until_nonempty():
+    question = {"options": [{"label": "a"}, {"label": "b"}]}
+    inputs = iter(["", "  ", "2"])
+    answer = read_answer(question, input_fn=lambda _prompt: next(inputs))
+    assert answer == {"selected": [1]}
+
+
+def test_read_answer_eof_degrades_to_an_explicit_no_answer():
+    def eof(_prompt):
+        raise EOFError
+
+    answer = read_answer({"options": [{"label": "a"}, {"label": "b"}]}, input_fn=eof)
+    assert answer["text"]
+
+
+def test_dbus_signal_to_event_questions():
+    question_json = json.dumps({"question": "Disk?", "options": [{"label": "a"}]})
+    assert dbus_signal_to_event("QuestionAsked", "r1", "ask_9", question_json) == {
+        "kind": "question_asked",
+        "run_id": "r1",
+        "ask_id": "ask_9",
+        "question": {"question": "Disk?", "options": [{"label": "a"}]},
+    }
+    # malformed question_json degrades to an empty question
+    assert dbus_signal_to_event("QuestionAsked", "r1", "ask_9", "{oops")[
+        "question"
+    ] == {}
+    assert dbus_signal_to_event(
+        "QuestionAnswered", "r1", "ask_9", "answered", '{"selected": ["a"]}'
+    ) == {
+        "kind": "question_answered",
+        "run_id": "r1",
+        "ask_id": "ask_9",
+        "ask_status": "answered",
+        "answer": {"selected": ["a"]},
+    }
 
 
 def test_wait_for_run_returns_only_the_matching_finish():

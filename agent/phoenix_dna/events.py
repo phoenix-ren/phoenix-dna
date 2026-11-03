@@ -20,6 +20,11 @@ TEXT_DELTA = "text_delta"
 THINKING_DELTA = "thinking_delta"
 TOOL_CALL_STARTED = "tool_call_started"
 TOOL_CALL_FINISHED = "tool_call_finished"
+#: The ask_user tool is showing the user a question; the run blocks until
+#: the answer arrives (answer_question), the run is cancelled or it times out.
+QUESTION_ASKED = "question_asked"
+#: A pending question ended: answered, timed out or cancelled.
+QUESTION_ANSWERED = "question_answered"
 AUTH_REQUESTED = "auth_requested"
 AUTH_FINISHED = "auth_finished"
 RUN_FINISHED = "run_finished"

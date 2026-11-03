@@ -46,6 +46,7 @@ from .prompts import (
 from .provider import LLMProvider, build_provider
 from .search import match_sessions
 from .sessions import SessionManager, SessionStore
+from .tools.ask import AskCoordinator
 
 log = logging.getLogger("phoenix.daemon")
 
@@ -110,6 +111,10 @@ class AgentDaemon:
         )
         self._password_provider = password_provider  # None -> KDialog lazily
         self._emitter = emitter or (lambda event: None)
+        # Pending ask_user questions: the blocked tool waits here while the
+        # answer comes in over D-Bus (answer_question). One coordinator
+        # serves every run - runs are sequential, one question at a time.
+        self._asks = AskCoordinator(emit=self._emit)
         # One SQLite database per user (root / the local login name). The
         # legacy JSONL store, if present, is imported into it once.
         self._sessions = SessionManager(
@@ -217,6 +222,16 @@ class AgentDaemon:
                     )
                     return True
         return False
+
+    def answer_question(self, ask_id: str, answer_json: str) -> bool:
+        """Answer a question the running prompt asked the user (ask_user).
+
+        ``False`` when there is no such pending question (unknown id,
+        already answered, timed out or cancelled) or the payload does not
+        resolve against the question - the question keeps waiting, and
+        the frontend can retry.
+        """
+        return self._asks.answer(ask_id, answer_json)
 
     def submit_cleanup(self, text: str) -> str:
         """Queue a single-shot LLM cleanup of a voice transcript.
@@ -409,7 +424,13 @@ class AgentDaemon:
                 events.make(events.AUTH_FINISHED, run_id=job.run_id, success=bool(ok))
             )
 
-        tools = build_toolset(profile, self.config, credential_cache=credential_cache)
+        tools = build_toolset(
+            profile,
+            self.config,
+            credential_cache=credential_cache,
+            run_id=job.run_id,
+            ask_coordinator=self._asks,
+        )
         conversation = self._sessions.get(job.mode.value, job.session_id)
         system_prompt = build_system_prompt(
             profile,

@@ -61,6 +61,10 @@ _STYLE = r"""Tool use:
   package installs.
 - Tool errors are normal: read the message and adjust, do not repeat a
   failing call unchanged.
+- ask_user blocks the run until the user answers, so ask only when the
+  answer changes what you do - otherwise pick a sensible default and
+  proceed. Prompts may be read aloud and answered by voice: keep option
+  labels short enough to say.
 - When the task is done, reply with the final answer only - no preamble.
 
 Math:

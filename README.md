@@ -10,7 +10,14 @@ A voice-first desktop AI agent for KDE Plasma 6, packaged as a plasmoid
 
 The plasmoid captures speech, transcribes it, and forwards the text to the
 agent daemon over D-Bus. The daemon runs an LLM tool loop in one of two
-modes, streams progress back, and renders the result in a fully-fledged results window.
+modes, streams progress back, and renders the result in a fully-fledged results
+window. When the agent needs a decision only the user can make, it asks: the
+question appears in the results window as a card — radio buttons (or
+checkboxes) per option, or the user's own words — and the run continues once
+it is answered. A series of questions switches the window into a wizard view:
+one question at a time, with a progress bar, the answers collected so far,
+and the conversation returning when the agent has what it needs and goes to
+work.
 
 The panel's search button (or Meta+Alt+`) opens the session search: the
 user's previous sessions on the left, under the name the daemon gave them,
@@ -142,7 +149,9 @@ journalctl --user -u phoenix.service -f
 
 It runs as the desktop user, not as root: it lives on the session bus that
 the plasmoid connects to, and it elevates to root on demand through `sudo`
-when a prompt asks for it. See `agent/README.md` for the details.
+when a prompt asks for it — with a confirmation card (Allow/Deny) for
+destructive commands, answered by you before they run. See `agent/README.md`
+for the details.
 
 ## License
 

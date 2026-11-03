@@ -63,6 +63,27 @@
  * succeeded — an older clip's result, a failed cleanup (the raw text stays
  * on screen) and a superseded request are all dropped here.
  *
+ * Questions: when the model needs a decision only the user can make, it
+ * calls the daemon's ask_user tool, which blocks the run until the
+ * question is answered (or times out). The daemon announces that with
+ * QuestionAsked(run_id, ask_id, question_json) — parsed here into \a
+ * pendingQuestion, a map with the askId, the question, its options
+ * (label + description each), the multiple flag and the wizard metadata
+ * (goal/step/estSteps) when the model is asking a series. answerQuestion()
+ * sends the user's reply (chosen option indices or labels, plus anything
+ * they wrote themselves) to AnswerQuestion(ask_id, answer_json); the
+ * daemon's QuestionAnswered — answered, timeout or cancelled — empties \a
+ * pendingQuestion again, and so does the run ending. A question is
+ * activity like any other: the pane opens on it.
+ *
+ * A question series is a wizard: while it runs, \a wizardState keeps the
+ * pane in the wizard view (one question at a time, progress, the answers
+ * collected so far). The wizard starts at a question carrying step
+ * metadata, stays up across the gaps between the series' questions (the
+ * bridge marks it waiting), and ends when the agent stops asking and
+ * goes to work — its first non-ask_user tool call — or the question
+ * times out, is cancelled or its run ends.
+ *
  * Session titles: the daemon (re)generates a session's title with a single
  * LLM call after every completed run and announces it with
  * SessionTitleChanged(session_id, mode, title). onSessionTitleChanged
@@ -167,6 +188,30 @@ public:
      * another session's transcript arrives. */
     Q_PROPERTY(QVariantList sessionMessages READ sessionMessages NOTIFY sessionMessagesChanged)
 
+    /*! \brief The question the running prompt is blocked on, or an empty
+     *  map while none is.
+     *
+     * ask_user asks the user one multiple-choice question and blocks the
+     * run until it is answered, cancelled or timed out. QuestionAsked
+     * fills this map — askId, question, header, options (a list of
+     * {label, description}), multiple, and the wizard metadata goal,
+     * step, estSteps when the model gave it — and QuestionAnswered or the
+     * run's end empties it. The results pane renders it as the question
+     * card to answer. */
+    Q_PROPERTY(QVariantMap pendingQuestion READ pendingQuestion NOTIFY pendingQuestionChanged)
+
+    /*! \brief The state of the question series (wizard) in flight.
+     *
+     * {active, goal, step, estSteps, waiting, answers} — answers being
+     * the questions asked so far with what the user answered ({question,
+     * answer, status} each). Active from the first question that carries
+     * step metadata until the agent stops asking and goes to work (its
+     * first non-ask_user tool call), the question times out or is
+     * cancelled, or the run ends; waiting marks the gap between two of
+     * the series' questions. The results pane swaps its conversation for
+     * the wizard view while active. */
+    Q_PROPERTY(QVariantMap wizardState READ wizardState NOTIFY wizardStateChanged)
+
     bool isAvailable() const { return m_available; }
     QString partialTranscript() const { return m_partialTranscript; }
     QString finalTranscript() const { return m_finalTranscript; }
@@ -182,6 +227,13 @@ public:
 
     QVariantList sessionSummaries() const { return m_sessionSummaries; }
     QVariantList sessionMessages() const { return m_sessionMessages; }
+
+    /*! \brief The question the running prompt is blocked on ({ } when
+     *  none is). */
+    QVariantMap pendingQuestion() const { return m_pendingQuestion; }
+
+    /*! \brief The state of the question series (wizard) in flight. */
+    QVariantMap wizardState() const { return m_wizardState; }
 
     QString proposedAction() const { return m_proposedAction; }
 
@@ -268,6 +320,20 @@ public:
                                        const QString &mode,
                                        const QString &title);
 
+    /*! \brief Answers the question the running prompt is blocked on.
+     *
+     * \a selected are the chosen options, as 0-based indices into the
+     * question's options (the daemon also accepts exact labels); \a text
+     * is anything the user wrote in their own words. Either may carry
+     * the answer alone. Returns whether an answer was sent: false when
+     * no question is pending or the answer was empty, so a caller (the
+     * input bar, which answers while a question waits) can fall back to
+     * submitting the text as a prompt. A false reply from the daemon
+     * (question no longer pending, payload does not resolve) is only
+     * logged — the question stays pending, and the user can retry.
+     */
+    Q_INVOKABLE bool answerQuestion(const QVariantList &selected, const QString &text);
+
 Q_SIGNALS:
     void availabilityChanged();
     void partialTranscriptChanged();
@@ -302,6 +368,14 @@ Q_SIGNALS:
 
     /*! \brief Emitted when the session title changed (or was dropped). */
     void sessionTitleChanged();
+
+    /*! \brief Emitted when the pending question changed: asked, answered,
+     *  timed out, cancelled — or dropped with its run. */
+    void pendingQuestionChanged();
+
+    /*! \brief Emitted when the wizard state changed: a series began or
+     *  advanced, is waiting between questions, or ended. */
+    void wizardStateChanged();
 
     /*! \brief The newest dictated clip's cleaned-up transcript arrived.
      *
@@ -380,6 +454,23 @@ private Q_SLOTS:
      *  REPL runs) are ignored. */
     void onSessionTitleChanged(const QString &sessionId, const QString &mode, const QString &title);
 
+    /*! \brief QuestionAsked: the running prompt is blocked on a question.
+     *
+     * The question's JSON is parsed into \a pendingQuestion for the pane's
+     * question card; a question is activity like any other, so the pane
+     * opens on it. */
+    void onQuestionAsked(const QString &runId,
+                         const QString &askId,
+                         const QString &questionJson);
+
+    /*! \brief QuestionAnswered: the question ended (answered, timed out
+     *  or cancelled) and the card gives way. Answers to an older
+     *  question never clear a newer one. */
+    void onQuestionAnswered(const QString &runId,
+                            const QString &askId,
+                            const QString &status,
+                            const QString &answerJson);
+
 private:
     void subscribeToServiceSignals();
     void unsubscribeFromServiceSignals();
@@ -387,6 +478,13 @@ private:
     void setPartialTranscript(const QString &text);
     void setFinalTranscript(const QString &text);
     void setAgentMessage(const QString &text);
+    void setPendingQuestion(const QVariantMap &question);
+    void setWizardState(const QVariantMap &state);
+
+    /*! \brief Ends the wizard (no-op when none is active): the agent
+     *  stopped asking — either it went to work, or the question or the
+     *  run ended. */
+    void endWizard();
 
     static QString fencedBlock(const QString &text, const QString &language);
     static QString elideOutput(const QString &text, int limit);
@@ -475,6 +573,12 @@ private:
     // selected one.
     QVariantList m_sessionSummaries;
     QVariantList m_sessionMessages;
+    // The question the running prompt is blocked on (ask_user): parsed
+    // from QuestionAsked, emptied by QuestionAnswered or the run's end.
+    QVariantMap m_pendingQuestion;
+    // The wizard state of a question series (see wizardState); inactive
+    // maps simply carry active=false.
+    QVariantMap m_wizardState;
     // The counters of the outstanding session-search requests: a reply
     // that belongs to an older request is dropped, so the list never
     // shows the results of a superseded query.

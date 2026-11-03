@@ -194,12 +194,19 @@ def install_readline(history_path: Path | str | None = None):
 
 
 class EventPrinter:
-    """Renders agent events to the terminal (shared by both REPL modes)."""
+    """Renders agent events to the terminal (shared by both REPL modes).
 
-    def __init__(self, color: bool = True, out=None):
+    ``answer_fn``, when given, is called with ``(ask_id, question)`` for
+    every question the agent asks: it collects the user's answer (blocking
+    is fine - the daemon is waiting too) and submits it. Both REPL modes
+    wire one in; without it the question is only printed.
+    """
+
+    def __init__(self, color: bool = True, out=None, answer_fn=None):
         self.color = color
         self._out = out or sys.stdout
         self._line_open = False
+        self.answer_fn = answer_fn
 
     # -- low level ------------------------------------------------------------
 
@@ -257,6 +264,13 @@ class EventPrinter:
             if len(output) > 3:
                 head += f" ⎪ (+{len(output) - 3} more lines)"
             self.line(f"{mark} {head}")
+        elif kind == "question_asked":
+            self.close_line()
+            self._render_question(event.get("question", {}))
+            if self.answer_fn is not None:
+                self.answer_fn(event.get("ask_id", ""), event.get("question", {}))
+        # question_answered: the tool_call_finished of ask_user shows the
+        # outcome; a second rendering would only repeat it
         elif kind == "auth_requested":
             self.close_line()
             self.line(
@@ -283,6 +297,88 @@ class EventPrinter:
                 f"{event.get('tokens_in', 0)}+{event.get('tokens_out', 0)} tokens"
             )
         # turn_started / state_changed: too chatty for the REPL
+
+    def _render_question(self, question: dict) -> None:
+        """Print the question, numbered options, and how to answer."""
+        if question.get("harness"):
+            # A daemon-authored confirmation (destructive root command):
+            # worth naming as such before the command it shows.
+            self.line(
+                self._c("31", "  ⚠ system confirmation — required before the command runs")
+            )
+        context = ""
+        if question.get("step"):
+            context = f"(step {question['step']} of ~{question.get('est_steps', '?')}"
+            if question.get("goal"):
+                context += f": {question['goal']}"
+            context += ") "
+        self.line(self._c("33", f"  ❓ {context}{question.get('question', '')}"))
+        for position, option in enumerate(question.get("options", []), start=1):
+            line = f"     {position}) {option.get('label', '')}"
+            if option.get("description"):
+                line += f" — {option['description']}"
+            self.line(line)
+        hint = "a number"
+        if question.get("multiple"):
+            hint = "numbers, comma-separated"
+        self.line(
+            self._c("2", f"     (answer with {hint}, a label, or your own words)")
+        )
+
+
+# ---------------------------------------------------------------------------
+# answering questions from the terminal (unit-tested helpers)
+# ---------------------------------------------------------------------------
+
+
+def parse_answer_line(line: str, question: dict) -> dict:
+    """Turn a typed reply into an answer payload for AnswerQuestion.
+
+    Numbers pick options (1-based, as printed), labels match their text,
+    comma-separated entries pick several, and anything else is the user's
+    own words. An empty line yields ``{}`` - the caller re-prompts.
+    """
+    options = question.get("options", [])
+    selected: list[int] = []
+    texts: list[str] = []
+    for token in (part.strip() for part in line.split(",")):
+        if not token:
+            continue
+        if token.isdigit():
+            index = int(token)
+            if 1 <= index <= len(options):
+                selected.append(index - 1)
+                continue
+        label = token.casefold()
+        for index, option in enumerate(options):
+            if str(option.get("label", "")).strip().casefold() == label:
+                selected.append(index)
+                break
+        else:
+            texts.append(token)
+    answer: dict = {}
+    if selected:
+        answer["selected"] = selected
+    if texts:
+        answer["text"] = ", ".join(texts)
+    return answer
+
+
+def read_answer(question: dict, input_fn=input) -> dict:
+    """Prompt for an answer until a non-empty one is given.
+
+    Ctrl+C propagates (the REPL turns it into cancelling the run - the
+    blocked ask_user is released the same way); Ctrl+D degrades to an
+    explicit "no answer came".
+    """
+    while True:
+        try:
+            line = input_fn("answer> ").strip()
+        except EOFError:
+            return {"text": "(the input was closed without an answer)"}
+        answer = parse_answer_line(line, question)
+        if answer:
+            return answer
 
 
 # ---------------------------------------------------------------------------
@@ -344,6 +440,29 @@ def dbus_signal_to_event(name: str, *args) -> dict | None:
             "run_id": str(args[0]),
             "success": bool(args[1]),
         }
+    if name == "QuestionAsked":
+        try:
+            parsed = json.loads(str(args[2]))
+        except ValueError:
+            parsed = {}
+        return {
+            "kind": "question_asked",
+            "run_id": str(args[0]),
+            "ask_id": str(args[1]),
+            "question": parsed,
+        }
+    if name == "QuestionAnswered":
+        try:
+            parsed = json.loads(str(args[3]))
+        except ValueError:
+            parsed = {}
+        return {
+            "kind": "question_answered",
+            "run_id": str(args[0]),
+            "ask_id": str(args[1]),
+            "ask_status": str(args[2]),
+            "answer": parsed,
+        }
     if name == "RunFinished":
         return {
             "kind": "run_finished",
@@ -368,6 +487,9 @@ Commands (Tab completes commands, /mode arguments and file paths):
   /help                  this help
   /quit                  exit (also Ctrl+D)
 Anything else is submitted as a prompt in the current mode.
+When the agent asks a question, answer with a number (or several,
+comma-separated), an option's label, or your own words; Ctrl+C cancels
+the run instead of answering.
 History: ↑/↓ recalls earlier prompts and persists between sessions."""
 
 
@@ -521,7 +643,9 @@ def run_embedded(args, history=None) -> int:
 
     events: queue.Queue = queue.Queue()
     daemon = AgentDaemon(config, provider=provider, emitter=events.put)
-    printer = EventPrinter(color=not args.no_color)
+    printer = EventPrinter(
+        color=not args.no_color, answer_fn=_make_answer_fn(daemon)
+    )
 
     submit = daemon.submit
 
@@ -551,6 +675,21 @@ def run_embedded(args, history=None) -> int:
     finally:
         daemon.shutdown()
     return 0
+
+
+def _make_answer_fn(daemon):
+    """Collect and submit terminal answers for questions the agent asks."""
+
+    def answer(ask_id: str, question: dict) -> None:
+        payload = read_answer(question)
+        try:
+            daemon.answer_question(
+                ask_id, json.dumps(payload, ensure_ascii=False)
+            )
+        except Exception as exc:
+            print(f"answer failed: {exc}", file=sys.stderr)
+
+    return answer
 
 
 def _patch_printer_for_sessions(printer: EventPrinter) -> None:
@@ -593,7 +732,9 @@ def run_dbus(args, history=None) -> int:
     iface = dbus.Interface(proxy, INTERFACE)
 
     events: queue.Queue = queue.Queue()
-    printer = EventPrinter(color=not args.no_color)
+    printer = EventPrinter(
+        color=not args.no_color, answer_fn=_make_dbus_answer_fn(iface)
+    )
     _patch_printer_for_sessions(printer)
 
     signal_names = [
@@ -603,6 +744,8 @@ def run_dbus(args, history=None) -> int:
         "ToolCallFinished",
         "AuthRequested",
         "AuthFinished",
+        "QuestionAsked",
+        "QuestionAnswered",
         "RunFinished",
     ]
     for name in signal_names:
@@ -642,6 +785,19 @@ def run_dbus(args, history=None) -> int:
     finally:
         loop.quit()
     return 0
+
+
+def _make_dbus_answer_fn(iface):
+    """Like _make_answer_fn, but the answer travels over D-Bus."""
+
+    def answer(ask_id: str, question: dict) -> None:
+        payload = read_answer(question)
+        try:
+            iface.AnswerQuestion(ask_id, json.dumps(payload, ensure_ascii=False))
+        except Exception as exc:
+            print(f"answer failed: {exc}", file=sys.stderr)
+
+    return answer
 
 
 def _enqueue_signal(

@@ -19,7 +19,7 @@ plasmoid (C++/QML)  ──D-Bus──▶  phoenix-dna-agent (this daemon)
    speech, UI                       AgentDaemon ──▶ AgentLoop ──▶ MiniMax LLM
                                     (queue, sudo cache)   │
                                                           ▼
-                                        tools: bash / read / write / edit / ls
+                                        tools: bash / read / write / edit / ls / ask_user
                                                tavily_search / exa_search
 ```
 
@@ -27,8 +27,8 @@ plasmoid (C++/QML)  ──D-Bus──▶  phoenix-dna-agent (this daemon)
 
 | Mode | Auth | Working dir | Tools | Purpose |
 |---|---|---|---|---|
-| `root` | KDE password dialog (`kdialog`), cached 15 min | `/` | bash (via `sudo`), read, write, edit, ls, tavily_search, exa_search | system administration; one password covers multiple prompts |
-| `user` | none | `~` | bash, read, write, edit, ls, tavily_search, exa_search | everyday desktop tasks and questions that need a web lookup |
+| `root` | KDE password dialog (`kdialog`), cached 15 min | `/` | bash (via `sudo`), read, write, edit, ls, tavily_search, exa_search, ask_user | system administration; one password covers multiple prompts |
+| `user` | none | `~` | bash, read, write, edit, ls, tavily_search, exa_search, ask_user | everyday desktop tasks and questions that need a web lookup |
 
 The mode also selects the system prompt (e.g. root mode instructs the model to
 inspect before changing and never reboot unasked). The search tools are
@@ -40,6 +40,75 @@ the prompt (and the bash tool's description) demand non-interactive flags
 (`dnf -y`, `apt-get -y`, `flatpak install -y`); when a command still fails
 from asking a question on stdin, the bash tool appends a hint so the next
 attempt fixes itself.
+
+## Asking the user (`ask_user`)
+
+Sometimes the right action depends on a decision only the user can make. The
+`ask_user` tool (all modes) shows the user one multiple-choice question and
+**blocks the run until it is answered** — the same human-in-the-loop pattern
+OpenCode's `question` and Claude Code's `AskUserQuestion` tools use, so
+models are already trained on its shape:
+
+1. the model calls `ask_user` with a question, 2-6 short options (each with
+   an optional description) and a `multiple` flag;
+2. the daemon emits `QuestionAsked(run_id, ask_id, question_json)` and the
+   tool waits — exactly like a slow bash command would;
+3. the frontend renders the options (the REPL prints them numbered) and
+   calls `AnswerQuestion(ask_id, answer_json)`;
+4. the tool result tells the model what was chosen, plus anything the user
+   wrote in their own words. Free text is passed through verbatim, so an
+   answer can also be dictated — "the second one" needs no extra parsing,
+   the model interprets it.
+
+`answer_json` is `{"selected": [...], "text": "..."}` where `selected`
+entries are 0-based option indices or exact labels; either part may carry
+the answer alone, and a bare JSON string counts as free text. Answers that
+cannot be used (unknown `ask_id`, already answered, index out of range,
+unknown label, several picks on a single-choice question, empty) return
+`False` — the question keeps waiting and the caller may retry.
+
+An unanswered question releases the run after `ask_timeout_seconds`
+(default 300, `0` waits forever): the model is told the user may be away
+and asked to proceed on its best judgment. Cancelling the run releases it
+too. The question and its answer are recorded in the session transcript
+like any tool call.
+
+**Harness confirmations.** The questions above are *model-authored* —
+fine for clarifications, wrong for consent. When a root-mode bash
+command matches the destructive screen (`rm -rf`, `mkfs`, `dd of=/dev/…`,
+package removal, unit masking, …; extendable via `confirm_patterns`), the
+daemon itself asks a question with the `harness` marker: the command and
+the reason it matched are shown, the options are fixed (`Allow` / `Deny`)
+and no model output can change them. The results window badges it as a
+*system confirmation* (warning tint), and it is **fail-closed**: a Deny,
+a timeout or a cancellation means the command does not run — the model
+is told it was not run and must not retry it unchanged. Set
+`confirm_destructive = false` in `agent.toml` to disable the gate
+(`dnf remove` and friends then run as before, on the non-interactive
+flags alone).
+
+**Wizard metadata and the wizard view:** when the model expects several
+questions, it adds `goal` (what is being collected), `step` and
+`est_steps` to every call — `est_steps` may be revised as the agent
+learns, which is why the progress reads "~". A question carrying `step`
+opens the results window's **wizard view**: the conversation gives way
+to one question at a time, with a progress bar, the answers collected
+so far, and a "Skip the rest" escape hatch that answers with a text the
+model reads as "proceed with your best judgment". The bridge keeps the
+view up across the gaps between the series' questions and returns to
+the conversation when the agent stops asking and goes to work (its
+first non-`ask_user` tool call), the question times out or is
+cancelled, or the run ends.
+
+The results window renders a pending question as a card above its input
+bar: one radio button per option (checkboxes when `multiple` is set), a
+field for the user's own words, and the wizard progress line when the
+model is asking a series. The window opens on the question by itself —
+a question is activity like any other — and the card gives way when the
+question is answered, times out or its run ends. Answering routes through
+`AnswerQuestion` as option indices plus any typed text; the Q&A also
+shows in the run's tool log. The REPL prints the same question with
+numbered options and answers by number, label or free words.
 
 ## D-Bus API
 
@@ -53,6 +122,7 @@ interface `dna.phoenix.Agent`.
 | `SubmitPrompt` | `sss → s` | `(prompt, mode, session_id)` → `run_id`. Empty `session_id` starts a new session; pass a previous `session_id` (from `RunStarted`) to continue it. Prompts submitted while busy are queued and run in order. |
 | `SubmitPromptWithAttachments` | `ssss → s` | `(prompt, mode, session_id, attachments)` → `run_id`. The same, plus the files the user attached to the prompt: a JSON array of `{"name", "path", "mimeType"}` objects. The daemon copies them into `<data_dir>/attachments/<run_id>/`, inlines the images when the model can see them and extracts the text of PDFs — see `phoenix_dna/attachments.py`. |
 | `Cancel` | `s → b` | Cancel a running prompt (kills its process group) or remove a queued one. |
+| `AnswerQuestion` | `ss → b` | `(ask_id, answer_json)` → whether a pending question was answered. `answer_json` is `{"selected": [0-based index or label, …], "text": "…"}` — see [Asking the user](#asking-the-user-ask_user). |
 | `SetMode` | `s → s` | `(mode)` → normalized name. Records the widget's mode selection. Selecting `root` shows the KDE password dialog immediately (off the main loop; the credential is cached as usual), switching away from `root` drops the cached password. The plasmoid calls this whenever its mode buttons change state. |
 | `GetModes` | ` → a(sss)` | `(name, description, working_dir)` for root/user. |
 | `GetState` | ` → (ssu)` | `(state, current_run_id, queue_length)`; state is `idle` or `running`. |
@@ -69,6 +139,8 @@ interface `dna.phoenix.Agent`.
 | `ToolCallStarted` | `ssss` | run_id, call_id, tool name, JSON args |
 | `ToolCallFinished` | `sssss` | run_id, call_id, tool, `success|error`, output text |
 | `AuthRequested` / `AuthFinished` | `ss` / `sb` | the root-mode password dialog opened / closed |
+| `QuestionAsked` | `sss` | run_id, ask_id, JSON of the question: `question`, `header`, `options` (`[{label, description}]`), `multiple` — plus `goal`/`step`/`est_steps` wizard metadata when given. The run blocks until answered, cancelled or timed out. |
+| `QuestionAnswered` | `ssss` | run_id, ask_id, status (`answered\|timeout\|cancelled`), JSON of the normalized answer (`{"selected": [labels], "text": "…"}`) |
 | `StateChanged` | `ssu` | state, current_run_id, queue_length |
 | `RunFinished` | `sssuuu` | run_id, status (`completed|cancelled|error|max_turns`), final text, turns, tokens in, tokens out |
 
@@ -93,6 +165,9 @@ environment → `~/.config/phoenix-dna/keys.json` (mode 0600) for keys, and
 | `exa_api_key` | `EXA_API_KEY` | web search in every mode (tool omitted if unset) |
 | `stt_provider`, `openai_api_key` | `PHOENIX_STT_PROVIDER`, `OPENAI_API_KEY` | the plasmoid's speech-to-text: provider (`minimax` default) and its key — read by the widget, not the daemon |
 | `model`, `llm_base_url`, `max_turns`, `credential_ttl_seconds`, bash timeouts … | `PHOENIX_MODEL`, `PHOENIX_BASE_URL`, … | see `config-example.toml` |
+| `ask_timeout_seconds` | — | how long an unanswered `ask_user` question may block the run before the model proceeds on its own (default 300; `0` waits forever) |
+| `confirm_destructive` | — | root mode: destructive bash commands (screen in `phoenix_dna/confirm.py`) block on a harness-owned Allow/Deny, fail closed (default true) |
+| `confirm_patterns` | — | extra regexes that count as destructive, e.g. `["\\bflatpak\\s+uninstall\\b"]` |
 
 Images attached to a prompt reach the model as image parts only when it can
 see them. With `vision = "auto"` (the default) that is decided from the model
@@ -175,6 +250,18 @@ Commands: `/mode root|user`, `/new` (fresh session), `/session`, `/modes`,
 `/state`, `/help`, `/quit`. Plain text is submitted in the current mode;
 follow-ups continue the same session; **Ctrl+C while a run is active cancels
 it**; root mode pops the real kdialog password prompt (cached for 15 min).
+When the model asks a question, it is printed with numbered options — answer
+with a number (or several, comma-separated), a label, or your own words:
+
+```
+phoenix:user> back up my disk
+  ❓ (step 1 of ~2: backup setup) Which disk should the backup use?
+     1) /dev/sda — the SSD
+     2) /dev/sdb — the spinning one
+answer> 2
+  ✓ The user chose "/dev/sdb".
+Backing up to /dev/sdb.
+```
 
 **Readline** (GNU readline; macOS uses libedit, Windows would need
 `pyreadline3`): `↑`/`↓` recalls prompts and history persists between sessions
@@ -216,9 +303,16 @@ same connection).
   password — same trust model as a terminal. The password is kept in memory
   only (never logged/written), validated immediately via `sudo -S -k -v`, and
   re-used for 15 minutes (configurable) so multi-prompt sessions ask once.
-- No filesystem sandbox exists in any mode. A prompt-injected `rm -rf` in root
-  mode is as dangerous as it sounds. Mitigations to consider later: a
-  confirm-in-pane step for destructive root commands, per-project trust, or
+- Destructive root commands (recursive forced deletion, filesystem formats,
+  raw device writes, package removal, unit masking…) are gated on a
+  **harness-owned Allow/Deny** — the daemon asks, the options are fixed, and
+  it fails closed on timeout (see *Asking the user*). The screen is a
+  conservative pattern list, not a sandbox: a destructive shape it does not
+  know runs without asking (`confirm_patterns` extends it).
+- No filesystem sandbox exists in any mode. A prompt-injected `rm -rf` in
+  root mode is as dangerous as it sounds — the confirmation gate stops the
+  known-destructive shapes, but mitigations still to consider: a
+  confirm-in-pane step for *every* root write, per-project trust, or
   running the daemon in a `bubbles`/podman sandbox.
 - Commands run in their own process group so cancellation and timeouts kill
   the whole tree; bash output is truncated to `max_output_chars`. Commands
@@ -236,6 +330,10 @@ same connection).
 - Events-first: everything the agent does is an event, so the pane can render
   it and sessions record it.
 - Search tools are plain JSON POST clients, not a plugin framework.
+- `ask_user` is a human-in-the-loop tool with an OpenCode/Claude-Code-shaped
+  schema: the loop blocks exactly as for bash, the answer returns as the tool
+  result, and wizard metadata (`goal`/`step`/`est_steps`) rides along for a
+  future wizard view in the results window.
 
 ## Roadmap (not built yet)
 

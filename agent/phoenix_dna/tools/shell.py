@@ -122,6 +122,7 @@ class BashTool:
         max_timeout: float = 600.0,
         max_output_chars: int = 20_000,
         extra_env: dict | None = None,
+        confirm=None,
     ):
         self.cwd = Path(cwd)
         self.credential_cache = credential_cache
@@ -130,6 +131,10 @@ class BashTool:
         self.max_timeout = max_timeout
         self.max_output_chars = max_output_chars
         self.extra_env = extra_env or {}
+        # Root mode only: a RootCommandConfirmer whose confirm() blocks
+        # destructive commands on a harness-owned Allow/Deny. None (user
+        # and web modes, or the feature disabled) runs everything as before.
+        self.confirm = confirm
 
     # -- public API ---------------------------------------------------------
 
@@ -167,6 +172,19 @@ class BashTool:
     # -- sudo path -----------------------------------------------------------
 
     def _execute_sudo(self, command: str, timeout: float, cancel) -> ToolResult:
+        # The harness confirmation comes first: a denied command must not
+        # spend a password attempt, and a destructive command nobody
+        # confirmed (timeout: fail closed) never reaches sudo at all.
+        if self.confirm is not None:
+            allowed, why = self.confirm.confirm(command, cancel=cancel)
+            if not allowed:
+                if why == "cancelled":
+                    raise ToolError("command cancelled")
+                raise ToolError(
+                    f"the root command was not run ({why}). Do not retry it "
+                    "unchanged: adjust it, or ask the user how to proceed."
+                )
+
         argv = [self.sudo_bin, "-S", "-p", "", "--", "bash", "-c", command]
         # Two cycles: the first uses the cached/validated password; if sudo
         # reports an auth failure (password changed since caching) we

@@ -49,6 +49,17 @@ QVariantList parseJsonArray(const QString &payload)
     }
     return document.array().toVariantList();
 }
+
+// The same, for an object; an unparsable payload yields an empty map.
+QVariantMap parseJsonObject(const QString &payload)
+{
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(payload.toUtf8(), &error);
+    if (error.error != QJsonParseError::NoError || !document.isObject()) {
+        return QVariantMap();
+    }
+    return document.object().toVariantMap();
+}
 } // namespace
 
 AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
@@ -103,6 +114,15 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
     QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
                                           QStringLiteral("SessionTitleChanged"), this,
                                           SLOT(onSessionTitleChanged(QString, QString, QString)));
+    // ask_user: the run blocks on a question until it is answered. The
+    // question renders as the pane's question card; its end (answered,
+    // timeout, cancelled) takes the card away again.
+    QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
+                                          QStringLiteral("QuestionAsked"), this,
+                                          SLOT(onQuestionAsked(QString, QString, QString)));
+    QDBusConnection::sessionBus().connect(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("QuestionAnswered"), this,
+        SLOT(onQuestionAnswered(QString, QString, QString, QString)));
 
     // Text deltas arrive per token; the pane need not re-layout for each.
     m_deltaTimer.setInterval(100);
@@ -398,6 +418,208 @@ void AgentBridge::storeExchange(const QString &prompt,
     m_conversation.finishExchange();
 }
 
+bool AgentBridge::answerQuestion(const QVariantList &selected, const QString &text)
+{
+    // AnswerQuestion(ask_id, answer_json): selected entries are 0-based
+    // option indices (the daemon also accepts exact labels), text is the
+    // user's own words. Either part may carry the answer alone. A false
+    // reply (question no longer pending, payload rejected) is only
+    // logged: the question stays pending, and the card lets the user
+    // retry.
+    if (m_pendingQuestion.isEmpty()) {
+        return false;
+    }
+
+    QJsonObject answer;
+    const QJsonArray chosen = QJsonArray::fromVariantList(selected);
+    if (!chosen.isEmpty()) {
+        answer.insert(QStringLiteral("selected"), chosen);
+    }
+    const QString own = text.trimmed();
+    if (!own.isEmpty()) {
+        answer.insert(QStringLiteral("text"), own);
+    }
+    if (answer.isEmpty()) {
+        return false;
+    }
+
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("AnswerQuestion"));
+    message << m_pendingQuestion.value(QStringLiteral("askId")).toString()
+            << QString::fromUtf8(QJsonDocument(answer).toJson(QJsonDocument::Compact));
+
+    auto *watcher =
+        new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this](QDBusPendingCallWatcher *watcher) {
+                const QDBusReply<bool> reply = *watcher;
+                watcher->deleteLater();
+                if (!reply.isValid() || !reply.value()) {
+                    // The question stays pending: the run is still blocked
+                    // on it, and the card remains to retry.
+                    qWarning() << "answer was not accepted:" << reply.error().message();
+                }
+            });
+    return true;
+}
+
+void AgentBridge::onQuestionAsked(const QString &runId,
+                                  const QString &askId,
+                                  const QString &questionJson)
+{
+    Q_UNUSED(runId)
+
+    // A question is activity like any other: the pane opens even when the
+    // model asked before producing any text.
+    beginStreaming();
+
+    // question_json: {question, options: [{label, description}], header?,
+    // multiple?, goal?, step?, est_steps?}. The card reads exactly these
+    // keys (camelCase here), so keep the mapping in one place.
+    const QVariantMap question = parseJsonObject(questionJson);
+
+    QVariantList options;
+    const QVariantList rawOptions = question.value(QStringLiteral("options")).toList();
+    for (const QVariant &entry : rawOptions) {
+        const QVariantMap option = entry.toMap();
+        QVariantMap mapped;
+        mapped.insert(QStringLiteral("label"),
+                      option.value(QStringLiteral("label")).toString());
+        const QString description = option.value(QStringLiteral("description")).toString().trimmed();
+        if (!description.isEmpty()) {
+            mapped.insert(QStringLiteral("description"), description);
+        }
+        options.append(mapped);
+    }
+
+    QVariantMap payload;
+    payload.insert(QStringLiteral("askId"), askId);
+    payload.insert(QStringLiteral("question"),
+                   question.value(QStringLiteral("question")).toString());
+    payload.insert(QStringLiteral("options"), options);
+    // The harness marker: a daemon-authored confirmation (destructive
+    // root command), not a model-authored question. The card styles it
+    // as a system confirmation, and it never joins a wizard.
+    if (question.value(QStringLiteral("harness")).toBool()) {
+        payload.insert(QStringLiteral("harness"), true);
+    }
+    const QString header = question.value(QStringLiteral("header")).toString().trimmed();
+    if (!header.isEmpty()) {
+        payload.insert(QStringLiteral("header"), header);
+    }
+    if (question.value(QStringLiteral("multiple")).toBool()) {
+        payload.insert(QStringLiteral("multiple"), true);
+    }
+    const QString goal = question.value(QStringLiteral("goal")).toString().trimmed();
+    if (!goal.isEmpty()) {
+        payload.insert(QStringLiteral("goal"), goal);
+    }
+    const QVariant step = question.value(QStringLiteral("step"));
+    if (!step.isNull() && step.toInt() > 0) {
+        payload.insert(QStringLiteral("step"), step.toInt());
+    }
+    const QVariant estSteps = question.value(QStringLiteral("est_steps"));
+    if (!estSteps.isNull() && estSteps.toInt() > 0) {
+        payload.insert(QStringLiteral("estSteps"), estSteps.toInt());
+    }
+    setPendingQuestion(payload);
+
+    // A question with step metadata is part of a series: the wizard
+    // begins (or advances). A plain question mid-series is shown in the
+    // wizard pane as-is, without touching the progress.
+    const int wizardStep = payload.value(QStringLiteral("step")).toInt();
+    if (wizardStep > 0) {
+        QVariantMap wizard = m_wizardState;
+        const bool wasActive = wizard.value(QStringLiteral("active")).toBool();
+        wizard.insert(QStringLiteral("active"), true);
+        wizard.insert(QStringLiteral("waiting"), false);
+        wizard.insert(QStringLiteral("goal"), payload.value(QStringLiteral("goal")));
+        wizard.insert(QStringLiteral("step"), wizardStep);
+        wizard.insert(
+            QStringLiteral("estSteps"),
+            payload.contains(QStringLiteral("estSteps"))
+                ? payload.value(QStringLiteral("estSteps"))
+                : QVariant(step));
+        if (!wasActive) {
+            // A fresh wizard collects from scratch; a continuing series
+            // keeps what it gathered.
+            wizard.insert(QStringLiteral("answers"), QVariantList());
+        }
+        setWizardState(wizard);
+    } else if (m_wizardState.value(QStringLiteral("active")).toBool()) {
+        QVariantMap wizard = m_wizardState;
+        wizard.insert(QStringLiteral("waiting"), false);
+        setWizardState(wizard);
+    }
+}
+
+void AgentBridge::onQuestionAnswered(const QString &runId,
+                                     const QString &askId,
+                                     const QString &status,
+                                     const QString &answerJson)
+{
+    Q_UNUSED(runId)
+
+    // Only the question this card is showing ends here: a late answer for
+    // an already-replaced question must not clear its successor.
+    if (m_pendingQuestion.value(QStringLiteral("askId")).toString() != askId) {
+        return;
+    }
+
+    // A wizard records what it collected — the answered-so-far list is
+    // the running summary of the series. An answered question keeps the
+    // wizard up for the next one (waiting); a timeout or a cancellation
+    // ends it: nothing more will be answered here.
+    QVariantMap wizard = m_wizardState;
+    if (wizard.value(QStringLiteral("active")).toBool()) {
+        QVariantList answers = wizard.value(QStringLiteral("answers")).toList();
+        QVariantMap entry;
+        entry.insert(QStringLiteral("question"),
+                     m_pendingQuestion.value(QStringLiteral("question")));
+        entry.insert(QStringLiteral("answer"), parseJsonObject(answerJson));
+        entry.insert(QStringLiteral("status"), status);
+        answers.append(entry);
+        wizard.insert(QStringLiteral("answers"), answers);
+        if (status == QLatin1String("answered")) {
+            wizard.insert(QStringLiteral("waiting"), true);
+        } else {
+            wizard.insert(QStringLiteral("active"), false);
+            wizard.insert(QStringLiteral("waiting"), false);
+        }
+        setWizardState(wizard);
+    }
+    setPendingQuestion(QVariantMap());
+}
+
+void AgentBridge::setPendingQuestion(const QVariantMap &question)
+{
+    if (m_pendingQuestion == question) {
+        return;
+    }
+    m_pendingQuestion = question;
+    Q_EMIT pendingQuestionChanged();
+}
+
+void AgentBridge::setWizardState(const QVariantMap &state)
+{
+    if (m_wizardState == state) {
+        return;
+    }
+    m_wizardState = state;
+    Q_EMIT wizardStateChanged();
+}
+
+void AgentBridge::endWizard()
+{
+    if (!m_wizardState.value(QStringLiteral("active")).toBool()) {
+        return;
+    }
+    QVariantMap wizard = m_wizardState;
+    wizard.insert(QStringLiteral("active"), false);
+    wizard.insert(QStringLiteral("waiting"), false);
+    setWizardState(wizard);
+}
+
 void AgentBridge::onServiceOwnerChanged(const QString &service,
                                         const QString &oldOwner,
                                         const QString &newOwner)
@@ -503,6 +725,11 @@ void AgentBridge::onRunStarted(const QString &runId, const QString &mode, const 
     m_deltaTimer.stop();
     m_pendingDelta.clear();
     m_pendingThinking.clear();
+    // A question never survives its run: if the previous run ended without
+    // QuestionAnswered (daemon restart mid-question), its card must go.
+    setPendingQuestion(QVariantMap());
+    // Neither does a wizard: a run boundary ends whatever it was asking.
+    endWizard();
     if (ours) {
         const QueuedPrompt queued = m_pendingPrompts.takeFirst();
         if (queued.newSession) {
@@ -588,6 +815,13 @@ void AgentBridge::onToolCallStarted(const QString &runId,
     flushDeltas();
     m_conversation.demoteResultToThinking();
     m_conversation.noteToolCall();
+
+    // The agent went to work: if a wizard was collecting answers, it is
+    // over — the conversation returns. (ask_user's own call is the
+    // wizard continuing, not ending.)
+    if (tool != QLatin1String("ask_user")) {
+        endWizard();
+    }
 
     // Head of a log entry: the tool name and its arguments. Written at
     // "started" rather than "finished" so a command that hangs or dies with
@@ -701,6 +935,10 @@ void AgentBridge::onRunFinished(const QString &runId,
     m_deltaTimer.stop();
     m_pendingDelta.clear();
     m_pendingThinking.clear();
+    // ...and any question the run was blocked on is over now, answered or
+    // not (QuestionAnswered usually got here first).
+    setPendingQuestion(QVariantMap());
+    endWizard();
     if (!finalText.trimmed().isEmpty()) {
         m_conversation.setResult(finalText);
     }

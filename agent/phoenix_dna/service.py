@@ -51,6 +51,11 @@ _SIGNAL_MAP = {
     ),
     "auth_requested": ("auth_requested", ("run_id", "message")),
     "auth_finished": ("auth_finished", ("run_id", "success")),
+    "question_asked": ("question_asked", ("run_id", "ask_id", "question_json")),
+    "question_answered": (
+        "question_answered",
+        ("run_id", "ask_id", "ask_status", "answer_json"),
+    ),
     "state_changed": ("state_changed", ("state", "current_run_id", "queue_length")),
     "run_finished": (
         "run_finished",
@@ -88,6 +93,10 @@ _DEFAULTS = {
     "source": "",
     "cleaned": "",
     "title": "",
+    "ask_id": "",
+    "ask_status": "",
+    "question": {},
+    "answer": {},
 }
 
 
@@ -111,6 +120,14 @@ class SignalBridge:
         for key in keys:
             if key == "args_json":
                 payload[key] = json.dumps(event.get("args", {}), ensure_ascii=False)
+            elif key == "question_json":
+                payload[key] = json.dumps(
+                    event.get("question", {}), ensure_ascii=False
+                )
+            elif key == "answer_json":
+                payload[key] = json.dumps(
+                    event.get("answer", {}), ensure_ascii=False
+                )
             elif key == "success":
                 payload[key] = bool(event.get("success", False))
             else:
@@ -128,6 +145,8 @@ def build_bridge(service) -> SignalBridge:
             "tool_call_finished": service.ToolCallFinished,
             "auth_requested": service.AuthRequested,
             "auth_finished": service.AuthFinished,
+            "question_asked": service.QuestionAsked,
+            "question_answered": service.QuestionAnswered,
             "state_changed": service.StateChanged,
             "run_finished": service.RunFinished,
             "cleanup_finished": service.TranscriptCleaned,
@@ -182,6 +201,12 @@ if dbus is not None:
 
         @dbus.service.signal(INTERFACE, signature="sb")
         def AuthFinished(self, run_id, success): ...
+
+        @dbus.service.signal(INTERFACE, signature="sss")
+        def QuestionAsked(self, run_id, ask_id, question_json): ...
+
+        @dbus.service.signal(INTERFACE, signature="ssss")
+        def QuestionAnswered(self, run_id, ask_id, ask_status, answer_json): ...
 
         @dbus.service.signal(INTERFACE, signature="ssu")
         def StateChanged(self, state, current_run_id, queue_length): ...
@@ -238,6 +263,19 @@ if dbus is not None:
         @dbus.service.method(INTERFACE, in_signature="s", out_signature="b")
         def Cancel(self, run_id):
             return self._daemon.cancel(str(run_id))
+
+        @dbus.service.method(INTERFACE, in_signature="ss", out_signature="b")
+        def AnswerQuestion(self, ask_id, answer_json):
+            """Answer a question the running prompt asked (see QuestionAsked).
+
+            ``answer_json`` is ``{"selected": [...], "text": "..."}``:
+            ``selected`` entries are 0-based option indices or exact
+            labels, ``text`` is the user's own words (either may carry the
+            answer alone). Returns False when the question is not pending
+            any more, or the payload does not resolve against it - the
+            question keeps waiting and the caller may retry.
+            """
+            return bool(self._daemon.answer_question(str(ask_id), str(answer_json)))
 
         @dbus.service.method(INTERFACE, in_signature="s", out_signature="s")
         def SetMode(self, mode):
