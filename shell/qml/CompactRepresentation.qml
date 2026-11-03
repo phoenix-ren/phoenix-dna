@@ -161,7 +161,12 @@ Item {
 
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.minimumWidth: Kirigami.Units.gridUnit * 4
+            // How far the waveform may be squeezed when the panel is
+            // crowded. Note that this is not what makes the applet wide:
+            // the row's implicit width is, and that is the sum of what the
+            // children ask for - the waveform's own implicitWidth among
+            // them.
+            Layout.minimumWidth: Kirigami.Units.gridUnit * 2
 
             model: root.waveformModel
             active: root.recording

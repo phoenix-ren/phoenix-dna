@@ -25,7 +25,18 @@ Item {
     property bool active: false
 
     implicitHeight: Kirigami.Units.iconSizes.medium
-    implicitWidth: Kirigami.Units.gridUnit * 8
+    // The natural width of the view: two grid units, the same order as the
+    // buttons that flank it.
+    //
+    // This is the number that decides how wide the whole applet is. The row
+    // adds up the widths it wants, and the applet asks the panel for that
+    // total - the physical floor on the row's minimum width never comes
+    // into it. An eight-unit view therefore made the applet ask for a
+    // third of a grid of panel width that the waveform did not need, and
+    // halving it here is what actually takes the space back. The view
+    // still grows into whatever the panel does offer (Layout.fillWidth),
+    // and is squeezed no further than the minimum width set on it.
+    implicitWidth: Kirigami.Units.gridUnit * 2
 
     // Bars are normalised against the loudest bucket currently in the ring
     // (its peak-to-peak span, exposed as \c peakSpan), so the loudest slice
