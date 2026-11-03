@@ -69,6 +69,7 @@ _SIGNAL_MAP = {
         "session_title_changed",
         ("session_id", "mode", "title"),
     ),
+    "speech_state_changed": ("speech_state_changed", ("state",)),
 }
 
 
@@ -151,6 +152,7 @@ def build_bridge(service) -> SignalBridge:
             "run_finished": service.RunFinished,
             "cleanup_finished": service.TranscriptCleaned,
             "session_title_changed": service.SessionTitleChanged,
+            "speech_state_changed": service.SpeechStateChanged,
         }
     )
 
@@ -221,6 +223,9 @@ if dbus is not None:
 
         @dbus.service.signal(INTERFACE, signature="sss")
         def SessionTitleChanged(self, session_id, mode, title): ...
+
+        @dbus.service.signal(INTERFACE, signature="s")
+        def SpeechStateChanged(self, state): ...
 
         # -- methods -----------------------------------------------------------
 
@@ -339,6 +344,31 @@ if dbus is not None:
             import phoenix_dna
 
             return phoenix_dna.__version__
+
+        @dbus.service.method(INTERFACE, in_signature="s", out_signature="")
+        def SpeakText(self, text):
+            """Speak an arbitrary string on demand.
+
+            The daemon normalizes and segments the text exactly as it
+            does an answer (math included); StopSpeaking interrupts.
+            A no-op when speech is disabled.
+            """
+            self._daemon.speak_text(str(text))
+
+        @dbus.service.method(INTERFACE, in_signature="", out_signature="")
+        def StopSpeaking(self):
+            """Interrupt playback immediately and drop what is queued."""
+            self._daemon.stop_speaking()
+
+        @dbus.service.method(INTERFACE, in_signature="", out_signature="bs")
+        def GetSpeechState(self):
+            """Whether speech is enabled, and "speaking" or "idle".
+
+            Two plain out-arguments (not a struct) so the plasmoid's
+            QDBusPendingReply<bool, QString> reads them directly.
+            """
+            state = self._daemon.speech_state()
+            return (bool(state["enabled"]), str(state["state"]))
 
 
 def run_service(daemon) -> None:

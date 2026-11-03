@@ -33,6 +33,10 @@ STATE_CHANGED = "state_changed"
 CLEANUP_FINISHED = "cleanup_finished"
 #: A session's LLM-generated title was (re)generated.
 SESSION_TITLE_CHANGED = "session_title_changed"
+#: The daemon's speech playback switched between "speaking" and "idle"
+#: (emitted by the Speaker; the D-Bus layer maps it onto the
+#: SpeechStateChanged signal so the UI can reflect read-aloud state).
+SPEECH_STATE_CHANGED = "speech_state_changed"
 
 #: Terminal statuses for a run.
 RUN_STATUSES = ("completed", "cancelled", "error", "max_turns")

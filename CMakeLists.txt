@@ -72,6 +72,10 @@ add_subdirectory(resultswindow)
 add_subdirectory(search)
 add_subdirectory(settingswindow)
 
+# The shared math-span fixture test (theme/mathspantest) registers with
+# CTest; run `ctest` from the build directory.
+enable_testing()
+
 # Developer testbench: hosts the widget in a plain window without installing.
 add_subdirectory(widgettest)
 

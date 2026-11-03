@@ -3,6 +3,7 @@
 
 #include "agentbridge.h"
 #include "conversationmodel.h"
+#include "speaker.h"
 
 #include <QDBusConnection>
 #include <QDBusInterface>
@@ -128,6 +129,12 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
     m_deltaTimer.setInterval(100);
     m_deltaTimer.setSingleShot(true);
     connect(&m_deltaTimer, &QTimer::timeout, this, &AgentBridge::flushDeltas);
+
+    // The read-aloud client: the daemon owns synthesis, this side only
+    // requests it (SpeakText / StopSpeaking) and mirrors its state.
+    m_speech = new Speaker(this);
+    connect(m_speech, &Speaker::speakingChanged, this, &AgentBridge::agentSpeakingChanged);
+    connect(m_speech, &Speaker::availableChanged, this, &AgentBridge::speechAvailableChanged);
 }
 
 AgentBridge::~AgentBridge()
@@ -1026,4 +1033,28 @@ void AgentBridge::setAgentMessage(const QString &text)
     }
     m_agentMessage = text;
     Q_EMIT agentMessageChanged();
+}
+
+bool AgentBridge::isAgentSpeaking() const
+{
+    return m_speech != nullptr && m_speech->isSpeaking();
+}
+
+bool AgentBridge::isSpeechAvailable() const
+{
+    return m_speech != nullptr && m_speech->isAvailable();
+}
+
+void AgentBridge::speakText(const QString &text)
+{
+    if (m_speech != nullptr) {
+        m_speech->speak(text);
+    }
+}
+
+void AgentBridge::stopSpeaking()
+{
+    if (m_speech != nullptr) {
+        m_speech->stop();
+    }
 }

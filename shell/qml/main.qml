@@ -330,6 +330,18 @@ PlasmoidItem {
         // header carries that title.
         sessionTitle: Phoenix.PhoenixController.agent.sessionTitle
 
+        // Read-aloud: the pane's per-message "Read aloud" and its stop
+        // control route through the agent bridge to the daemon
+        // (SpeakText / StopSpeaking). The daemon owns synthesis — the
+        // shell only asks and mirrors the state; the affordance hides
+        // itself while speech is not configured.
+        speechAvailable: Phoenix.PhoenixController.agent.speechAvailable
+        agentSpeaking: Phoenix.PhoenixController.agent.agentSpeaking
+        onReadAloudRequested: (text) =>
+            Phoenix.PhoenixController.agent.speakText(text)
+        onStopSpeakingRequested:
+            Phoenix.PhoenixController.agent.stopSpeaking()
+
         // The question the running prompt is blocked on (ask_user): the
         // bridge fills it from the daemon's QuestionAsked and empties it
         // when the question is answered, times out or the run ends; the

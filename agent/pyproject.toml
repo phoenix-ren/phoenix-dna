@@ -20,7 +20,7 @@ phoenix-dna-repl = "phoenix_dna.repl:main"
 # No hard dependencies: dbus-python / PyGObject come from the distribution
 # packages (python3-dbus, python3-gobject). pytest is a dev dependency.
 [tool.setuptools]
-packages = ["phoenix_dna", "phoenix_dna.tools"]
+packages = ["phoenix_dna", "phoenix_dna.tools", "phoenix_dna.speech"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -293,6 +293,13 @@ void PhoenixController::setRecording(bool recording)
     }
 
     if (recording) {
+        // Audio focus: the microphone must not transcribe the agent's
+        // own voice. Pressing record is a barge-in — whatever is being
+        // read aloud stops before capture starts. (The daemon stops
+        // speaking on its own when a new run starts; this covers the
+        // gap while the user is still dictating.)
+        m_agent->stopSpeaking();
+
         // A new dictation clears the transcript and any stale error.
         m_partialTranscript.clear();
         Q_EMIT partialTranscriptChanged();

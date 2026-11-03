@@ -47,6 +47,8 @@ plasma_add_applet(org.phoenixdna.agent
         settingsstore.h
         transcriber.cpp
         transcriber.h
+        speaker.cpp
+        speaker.h
         agentmode.cpp
         agentmode.h
     RESOURCES

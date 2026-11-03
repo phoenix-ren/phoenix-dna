@@ -153,6 +153,85 @@ when a prompt asks for it — with a confirmation card (Allow/Deny) for
 destructive commands, answered by you before they run. See `agent/README.md`
 for the details.
 
+## Reading the answers aloud
+
+The daemon can speak its own answers (opt-in, off by default): the
+answer is normalized for the ear — math is spoken as mathematics
+(`$\pi r^2$` becomes "pi r squared", tied to the renderer's own span
+detector by a shared test fixture), code fences and URLs are not read
+out — then synthesized sentence by sentence and played through a
+PipeWire sink. Playback can be interrupted at any moment (the stop
+button next to the record button, or pressing record itself), and the
+results window has a per-answer "Read aloud" button.
+
+Enable it in `~/.config/phoenix-dna/agent.toml`:
+
+```toml
+[agent]
+tts_enabled = true
+# tts_read_mode = "stream"    # speak while the answer is generated
+# tts_voice = "English_expressive_narrator"
+# tts_speed = 1.0
+```
+
+Synthesis uses MiniMax's streaming `t2a_v2` endpoint (`speech-2.8-turbo`)
+with the agent's own MiniMax key; a dedicated `tts_api_key` entry in
+`keys.json` (or `PHOENIX_TTS_API_KEY`) overrides it. Every setting has a
+`PHOENIX_TTS_*` environment spelling (`PHOENIX_TTS_ENABLED`, …) that
+beats the file.
+
+Two read modes exist, and they are genuinely different:
+
+* **final** (default) — only the final answer is spoken. A multi-turn
+  tool run never reads its preambles ("Let me check the disk"), because
+  they are not part of `final_text`. Correct by construction; the
+  answer still comes out sentence by sentence as it synthesizes.
+* **stream** — speaking starts while the answer is generated, holding
+  back one sentence (configurable); if the turn turns out to call
+  tools, the held text is discarded. What was already said cannot be
+  unsaid — the known cost of the mode, and the reason it is not the
+  default. Guaranteeing "final answer only" and speaking before
+  generation finishes are mutually exclusive: a turn is
+  indistinguishable from a final turn until it ends.
+
+**The microphone never transcribes the agent's own voice**: pressing
+record barges in and stops playback first, and the daemon stops
+speaking the moment a new run starts.
+
+### Local synthesis (no cloud)
+
+An offline engine can stand in for MiniMax: Kokoro-82M via
+`kokoro-onnx`, run in a separate Python 3.13 venv (the daemon itself is
+on 3.14, and `kokoro-onnx` caps below that). The daemon stays
+stdlib-only — the model lives in the venv's interpreter, spoken to over
+a small stdio protocol:
+
+```bash
+python3.13 -m venv ~/.local/share/phoenix-dna/tts-venv
+~/.local/share/phoenix-dna/tts-venv/bin/pip install kokoro-onnx onnxruntime soundfile
+# download kokoro-v1.0.onnx and voices.json into the same directory
+```
+
+```toml
+[agent]
+tts_provider = "local"
+tts_local_venv = "~/.local/share/phoenix-dna/tts-venv"
+tts_voice_local = "~/.local/share/phoenix-dna/kokoro-v1.0.onnx"  # voices.json beside it
+```
+
+`piper-tts` is accepted as the fallback: point `tts_voice_local` at a
+Piper `.onnx` voice (with no `voices.json` beside it) and install
+`piper-tts` in the venv instead. Without the venv, the daemon starts
+unchanged and speech simply stays off.
+
+Desktop-wide speech with a Piper voice through speech-dispatcher
+(`sd_generic`) and Orca is a separate concern — a system configuration
+this project deliberately does not touch. So is `QtTextToSpeech` in the
+results window (available as `import QtTextToSpeech` on this box): its
+`speechd` backend lacks the `Synthesize` capability, which makes it
+fit only for short ad-hoc utterances, never for answer streaming — not
+wired up to keep the change lean.
+
 ## License
 
 BSD-2-Clause — see [LICENSE](LICENSE).
