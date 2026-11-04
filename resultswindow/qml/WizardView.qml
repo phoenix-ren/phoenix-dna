@@ -41,11 +41,47 @@ ColumnLayout {
     // the form is answered or replaced (the overlay usually closes long
     // before that - the bridge clears the form optimistically).
     property bool __sent: false
+    // The ask id of the form this walker holds, and the ask id of the
+    // form whose answers are on their way. A submit empties the form
+    // optimistically (the overlay closes at once) and a refusal brings
+    // the very same form back — the walker's answers must survive that
+    // round trip: they are the user's work, collected one question at
+    // a time, and losing them to a refused submit is what makes the
+    // walker read as stuck.
+    property string __formAskId: ""
+    property string __submittedAskId: ""
 
     onFormChanged: {
+        const askId = form && form.askId !== undefined
+              ? String(form.askId) : "";
+
+        // The optimistic clear of a submission: the form emptied while
+        // its answers are on their way, not a form that went away. The
+        // walker keeps everything — this state is the fallback a
+        // refusal returns to — and the overlay is closing around it
+        // anyway, so nothing of it is seen.
+        if (askId.length === 0 && wizardView.__submittedAskId.length > 0) {
+            return;
+        }
+
+        if (askId.length > 0 && askId === wizardView.__formAskId) {
+            // The form came back unchanged: the submission did not take
+            // (the daemon refused it, and the bridge restored what it
+            // cleared). Every answer is still here, on the page it was
+            // answered from; the chrome leaves the sent state, so the
+            // walker can be used again.
+            __submittedAskId = "";
+            __sent = false;
+            return;
+        }
+
+        // A genuinely new form: the walker starts over.
+        wizardView.__formAskId = askId;
+        __submittedAskId = "";
         __cursor = 0;
         __sent = false;
-        __answers = questions.map(question => ({ "selected": [], "text": "" }));
+        __answers = (form && form.questions ? form.questions : []).map(
+            question => ({ "selected": [], "text": "" }));
     }
 
     function saveCurrent() {
@@ -74,6 +110,12 @@ ColumnLayout {
         }
         saveCurrent();
         __sent = true;
+        // Mark the answers as on their way *before* the signal: the
+        // shell's handler runs synchronously and empties the form
+        // optimistically, so the walker's change handler sees an empty
+        // form while this is set — and keeps the answers for the
+        // refusal that may bring them back.
+        __submittedAskId = wizardView.__formAskId;
         submitted(__answers);
     }
 

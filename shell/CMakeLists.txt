@@ -318,6 +318,39 @@ target_link_libraries(sessiontranscriptmodeltest PRIVATE
 )
 add_test(NAME sessiontranscriptmodeltest COMMAND sessiontranscriptmodeltest)
 
+# The answer-submission half of the agent bridge, checked without a
+# daemon: a payload whose entry count does not match the pending form is
+# refused before anything is sent (the daemon would refuse it — the
+# wizard's answers leave as one submission or not at all), a matching
+# one is handed over and the form optimistically cleared, and a form of
+# one still takes the input bar's single text answer. The form is put in
+# place through the bridge's own QuestionAsked slot, so no bus is
+# spoken to. Registers with CTest; run `ctest` from the build directory.
+#
+#   agentbridgetest
+add_executable(agentbridgetest
+    agentbridgetest.cpp
+    agentbridge.cpp
+    agentbridge.h
+    conversationmodel.cpp
+    conversationmodel.h
+    cpumeter.cpp
+    cpumeter.h
+    wiremeter.cpp
+    wiremeter.h
+    sessiontranscriptmodel.cpp
+    sessiontranscriptmodel.h
+    speaker.cpp
+    speaker.h
+)
+target_include_directories(agentbridgetest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(agentbridgetest PRIVATE
+    Qt6::Core
+    Qt6::DBus
+    Qt6::Qml
+)
+add_test(NAME agentbridgetest COMMAND agentbridgetest)
+
 # Offline check of the completion chime: renders the effect the widget
 # streams through pw-cat when a query completes and checks it is a sound
 # at all — the expected length, a healthy peak, nothing clipped. With an
