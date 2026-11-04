@@ -528,15 +528,28 @@ PlasmaCore.Dialog {
                     radius: Kirigami.Units.smallSpacing
                     color: PhoenixTheme.paneFill
 
-                    Flickable {
+                    // A ListView, not a Flickable over a Repeater: a
+                    // transcript holds every query and answer the session
+                    // ever produced, and each answer is a Markdown
+                    // document to parse and lay out. A Repeater builds all
+                    // of them in the one frame the messages arrive in —
+                    // a long session froze the window for hundreds of
+                    // milliseconds on every click, the selection
+                    // highlight included, since the reply of the local
+                    // daemon beats the next paint. A ListView builds only
+                    // the messages on screen (plus the cache band just
+                    // outside it) and lets the rest wait until scrolling
+                    // asks for them.
+                    ListView {
                         id: transcript
                         objectName: "transcript"
 
                         anchors.fill: parent
                         anchors.margins: Kirigami.Units.smallSpacing
                         clip: true
-                        contentWidth: width
-                        contentHeight: transcriptColumn.implicitHeight
+                        model: searchOverlay.messages
+                        spacing: Kirigami.Units.largeSpacing
+                        boundsBehavior: Flickable.StopAtBounds
 
                         // The scrollbar for a long conversation.
                         PC3.ScrollBar.vertical: PC3.ScrollBar {
@@ -549,291 +562,280 @@ PlasmaCore.Dialog {
                         readonly property real scrollbarInset:
                             transcriptBar.visible ? transcriptBar.width : 0
 
-                        ColumnLayout {
-                            id: transcriptColumn
+                        delegate: ColumnLayout {
+                            id: message
+
+                            required property var modelData
 
                             width: transcript.width - transcript.scrollbarInset
-                            spacing: Kirigami.Units.largeSpacing
+                            spacing: 0
 
-                            Repeater {
-                                model: searchOverlay.messages
+                            // The queries the user asked, as chat
+                            // bubbles on the right; the agent's
+                            // answers flow below them on the left.
+                            readonly property bool fromUser:
+                                modelData.role === "user"
+                            readonly property string contentText:
+                                modelData.content || ""
 
-                                delegate: ColumnLayout {
-                                    id: message
+                            // ---- The answer's math, rendered -------------
+                            // A stored answer is always finished, so
+                            // its math can be compiled right away:
+                            // the spans are swapped for tinted
+                            // images inside the very same Markdown
+                            // document — the text around them stays
+                            // this native view. A failed compile (no
+                            // engine installed, a formula LaTeX
+                            // rejects) keeps the verbatim view and
+                            // says why.
+                            property int formulaToken: -1
+                            property string formulaFailedReason: ""
 
-                                    required property var modelData
+                            // -1: idle; 0..100 while the formulas render.
+                            property real renderProgress: -1
 
-                                    Layout.fillWidth: true
-                                    spacing: 0
+                            readonly property bool wantsFormulas:
+                                !message.fromUser
+                                && message.contentText.length > 0
+                                // -1: never requested. -2: requested
+                                // and failed — the verbatim view
+                                // stays, and the answer is not asked
+                                // again (a retry every second would
+                                // be a storm).
+                                && message.formulaToken === -1
+                                && LatexRenderer.available
+                                && LatexRenderer.containsLatex(
+                                    message.contentText)
 
-                                    // The queries the user asked, as chat
-                                    // bubbles on the right; the agent's
-                                    // answers flow below them on the left.
-                                    readonly property bool fromUser:
-                                        modelData.role === "user"
-                                    readonly property string contentText:
-                                        modelData.content || ""
+                            // The delegate is created when the
+                            // session is shown, so this is where
+                            // the answer's math goes in.
+                            Component.onCompleted: message.maybeEmbedFormulas()
 
-                                    // ---- The answer's math, rendered -------------
-                                    // A stored answer is always finished, so
-                                    // its math can be compiled right away:
-                                    // the spans are swapped for tinted
-                                    // images inside the very same Markdown
-                                    // document — the text around them stays
-                                    // this native view. A failed compile (no
-                                    // engine installed, a formula LaTeX
-                                    // rejects) keeps the verbatim view and
-                                    // says why.
-                                    property int formulaToken: -1
-                                    property string formulaFailedReason: ""
+                            function maybeEmbedFormulas() {
+                                if (!message.wantsFormulas) {
+                                    return
+                                }
+                                message.formulaToken =
+                                    searchOverlay.nextFormulaToken()
+                                message.renderProgress = 0
+                                // The raw source, never
+                                // answerLabel.text: a MarkdownText
+                                // label re-exports its text with
+                                // escapes, and a doubled backslash
+                                // is a LaTeX line break.
+                                LatexRenderer.embedFormulas(
+                                    message.formulaToken,
+                                    answerLabel.textDocument,
+                                    message.contentText,
+                                    PhoenixTheme.primaryTextColor,
+                                    answerLabel.font.pixelSize,
+                                    searchOverlay.paragraphSpacing)
+                            }
 
-                                    // -1: idle; 0..100 while the formulas render.
-                                    property real renderProgress: -1
+                            // A theme switch re-tints the formulas:
+                            // the compiled pages are cached, so this
+                            // is an instant re-render in the other
+                            // ink, never a recompile.
+                            function reembedFormulas() {
+                                // Only a rendered answer is
+                                // re-tinted: an answer that was
+                                // never rendered gets its first
+                                // render from maybeEmbedFormulas(),
+                                // and one that failed is not asked
+                                // again.
+                                if (message.formulaToken <= 0
+                                    || !answerLabel) {
+                                    return
+                                }
+                                message.formulaToken =
+                                    searchOverlay.nextFormulaToken()
+                                message.renderProgress = 0
+                                LatexRenderer.embedFormulas(
+                                    message.formulaToken,
+                                    answerLabel.textDocument,
+                                    message.contentText,
+                                    PhoenixTheme.primaryTextColor,
+                                    answerLabel.font.pixelSize,
+                                    searchOverlay.paragraphSpacing)
+                            }
 
-                                    readonly property bool wantsFormulas:
-                                        !message.fromUser
-                                        && message.contentText.length > 0
-                                        // -1: never requested. -2: requested
-                                        // and failed — the verbatim view
-                                        // stays, and the answer is not asked
-                                        // again (a retry every second would
-                                        // be a storm).
-                                        && message.formulaToken === -1
-                                        && LatexRenderer.available
-                                        && LatexRenderer.containsLatex(
-                                            message.contentText)
+                            Connections {
+                                target: LatexRenderer
 
-                                    // The delegate is created when the
-                                    // session is shown, so this is where
-                                    // the answer's math goes in.
-                                    Component.onCompleted: message.maybeEmbedFormulas()
-
-                                    function maybeEmbedFormulas() {
-                                        if (!message.wantsFormulas) {
-                                            return
-                                        }
-                                        message.formulaToken =
-                                            searchOverlay.nextFormulaToken()
-                                        message.renderProgress = 0
-                                        // The raw source, never
-                                        // answerLabel.text: a MarkdownText
-                                        // label re-exports its text with
-                                        // escapes, and a doubled backslash
-                                        // is a LaTeX line break.
-                                        LatexRenderer.embedFormulas(
-                                            message.formulaToken,
-                                            answerLabel.textDocument,
-                                            message.contentText,
-                                            PhoenixTheme.primaryTextColor,
-                                            answerLabel.font.pixelSize,
-                                            searchOverlay.paragraphSpacing)
-                                    }
-
-                                    // A theme switch re-tints the formulas:
-                                    // the compiled pages are cached, so this
-                                    // is an instant re-render in the other
-                                    // ink, never a recompile.
-                                    function reembedFormulas() {
-                                        // Only a rendered answer is
-                                        // re-tinted: an answer that was
-                                        // never rendered gets its first
-                                        // render from maybeEmbedFormulas(),
-                                        // and one that failed is not asked
-                                        // again.
-                                        if (message.formulaToken <= 0
-                                            || !answerLabel) {
-                                            return
-                                        }
-                                        message.formulaToken =
-                                            searchOverlay.nextFormulaToken()
-                                        message.renderProgress = 0
-                                        LatexRenderer.embedFormulas(
-                                            message.formulaToken,
-                                            answerLabel.textDocument,
-                                            message.contentText,
-                                            PhoenixTheme.primaryTextColor,
-                                            answerLabel.font.pixelSize,
-                                            searchOverlay.paragraphSpacing)
-                                    }
-
-                                    Connections {
-                                        target: LatexRenderer
-
-                                        function onEmbedded(token) {
-                                            if (token === message.formulaToken) {
-                                                message.renderProgress = -1
-                                            }
-                                        }
-
-                                        function onProgress(token, done, total) {
-                                            if (token === message.formulaToken
-                                                && total > 0) {
-                                                message.renderProgress =
-                                                    Math.round(100 * done / total)
-                                            }
-                                        }
-
-                                        function onFailed(token, reason) {
-                                            // -2: requested, failed, never
-                                            // again for this answer.
-                                            if (token === message.formulaToken) {
-                                                message.formulaToken = -2
-                                                message.formulaFailedReason = reason
-                                                message.renderProgress = -1
-                                            }
-                                        }
-                                    }
-
-                                    Connections {
-                                        target: PhoenixTheme
-
-                                        function onIsDarkChanged() {
-                                            message.reembedFormulas()
-                                        }
-                                    }
-
-                                    // Safety net for the change-triggered
-                                    // paths: they can die mid-flight, so
-                                    // while a wanted set of formulas has not
-                                    // been requested yet, re-check every
-                                    // second. Once the request is out the
-                                    // net stops: wantsFormulas turns false
-                                    // on its own.
-                                    Timer {
-                                        interval: 1000
-                                        repeat: true
-                                        running: message.wantsFormulas
-                                        onTriggered: message.maybeEmbedFormulas()
-                                    }
-
-                                    Rectangle {
-                                        id: queryBubble
-                                        objectName: "queryBubble"
-
-                                        Layout.alignment: Qt.AlignRight
-                                        Layout.maximumWidth:
-                                            transcriptColumn.width * 0.85
-                                        visible: message.fromUser
-                                        implicitWidth: Math.min(
-                                            transcriptColumn.width * 0.85,
-                                            queryLabel.implicitWidth
-                                                + 2 * Kirigami.Units.smallSpacing)
-                                        implicitHeight: queryLabel.implicitHeight
-                                            + 2 * Kirigami.Units.smallSpacing
-                                        radius: Kirigami.Units.smallSpacing * 2
-                                        color: PhoenixTheme.bubbleFill
-                                        border.width: 1
-                                        border.color: PhoenixTheme.bubbleBorderColor
-
-                                        Kirigami.SelectableLabel {
-                                            id: queryLabel
-
-                                            anchors.fill: parent
-                                            anchors.margins: Kirigami.Units.smallSpacing
-
-                                            text: message.contentText
-                                            textFormat: TextEdit.PlainText
-                                            wrapMode: Text.WordWrap
-                                            color: PhoenixTheme.textColor
-                                        }
-                                    }
-
-                                    Kirigami.Heading {
-                                        Layout.fillWidth: true
-                                        visible: message.fromUser
-                                        level: 6
-                                        text: i18n("You")
-                                        horizontalAlignment: Text.AlignRight
-                                        color: PhoenixTheme.secondaryTextColor
-                                    }
-
-                                    Kirigami.Heading {
-                                        Layout.fillWidth: true
-                                        visible: !message.fromUser
-                                        // KF6 6.31 has no Kirigami.Heading.Level
-                                        // enum; levels are plain ints.
-                                        level: 6
-                                        text: i18n("Agent")
-                                        horizontalAlignment: Text.AlignLeft
-                                        color: PhoenixTheme.secondaryTextColor
-                                    }
-
-                                    Kirigami.SelectableLabel {
-                                        id: answerLabel
-                                        objectName: "answerLabel"
-
-                                        Layout.fillWidth: true
-                                        visible: !message.fromUser
-
-                                        text: message.contentText
-                                        // The agent answers in Markdown;
-                                        // the query was plain speech.
-                                        textFormat: TextEdit.MarkdownText
-                                        wrapMode: Text.WordWrap
-                                        color: PhoenixTheme.primaryTextColor
-                                        // The agent's own voice, in the
-                                        // family and the size the user
-                                        // chose for this mode (see
-                                        // PhoenixTheme).
-                                        font.family: PhoenixTheme.answerFontFamily
-                                        font.pixelSize: PhoenixTheme.answerFontSize
-                                        onTextChanged: Qt.callLater(
-                                            MarkdownDocument.spaceParagraphs,
-                                            textDocument,
-                                            searchOverlay.paragraphSpacing)
-                                        // The spacing follows the size
-                                        // of the text: when the user
-                                        // changes it, the paragraphs are
-                                        // spaced again.
-                                        onFontChanged: Qt.callLater(
-                                            MarkdownDocument.spaceParagraphs,
-                                            textDocument,
-                                            searchOverlay.paragraphSpacing)
-                                    }
-
-                                    // While the formulas render, a quiet
-                                    // progress line under the answer — the
-                                    // pool delivers one tick per formula.
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        visible: message.renderProgress >= 0
-
-                                        PC3.ProgressBar {
-                                            Layout.preferredWidth:
-                                                Kirigami.Units.gridUnit * 8
-                                            from: 0
-                                            to: 100
-                                            value: message.renderProgress
-                                        }
-
-                                        PC3.Label {
-                                            text: i18n("Rendering math… %1%",
-                                                       message.renderProgress)
-                                            color: PhoenixTheme.secondaryTextColor
-                                            font.pixelSize: Math.max(
-                                                9, Math.round(
-                                                    Qt.application.font.pixelSize
-                                                    * 0.8))
-                                        }
-                                    }
-
-                                    // When a compile fails, the verbatim
-                                    // view stays — and says why, so a broken
-                                    // formula or a missing TeX engine is
-                                    // diagnosable instead of mysterious.
-                                    Kirigami.SelectableLabel {
-                                        Layout.fillWidth: true
-                                        visible:
-                                            message.formulaFailedReason.length > 0
-                                        wrapMode: Text.WordWrap
-                                        text: i18n("Math not rendered: %1",
-                                                   message.formulaFailedReason)
-                                        color: PhoenixTheme.secondaryTextColor
-                                        font.pixelSize: Math.max(
-                                            9, Math.round(
-                                                Qt.application.font.pixelSize * 0.8))
+                                function onEmbedded(token) {
+                                    if (token === message.formulaToken) {
+                                        message.renderProgress = -1
                                     }
                                 }
+
+                                function onProgress(token, done, total) {
+                                    if (token === message.formulaToken
+                                        && total > 0) {
+                                        message.renderProgress =
+                                            Math.round(100 * done / total)
+                                    }
+                                }
+
+                                function onFailed(token, reason) {
+                                    // -2: requested, failed, never
+                                    // again for this answer.
+                                    if (token === message.formulaToken) {
+                                        message.formulaToken = -2
+                                        message.formulaFailedReason = reason
+                                        message.renderProgress = -1
+                                    }
+                                }
+                            }
+
+                            Connections {
+                                target: PhoenixTheme
+
+                                function onIsDarkChanged() {
+                                    message.reembedFormulas()
+                                }
+                            }
+
+                            // Safety net for the change-triggered
+                            // paths: they can die mid-flight, so
+                            // while a wanted set of formulas has not
+                            // been requested yet, re-check every
+                            // second. Once the request is out the
+                            // net stops: wantsFormulas turns false
+                            // on its own.
+                            Timer {
+                                interval: 1000
+                                repeat: true
+                                running: message.wantsFormulas
+                                onTriggered: message.maybeEmbedFormulas()
+                            }
+
+                            Rectangle {
+                                id: queryBubble
+                                objectName: "queryBubble"
+
+                                Layout.alignment: Qt.AlignRight
+                                Layout.maximumWidth:
+                                    message.width * 0.85
+                                visible: message.fromUser
+                                implicitWidth: Math.min(
+                                    message.width * 0.85,
+                                    queryLabel.implicitWidth
+                                        + 2 * Kirigami.Units.smallSpacing)
+                                implicitHeight: queryLabel.implicitHeight
+                                    + 2 * Kirigami.Units.smallSpacing
+                                radius: Kirigami.Units.smallSpacing * 2
+                                color: PhoenixTheme.bubbleFill
+                                border.width: 1
+                                border.color: PhoenixTheme.bubbleBorderColor
+
+                                Kirigami.SelectableLabel {
+                                    id: queryLabel
+
+                                    anchors.fill: parent
+                                    anchors.margins: Kirigami.Units.smallSpacing
+
+                                    text: message.contentText
+                                    textFormat: TextEdit.PlainText
+                                    wrapMode: Text.WordWrap
+                                    color: PhoenixTheme.textColor
+                                }
+                            }
+
+                            Kirigami.Heading {
+                                Layout.fillWidth: true
+                                visible: message.fromUser
+                                level: 6
+                                text: i18n("You")
+                                horizontalAlignment: Text.AlignRight
+                                color: PhoenixTheme.secondaryTextColor
+                            }
+
+                            Kirigami.Heading {
+                                Layout.fillWidth: true
+                                visible: !message.fromUser
+                                // KF6 6.31 has no Kirigami.Heading.Level
+                                // enum; levels are plain ints.
+                                level: 6
+                                text: i18n("Agent")
+                                horizontalAlignment: Text.AlignLeft
+                                color: PhoenixTheme.secondaryTextColor
+                            }
+
+                            Kirigami.SelectableLabel {
+                                id: answerLabel
+                                objectName: "answerLabel"
+
+                                Layout.fillWidth: true
+                                visible: !message.fromUser
+
+                                text: message.contentText
+                                // The agent answers in Markdown;
+                                // the query was plain speech.
+                                textFormat: TextEdit.MarkdownText
+                                wrapMode: Text.WordWrap
+                                color: PhoenixTheme.primaryTextColor
+                                // The agent's own voice, in the
+                                // family and the size the user
+                                // chose for this mode (see
+                                // PhoenixTheme).
+                                font.family: PhoenixTheme.answerFontFamily
+                                font.pixelSize: PhoenixTheme.answerFontSize
+                                onTextChanged: Qt.callLater(
+                                    MarkdownDocument.spaceParagraphs,
+                                    textDocument,
+                                    searchOverlay.paragraphSpacing)
+                                // The spacing follows the size
+                                // of the text: when the user
+                                // changes it, the paragraphs are
+                                // spaced again.
+                                onFontChanged: Qt.callLater(
+                                    MarkdownDocument.spaceParagraphs,
+                                    textDocument,
+                                    searchOverlay.paragraphSpacing)
+                            }
+
+                            // While the formulas render, a quiet
+                            // progress line under the answer — the
+                            // pool delivers one tick per formula.
+                            RowLayout {
+                                Layout.fillWidth: true
+                                visible: message.renderProgress >= 0
+
+                                PC3.ProgressBar {
+                                    Layout.preferredWidth:
+                                        Kirigami.Units.gridUnit * 8
+                                    from: 0
+                                    to: 100
+                                    value: message.renderProgress
+                                }
+
+                                PC3.Label {
+                                    text: i18n("Rendering math… %1%",
+                                               message.renderProgress)
+                                    color: PhoenixTheme.secondaryTextColor
+                                    font.pixelSize: Math.max(
+                                        9, Math.round(
+                                            Qt.application.font.pixelSize
+                                            * 0.8))
+                                }
+                            }
+
+                            // When a compile fails, the verbatim
+                            // view stays — and says why, so a broken
+                            // formula or a missing TeX engine is
+                            // diagnosable instead of mysterious.
+                            Kirigami.SelectableLabel {
+                                Layout.fillWidth: true
+                                visible:
+                                    message.formulaFailedReason.length > 0
+                                wrapMode: Text.WordWrap
+                                text: i18n("Math not rendered: %1",
+                                           message.formulaFailedReason)
+                                color: PhoenixTheme.secondaryTextColor
+                                font.pixelSize: Math.max(
+                                    9, Math.round(
+                                        Qt.application.font.pixelSize * 0.8))
                             }
                         }
                     }
