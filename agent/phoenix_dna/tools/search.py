@@ -16,6 +16,7 @@ import threading
 import urllib.error
 import urllib.request
 
+from ..http import headers as http_headers
 from . import ToolError, ToolResult, ToolSpec, validate_required
 
 
@@ -28,11 +29,13 @@ def _post_json(url: str, payload: dict, api_key: str, timeout: float = 30.0) -> 
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode(),
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
-            "x-api-key": api_key,
-        },
+        headers=http_headers(
+            {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+                "x-api-key": api_key,
+            }
+        ),
         method="POST",
     )
     try:

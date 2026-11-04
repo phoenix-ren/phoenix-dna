@@ -33,6 +33,8 @@ import urllib.error
 import urllib.request
 from typing import Iterator
 
+from ..http import headers as http_headers
+
 log = logging.getLogger("phoenix.speech.minimax")
 
 DEFAULT_ENDPOINT = "https://api.minimax.io/v1/t2a_v2"
@@ -230,11 +232,13 @@ class MinimaxEngine:
         request = urllib.request.Request(
             self.endpoint,
             data=json.dumps(self._payload(text, audio_format)).encode(),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-                "Accept": "text/event-stream",
-            },
+            headers=http_headers(
+                {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Accept": "text/event-stream",
+                }
+            ),
             method="POST",
         )
         try:

@@ -39,6 +39,8 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Callable, Iterator, Protocol
 
+from .http import headers as http_headers
+
 
 class CancelledError(Exception):
     """Raised when a provider call is aborted mid-stream."""
@@ -328,11 +330,13 @@ class OpenAICompatProvider:
         request = urllib.request.Request(
             self.base_url + "/chat/completions",
             data=body,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-                "Accept": "text/event-stream",
-            },
+            headers=http_headers(
+                {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Accept": "text/event-stream",
+                }
+            ),
             method="POST",
         )
         return urllib.request.urlopen(request, timeout=self.timeout)

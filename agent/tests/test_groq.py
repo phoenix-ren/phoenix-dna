@@ -40,7 +40,7 @@ def test_the_model_calls_go_to_the_named_endpoint(tmp_path):
     with MockOpenAiServer() as server:
         config = _config(tmp_path, server)
         assert config.llm_provider == "groq"
-        assert config.model == "llama-3.3-70b-versatile"
+        assert config.model == "openai/gpt-oss-120b"
 
         provider = build_provider(config)
         response = None
@@ -58,7 +58,7 @@ def test_the_model_calls_go_to_the_named_endpoint(tmp_path):
         assert request["path"] == "/v1/chat/completions"
         assert request["headers"]["authorization"] == "Bearer gsk-test"
         body = json.loads(request["body"])
-        assert body["model"] == "llama-3.3-70b-versatile"
+        assert body["model"] == "openai/gpt-oss-120b"
 
 
 def test_the_speech_goes_to_the_named_endpoint(tmp_path):

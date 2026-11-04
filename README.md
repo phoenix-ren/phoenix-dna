@@ -191,8 +191,13 @@ environment) reaches any other one.
 | --- | --- | --- | --- |
 | `minimax` (default) | `https://api.minimax.io/v1` | `MiniMax-Text-01` | `minimax_api_key` |
 | `openai` | `https://api.openai.com/v1` | `gpt-4o-mini` | `openai_api_key` |
-| `groq` | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | `groq_api_key` |
+| `groq` | `https://api.groq.com/openai/v1` | `openai/gpt-oss-120b` | `groq_api_key` |
 | `custom` | — you name it | — you name it | `llm_api_key` |
+
+Groq's models are named by their own family — `openai/gpt-oss-120b`,
+`qwen/qwen3.8-27b`, `meta-llama/…` — and which of them an account may
+use is the account's own business; the ones yours has are listed at
+<https://console.groq.com/keys>. Name the one you want in `model`.
 
 A provider only supplies *defaults*. `llm_base_url` and `model` override
 them, so a gateway or a self-hosted model is reached by naming its
@@ -303,6 +308,12 @@ engine, and each engine brings its own endpoint, model and voice ids.
 | `openai` | `https://api.openai.com/v1/audio/speech` | `gpt-4o-mini-tts` | `alloy`, `ash`, `nova`, … |
 | `groq` | `https://api.groq.com/openai/v1/audio/speech` | `canopylabs/orpheus-v1-english` | `troy`, `austin`, `hannah`, … |
 | `local` | — | — | the local model's own voices (see below) |
+
+Groq's own voices come with a catch: Orpheus asks the organisation's
+admin to accept its terms once
+(<https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english>),
+and the service refuses the request until they have.
+
 
 The hosted engines speak two protocols — MiniMax answers with a
 hex-encoded SSE stream, OpenAI (and Groq, which mirrors it) with a plain

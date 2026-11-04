@@ -246,7 +246,7 @@ def test_the_groq_provider_brings_its_own_defaults(tmp_path):
     config = _config(tmp_path, {"llm_provider": "groq", "groq_api_key": "gsk-test"})
     assert config.llm_provider == "groq"
     assert config.llm_base_url == "https://api.groq.com/openai/v1"
-    assert config.model == "llama-3.3-70b-versatile"
+    assert config.model == "openai/gpt-oss-120b"
     assert config.llm_api_key == "gsk-test"
 
 
@@ -256,6 +256,39 @@ def test_the_groq_speech_provider_brings_its_own_defaults(tmp_path):
     assert config.tts_endpoint == "https://api.groq.com/openai/v1/audio/speech"
     assert config.tts_model == "canopylabs/orpheus-v1-english"
     assert config.tts_key() == "gsk-test"
+
+
+def test_the_requests_carry_a_user_agent(monkeypatch):
+    """urllib's own User-Agent is refused by the bot protection some
+    hosted APIs sit behind — Groq's Cloudflare answers it with a 403
+    and an HTML page, which has nothing to do with the key."""
+    from phoenix_dna.http import USER_AGENT
+
+    seen = {}
+
+    class FakeResponse:
+        def __iter__(self):
+            return iter([b'data: {"choices": [{"delta": {"content": "hi"}}]}\n\n',
+                         b'data: [DONE]\n\n'])
+
+        def close(self):
+            return None
+
+    def fake_urlopen(request, timeout=0):
+        seen["headers"] = request.headers
+        return FakeResponse()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    provider = build_provider(
+        type("C", (), {"provider": "x", "llm_api_key": "k",
+                       "llm_base_url": "https://example.test/v1",
+                       "model": "m", "request_timeout": 30.0})()
+    )
+    list(provider.stream([{"role": "user", "content": "hi"}], tools=[]))
+
+    agent = seen["headers"].get("User-agent") or seen["headers"].get("User-Agent")
+    assert agent == USER_AGENT
+    assert "Python-urllib" not in agent
 
 
 def test_a_model_of_another_provider_follows_the_provider(tmp_path):
@@ -277,7 +310,7 @@ def test_a_model_of_another_provider_follows_the_provider(tmp_path):
         data_dir=tmp_path / "data",
         env={"PHOENIX_LLM_PROVIDER": "groq"},
     )
-    assert config.model == "llama-3.3-70b-versatile"
+    assert config.model == "openai/gpt-oss-120b"
 
 
 def test_a_model_of_ones_own_is_left_alone(tmp_path):

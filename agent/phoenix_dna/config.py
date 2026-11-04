@@ -77,7 +77,7 @@ LLM_PROVIDERS: dict[str, dict] = {
     },
     "groq": {
         "base_url": "https://api.groq.com/openai/v1",
-        "model": "llama-3.3-70b-versatile",
+        "model": "openai/gpt-oss-120b",
         "key_field": "groq_api_key",
         # Groq serves Llama and the open-weight models, under their own
         # names; "gpt-oss" is the one it hosts under an OpenAI name.

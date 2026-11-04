@@ -32,6 +32,8 @@ import urllib.error
 import urllib.request
 from typing import Iterator
 
+from ..http import headers as http_headers
+
 log = logging.getLogger("phoenix.speech.openai")
 
 DEFAULT_ENDPOINT = "https://api.openai.com/v1/audio/speech"
@@ -211,11 +213,13 @@ class OpenAiEngine:
         request = urllib.request.Request(
             self.endpoint,
             data=json.dumps(self._payload(text, audio_format)).encode(),
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-                "Accept": "audio/*",
-            },
+            headers=http_headers(
+                {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Accept": "audio/*",
+                }
+            ),
             method="POST",
         )
         try:
