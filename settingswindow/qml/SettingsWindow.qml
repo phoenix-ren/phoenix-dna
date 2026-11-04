@@ -650,7 +650,8 @@ Window {
                         PC3.ToolButton {
                             id: llmRevealButton
 
-                            icon.name: checked ? "password-show-off" : "password-show-on"
+                            icon.source: LucideIcons.url(checked ? "eye-off" : "eye",
+                                PhoenixTheme.textColor)
                             checkable: true
                             checked: false
 
@@ -740,7 +741,8 @@ Window {
                         PC3.ToolButton {
                             id: sttRevealButton
 
-                            icon.name: checked ? "password-show-off" : "password-show-on"
+                            icon.source: LucideIcons.url(checked ? "eye-off" : "eye",
+                                PhoenixTheme.textColor)
                             checkable: true
                             checked: false
 
@@ -1008,7 +1010,7 @@ Window {
                             // The discoverable way to unbind, next to the
                             // Backspace-the-capture one.
                             PC3.ToolButton {
-                                icon.name: "edit-clear-remove"
+                                icon.source: LucideIcons.url("circle-x", PhoenixTheme.textColor)
                                 enabled: shortcutRow.currentShortcut.length > 0
                                 onClicked:
                                     window.shortcutClearRequested(shortcutRow.modelData.role)

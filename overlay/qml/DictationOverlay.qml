@@ -159,9 +159,11 @@ PlasmaCore.Dialog {
                     id: statusIcon
                     Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                     Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-                    source: dictationOverlay.typing ? "input-keyboard"
-                        : dictationOverlay.listening ? "audio-input-microphone"
-                        : "dialog-information"
+                    source: LucideIcons.url(
+                        dictationOverlay.typing ? "keyboard"
+                            : dictationOverlay.listening ? "mic-audio-lines"
+                            : "info",
+                        Kirigami.Theme.textColor)
                 }
 
                 Kirigami.Heading {
@@ -184,7 +186,7 @@ PlasmaCore.Dialog {
 
                 // A dictation can be abandoned: close without sending.
                 PC3.ToolButton {
-                    icon.name: "window-close"
+                    icon.source: LucideIcons.url("x", Kirigami.Theme.textColor)
                     visible: !dictationOverlay.listening
                     opacity: visible ? 1 : 0
                     enabled: visible
@@ -240,7 +242,7 @@ PlasmaCore.Dialog {
                             spacing: Kirigami.Units.smallSpacing
 
                             Kirigami.Icon {
-                                source: "mail-attachment"
+                                source: LucideIcons.url("paperclip", PhoenixTheme.textColor)
                                 width: 16
                                 height: 16
                             }
@@ -256,7 +258,7 @@ PlasmaCore.Dialog {
                             }
 
                             PC3.ToolButton {
-                                icon.name: "window-close"
+                                icon.source: LucideIcons.url("x", PhoenixTheme.textColor)
                                 icon.width: 12
                                 icon.height: 12
 
@@ -375,7 +377,7 @@ PlasmaCore.Dialog {
                             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-                            icon.name: "list-add"
+                            icon.source: LucideIcons.url("plus", Kirigami.Theme.textColor)
                             icon.width: Kirigami.Units.iconSizes.small
                             icon.height: Kirigami.Units.iconSizes.small
 
@@ -395,14 +397,13 @@ PlasmaCore.Dialog {
                             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-                            icon.name: "camera-photo"
-                            icon.width: Kirigami.Units.iconSizes.small
-                            icon.height: Kirigami.Units.iconSizes.small
                             // While the picker waits for a click, the button
                             // says so.
-                            icon.color: dictationOverlay.screenshotPicking
+                            icon.source: LucideIcons.url("camera", dictationOverlay.screenshotPicking
                                 ? Kirigami.Theme.highlightColor
-                                : Kirigami.Theme.textColor
+                                : Kirigami.Theme.textColor)
+                            icon.width: Kirigami.Units.iconSizes.small
+                            icon.height: Kirigami.Units.iconSizes.small
 
                             onClicked: dictationOverlay.screenshotRequested()
 
@@ -437,7 +438,7 @@ PlasmaCore.Dialog {
                             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
                             display: PC3.AbstractButton.IconOnly
 
-                            icon.name: "arrow-up"
+                            icon.source: LucideIcons.url("arrow-up", Kirigami.Theme.textColor)
                             icon.width: Kirigami.Units.iconSizes.small
                             icon.height: Kirigami.Units.iconSizes.small
                             enabled: dictationOverlay.canSubmit

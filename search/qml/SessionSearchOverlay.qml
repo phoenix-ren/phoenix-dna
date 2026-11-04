@@ -510,8 +510,7 @@ PlasmaCore.Dialog {
                 Kirigami.Icon {
                     Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                     Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-                    source: "edit-find"
-                    color: PhoenixTheme.headingTextColor
+                    source: LucideIcons.url("search", PhoenixTheme.headingTextColor)
                 }
 
                 // The query: matched fuzzily against the session names.
@@ -535,8 +534,7 @@ PlasmaCore.Dialog {
                     id: closeButton
                     objectName: "closeButton"
 
-                    icon.name: "window-close"
-                    icon.color: PhoenixTheme.textColor
+                    icon.source: LucideIcons.url("x", PhoenixTheme.textColor)
 
                     onClicked: searchOverlay.dismiss()
 

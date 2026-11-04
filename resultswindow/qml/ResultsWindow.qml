@@ -270,15 +270,14 @@ Window {
             spacing: Kirigami.Units.smallSpacing
 
             // The arrow: down while the section is open, to the right
-            // while it is folded.
+            // while it is folded. Brighter while the pointer is on the
+            // header: the section is one click away.
             Kirigami.Icon {
                 Layout.preferredWidth: Kirigami.Units.iconSizes.small
                 Layout.preferredHeight: Kirigami.Units.iconSizes.small
-                source: sectionHeader.expanded ? "arrow-down" : "arrow-right"
-                // Brighter while the pointer is on the header: the
-                // section is one click away.
-                color: sectionHeader.hovered ? PhoenixTheme.hoveredTextColor
-                                             : PhoenixTheme.secondaryTextColor
+                source: LucideIcons.url(sectionHeader.expanded ? "chevron-down" : "chevron-right",
+                    sectionHeader.hovered ? PhoenixTheme.hoveredTextColor
+                                          : PhoenixTheme.secondaryTextColor)
             }
 
             Kirigami.Heading {
@@ -1181,7 +1180,7 @@ Window {
                                             && resultsWindow.speechAvailable
                                         enabled: visible
 
-                                        icon.name: "text-to-speech"
+                                        icon.source: LucideIcons.url("megaphone", PhoenixTheme.textColor)
                                         icon.width: Kirigami.Units.iconSizes.small
                                         icon.height: Kirigami.Units.iconSizes.small
 
@@ -1318,7 +1317,7 @@ Window {
                     // overlay back.
                     PC3.Button {
                         visible: resultsWindow.wizardOverlayDismissed
-                        icon.name: "view-form"
+                        icon.source: LucideIcons.url("clipboard-list", PhoenixTheme.textColor)
                         text: i18n("Show questions")
                         onClicked: resultsWindow.showQuestionsRequested()
                     }
@@ -1392,7 +1391,7 @@ Window {
                                     spacing: Kirigami.Units.smallSpacing
 
                                     Kirigami.Icon {
-                                        source: "mail-attachment"
+                                        source: LucideIcons.url("paperclip", PhoenixTheme.textColor)
                                         width: 16
                                         height: 16
                                     }
@@ -1405,7 +1404,7 @@ Window {
                                     }
 
                                     PC3.ToolButton {
-                                        icon.name: "window-close"
+                                        icon.source: LucideIcons.url("x", PhoenixTheme.textColor)
                                         icon.width: 12
                                         icon.height: 12
 
@@ -1542,7 +1541,8 @@ Window {
                                     Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                                     Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-                                    icon.name: resultsWindow.listening ? "media-playback-stop" : "audio-input-microphone"
+                                    icon.source: LucideIcons.url(resultsWindow.listening ? "circle-stop" : "mic-audio-lines",
+                                        PhoenixTheme.textColor)
                                     icon.width: Kirigami.Units.iconSizes.small
                                     icon.height: Kirigami.Units.iconSizes.small
 
@@ -1570,7 +1570,7 @@ Window {
                                     Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                                     Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-                                    icon.name: "media-playback-stop"
+                                    icon.source: LucideIcons.url("circle-stop", PhoenixTheme.textColor)
                                     icon.width: Kirigami.Units.iconSizes.small
                                     icon.height: Kirigami.Units.iconSizes.small
                                     display: PC3.AbstractButton.IconOnly
@@ -1599,7 +1599,7 @@ Window {
                                     Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                                     Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-                                    icon.name: "list-add"
+                                    icon.source: LucideIcons.url("plus", PhoenixTheme.textColor)
                                     icon.width: Kirigami.Units.iconSizes.small
                                     icon.height: Kirigami.Units.iconSizes.small
 
@@ -1619,14 +1619,13 @@ Window {
                                     Layout.preferredWidth: Kirigami.Units.iconSizes.medium
                                     Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-                                    icon.name: "camera-photo"
-                                    icon.width: Kirigami.Units.iconSizes.small
-                                    icon.height: Kirigami.Units.iconSizes.small
                                     // While the picker waits for a click, the
                                     // button says so.
-                                    icon.color: resultsWindow.screenshotPicking
+                                    icon.source: LucideIcons.url("camera", resultsWindow.screenshotPicking
                                         ? PhoenixTheme.strongTextColor
-                                        : PhoenixTheme.textColor
+                                        : PhoenixTheme.textColor)
+                                    icon.width: Kirigami.Units.iconSizes.small
+                                    icon.height: Kirigami.Units.iconSizes.small
 
                                     onClicked: resultsWindow.screenshotRequested()
 
@@ -1666,9 +1665,9 @@ Window {
                                     Layout.preferredHeight: Kirigami.Units.iconSizes.medium
                                     display: PC3.AbstractButton.IconOnly
 
-                                    icon.name: resultsWindow.runActive
-                                        ? "media-playback-stop"
-                                        : "arrow-up"
+                                    icon.source: LucideIcons.url(resultsWindow.runActive
+                                        ? "circle-stop"
+                                        : "arrow-up", PhoenixTheme.textColor)
                                     icon.width: Kirigami.Units.iconSizes.small
                                     icon.height: Kirigami.Units.iconSizes.small
                                     // A run can always be stopped; the arrow
