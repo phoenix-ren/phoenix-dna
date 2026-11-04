@@ -5,6 +5,8 @@ SPDX-License-Identifier: BSD-2-Clause
 
 # Phoenix DNA
 
+![Phoenix DNA](icons/phoenix-dna.svg)
+
 A voice-first desktop AI agent for KDE Plasma 6, packaged as a plasmoid
 (panel widget) plus a Python D-Bus daemon.
 
@@ -54,6 +56,7 @@ query continues that session, exactly like a dictated follow-on.
 | `waveform/`  | Offline `.wav` → `.png` waveform renderer                       |
 | `widgettest/`| Developer testbench that hosts the widget in a plain window      |
 | `agent/`     | Python agent daemon (`phoenix-dna-agent`), a D-Bus service          |
+| `icons/`     | The artwork: the mark the widget picker shows, and the avatar    |
 
 ## Prompts with files
 
