@@ -31,6 +31,8 @@ plasma_add_applet(org.phoenixdna.agent
         agentbridge.h
         conversationmodel.cpp
         conversationmodel.h
+        sessiontranscriptmodel.cpp
+        sessiontranscriptmodel.h
         cliprecorder.cpp
         cliprecorder.h
         promptattachments.cpp
@@ -157,3 +159,22 @@ target_link_libraries(conversationmodeltest PRIVATE
     Qt6::Qml
 )
 add_test(NAME conversationmodeltest COMMAND conversationmodeltest)
+
+# The transcript of a session — the queries and responses the session
+# search shows — checked without a window: the empty turns are dropped,
+# the rows are handed over a chunk at a time, and the counters the bar at
+# the top of the window reads are true. Registers with CTest; run `ctest`
+# from the build directory.
+#
+#   sessiontranscriptmodeltest
+add_executable(sessiontranscriptmodeltest
+    sessiontranscriptmodeltest.cpp
+    sessiontranscriptmodel.cpp
+    sessiontranscriptmodel.h
+)
+target_include_directories(sessiontranscriptmodeltest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(sessiontranscriptmodeltest PRIVATE
+    Qt6::Core
+    Qt6::Qml
+)
+add_test(NAME sessiontranscriptmodeltest COMMAND sessiontranscriptmodeltest)

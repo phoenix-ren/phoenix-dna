@@ -588,10 +588,10 @@ PlasmoidItem {
         // the agent works as the desktop user.
         user: Phoenix.PhoenixController.searchUser
 
-        // The daemon's answers: the matching sessions, and the messages
-        // of the selected one.
+        // The daemon's answers: the matching sessions, and the
+        // transcript of the selected one.
         summaries: Phoenix.PhoenixController.agent.sessionSummaries
-        messages: Phoenix.PhoenixController.agent.sessionMessages
+        transcript: Phoenix.PhoenixController.agent.sessionTranscript
 
         // The query goes to the daemon, which owns the sessions.
         onQueryChanged: (query) => {

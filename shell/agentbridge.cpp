@@ -14,6 +14,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QThreadPool>
 
 #include <pwd.h>
 #include <unistd.h>
@@ -65,6 +66,10 @@ QVariantMap parseJsonObject(const QString &payload)
 
 AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
 {
+    // The transcript of the session the search has picked: the model
+    // hands its rows to the view a chunk at a time.
+    m_transcript = new SessionTranscriptModel(this);
+
     QDBusConnection::sessionBus().connect(kWatchedService, kWatchedPath, kWatchedInterface,
                                           QStringLiteral("NameOwnerChanged"), this,
                                           SLOT(onServiceOwnerChanged(QString, QString, QString)));
@@ -267,6 +272,12 @@ void AgentBridge::requestSessionTranscript(const QString &user, const QString &s
     // GetSessionTranscript(user, session_id) -> JSON array of messages.
     const quint64 request = ++m_transcriptRequest;
 
+    // The previous session's words leave the pane at once: they would
+    // only misattribute themselves to the session that was just
+    // picked, and the bar at the top of the window says what is on
+    // its way.
+    m_transcript->clear();
+
     QDBusMessage message = QDBusMessage::createMethodCall(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("GetSessionTranscript"));
     message << user << sessionId;
@@ -285,8 +296,25 @@ void AgentBridge::requestSessionTranscript(const QString &user, const QString &s
                     // Another session was selected meanwhile.
                     return;
                 }
-                m_sessionMessages = parseJsonArray(reply.value());
-                Q_EMIT sessionMessagesChanged();
+                // The parse happens off the GUI thread: a long
+                // transcript is megabytes of JSON, and the window must
+                // not wait for it — it shows the progress instead.
+                const QByteArray payload = reply.value().toUtf8();
+                QThreadPool::globalInstance()->start([this, request, payload]() {
+                    const QVariantList messages =
+                        parseJsonArray(QString::fromUtf8(payload));
+                    QMetaObject::invokeMethod(
+                        this,
+                        [this, request, messages]() {
+                            if (request != m_transcriptRequest) {
+                                // Another session was selected while the
+                                // transcript was being parsed.
+                                return;
+                            }
+                            m_transcript->load(messages);
+                        },
+                        Qt::QueuedConnection);
+                });
             });
 }
 

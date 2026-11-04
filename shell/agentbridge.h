@@ -11,6 +11,7 @@
 #include <QtQml/qqmlregistration.h>
 
 #include "conversationmodel.h"
+#include "sessiontranscriptmodel.h"
 
 class Speaker;
 
@@ -182,12 +183,15 @@ public:
      * started) is dropped. */
     Q_PROPERTY(QVariantList sessionSummaries READ sessionSummaries NOTIFY sessionSummariesChanged)
 
-    /*! \brief The queries and responses of the selected session.
+    /*! \brief The transcript of the selected session, as a list model.
      *
-     * One entry per message: its role ("user" or "assistant"), its
-     * content and the timestamp it was stored with. Replaced when
-     * another session's transcript arrives. */
-    Q_PROPERTY(QVariantList sessionMessages READ sessionMessages NOTIFY sessionMessagesChanged)
+     * One row per message: its role ("user" or "assistant"), its
+     * content and the timestamp it was stored with. The rows are
+     * handed over a chunk at a time (see SessionTranscriptModel), so
+     * the view fills while the window stays responsive; the empty
+     * turns — the tool calls, which are stored without content — are
+     * dropped on the way in. */
+    Q_PROPERTY(SessionTranscriptModel *sessionTranscript READ sessionTranscript CONSTANT)
 
     /*! \brief The form the running prompt is blocked on, or an empty map
      *  while none is.
@@ -230,7 +234,7 @@ public:
     QString sessionTitle() const { return m_sessionTitle; }
 
     QVariantList sessionSummaries() const { return m_sessionSummaries; }
-    QVariantList sessionMessages() const { return m_sessionMessages; }
+    SessionTranscriptModel *sessionTranscript() const { return m_transcript; }
 
     /*! \brief The form the running prompt is blocked on ({ } when none
      *  is). */
@@ -349,9 +353,6 @@ Q_SIGNALS:
 
     /*! \brief Emitted when the searched sessions changed. */
     void sessionSummariesChanged();
-
-    /*! \brief Emitted when the selected session's messages changed. */
-    void sessionMessagesChanged();
 
     /*! \brief Emitted when a stored session was loaded into the
      *  conversation model — the cue for the results pane to open on it. */
@@ -560,10 +561,10 @@ private:
     // to). A new request supersedes the previous one.
     QString m_pendingCleanupId;
     QString m_pendingCleanupSource;
-    // The sessions the session search lists, and the messages of the
+    // The sessions the session search lists, and the transcript of the
     // selected one.
     QVariantList m_sessionSummaries;
-    QVariantList m_sessionMessages;
+    SessionTranscriptModel *m_transcript = nullptr;
     // The daemon-side read-aloud client (see speaker.h): owned here so
     // every surface reaches it through the same bridge.
     Speaker *m_speech = nullptr;
