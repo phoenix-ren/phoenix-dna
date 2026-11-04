@@ -78,11 +78,12 @@ class Speaker;
  * empties the form again. A question is activity like any other: the
  * pane opens on it.
  *
- * A form of several questions is a wizard: \a wizardState carries its
- * summary ({active, goal, count}) while it is pending, and the results
- * pane swaps its conversation for the wizard view — which walks the
- * questions entirely client-side (instant back, exact progress, the
- * answers reviewed before they are submitted as one). Follow-up
+ * A form of several questions is a wizard: it opens the wizard overlay
+ * — a large, transient, centred window of its own, themed like the
+ * session search — which walks the questions entirely client-side
+ * (instant back, exact progress, the answers reviewed before they are
+ * submitted as one). Submitting hands the answers over optimistically:
+ * the form clears at once, and a rejected answer restores it. Follow-up
  * questions the model asks after an answer opens a new decision arrive
  * as further forms: one question renders as the inline card, several
  * re-open the wizard.
@@ -203,15 +204,6 @@ public:
      * progress) and submits all answers together. */
     Q_PROPERTY(QVariantMap pendingForm READ pendingForm NOTIFY pendingFormChanged)
 
-    /*! \brief The state of the wizard in flight.
-     *
-     * {active, goal, count}: a form of several questions is active for as
-     * long as it is pending — the questions, the cursor and the answers
-     * live in the view (all client-side, no round-trip per question), so
-     * the bridge only carries the summary. The results pane swaps its
-     * conversation for the wizard view while active. */
-    Q_PROPERTY(QVariantMap wizardState READ wizardState NOTIFY wizardStateChanged)
-
     bool isAvailable() const { return m_available; }
     QString partialTranscript() const { return m_partialTranscript; }
     QString finalTranscript() const { return m_finalTranscript; }
@@ -246,9 +238,6 @@ public:
     /*! \brief The form the running prompt is blocked on ({ } when none
      *  is). */
     QVariantMap pendingForm() const { return m_pendingForm; }
-
-    /*! \brief The state of the wizard in flight. */
-    QVariantMap wizardState() const { return m_wizardState; }
 
     QString proposedAction() const { return m_proposedAction; }
 
@@ -413,10 +402,6 @@ Q_SIGNALS:
      *  timed out, cancelled — or dropped with its run. */
     void pendingFormChanged();
 
-    /*! \brief Emitted when the wizard state changed: a series began or
-     *  advanced, is waiting between questions, or ended. */
-    void wizardStateChanged();
-
     /*! \brief The newest dictated clip's cleaned-up transcript arrived.
      *
      * \a source is the raw text the cleanup was requested for; the
@@ -519,12 +504,6 @@ private:
     void setFinalTranscript(const QString &text);
     void setAgentMessage(const QString &text);
     void setPendingForm(const QVariantMap &form);
-    void setWizardState(const QVariantMap &state);
-
-    /*! \brief Ends the wizard (no-op when none is active): the agent
-     *  stopped asking — either it went to work, or the question or the
-     *  run ended. */
-    void endWizard();
 
     static QString fencedBlock(const QString &text, const QString &language);
     static QString elideOutput(const QString &text, int limit);
@@ -616,12 +595,12 @@ private:
     // The daemon-side read-aloud client (see speaker.h): owned here so
     // every surface reaches it through the same bridge.
     Speaker *m_speech = nullptr;
-    // The question the running prompt is blocked on (ask_user): parsed
-    // from QuestionAsked, emptied by QuestionAnswered or the run's end.
+    // The form the running prompt is blocked on (ask_user): parsed from
+    // QuestionAsked, emptied by QuestionAnswered, the run's end - or
+    // optimistically by submitAnswers, which restores it if the daemon
+    // rejects the answers.
     QVariantMap m_pendingForm;
-    // The wizard state of a question series (see wizardState); inactive
-    // maps simply carry active=false.
-    QVariantMap m_wizardState;
+    QVariantMap m_lastSubmittedForm;
     // The counters of the outstanding session-search requests: a reply
     // that belongs to an older request is dropped, so the list never
     // shows the results of a superseded query.

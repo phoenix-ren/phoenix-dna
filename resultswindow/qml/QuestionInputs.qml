@@ -9,13 +9,17 @@ import org.phoenixdna.theme
 
 /*
  * The inputs of an ask_user question: one choice per option (radio
- * buttons, or checkboxes when several may be picked), a field for the
- * user's own words, and the send that submits either.
+ * buttons, or checkboxes when several may be picked), plus a final
+ * "write your own answer" choice that carries a text field and behaves
+ * like any other option - a radio of its own, picked by clicking it or
+ * simply by typing. The whole row of an option is its tap target; the
+ * choices are exclusive (single-choice questions).
  *
- * Shared by the results window's inline question card and its wizard
- * view. The state — picked options, typed words — belongs to the
- * question, not the component: the next question starts with a clean
- * slate.
+ * Shared by the results window's inline question card and the wizard.
+ * The state - picked options, own-words - belongs to the question, not
+ * the component: the next question starts with a clean slate, and a
+ * walker (the wizard) snapshots and restores it with currentState() /
+ * setState() as it moves between questions.
  */
 ColumnLayout {
     id: inputs
@@ -31,26 +35,31 @@ ColumnLayout {
     property bool showSubmit: true
 
     // Emitted when the user answers: the 0-based indices of the chosen
-    // options (may be empty) and their own words (may be empty). The
-    // skip button submits with a text that tells the model to proceed
-    // on its best judgment — in English on purpose, since the model
-    // reads it, not the user.
+    // options (may be empty) and their own words (may be empty).
     signal submitted(var selected, string text)
 
-    // The options picked so far, as 0-based indices.
+    // The options picked so far, as 0-based indices, and whether the
+    // own-answer choice is the active one.
     property var checkedOptions: []
+    property bool ownSelected: false
 
     onQuestionChanged: {
         checkedOptions = [];
+        ownSelected = false;
         ownAnswer.text = "";
     }
 
     readonly property bool multiple: question.multiple === true
+
+    // An answer exists: an option is picked, or the own-answer choice
+    // carries words. The walker keeps Next/Submit disabled until this
+    // is true, so every question leaves with an answer.
     readonly property bool canSend: checkedOptions.length > 0
-        || ownAnswer.text.trim().length > 0
+        || (ownSelected && ownAnswer.text.trim().length > 0)
 
     function pick(index) {
         checkedOptions = [index];
+        ownSelected = false;
     }
 
     function toggle(index) {
@@ -64,20 +73,31 @@ ColumnLayout {
         checkedOptions = next;
     }
 
+    function pickOwn() {
+        ownSelected = true;
+        checkedOptions = [];
+        ownAnswer.forceActiveFocus();
+    }
+
     function submit() {
-        submitted(checkedOptions, ownAnswer.text);
+        submitted(ownSelected ? [] : checkedOptions, ownAnswer.text);
     }
 
     // The wizard navigates between questions: it snapshots the inputs
-    // when leaving a question (selected indices + own words) and
-    // restores them when coming back - the back button must not eat an
-    // answer the user already typed.
+    // when leaving a question (picked options, own-answer choice, own
+    // words) and restores them when coming back - the back button must
+    // not eat an answer the user already gave.
     function currentState() {
-        return { "selected": checkedOptions, "text": ownAnswer.text };
+        return {
+            "selected": checkedOptions,
+            "ownSelected": ownSelected,
+            "text": ownAnswer.text,
+        };
     }
 
     function setState(state) {
         checkedOptions = (state && state.selected) || [];
+        ownSelected = (state && state.ownSelected) || false;
         ownAnswer.text = (state && state.text) || "";
     }
 
@@ -97,29 +117,35 @@ ColumnLayout {
 
             readonly property bool chosen:
                 inputs.checkedOptions.includes(optionRow.index)
-            readonly property bool multiple: inputs.multiple
 
             function activate() {
-                if (optionRow.multiple) {
+                if (inputs.multiple) {
                     inputs.toggle(optionRow.index);
                 } else {
                     inputs.pick(optionRow.index);
                 }
             }
 
+            // The whole row is the choice's tap target - indicator,
+            // label and description alike: an option is a row in the
+            // implicit grid the radios form, not a small circle to hit.
+            TapHandler {
+                onTapped: optionRow.activate()
+            }
+
             // Bare indicators: the label beside them carries the
             // window's fixed palette (theme label colors would be
             // unreadable on the dark backdrop under a light theme). Both
-            // controls reflect the card's state only — Qt's own button
+            // controls reflect the card's state only - Qt's own button
             // grouping would not reach across the delegates.
             PC3.RadioButton {
-                visible: !optionRow.multiple
+                visible: !inputs.multiple
                 checked: optionRow.chosen
                 onClicked: inputs.pick(optionRow.index)
             }
 
             PC3.CheckBox {
-                visible: optionRow.multiple
+                visible: inputs.multiple
                 checked: optionRow.chosen
                 onClicked: inputs.toggle(optionRow.index)
             }
@@ -134,12 +160,6 @@ ColumnLayout {
                     text: optionRow.modelData.label
                     wrapMode: Text.WordWrap
                     color: PhoenixTheme.textColor
-
-                    // The label chooses like the indicator does: a
-                    // bigger tap target.
-                    TapHandler {
-                        onTapped: optionRow.activate()
-                    }
                 }
 
                 Text {
@@ -156,14 +176,27 @@ ColumnLayout {
         }
     }
 
+    // The own-answer choice: a full option row of its own - radio plus
+    // the words - picked by clicking it or simply by typing. Picking a
+    // listed option puts it down again.
     RowLayout {
-        Layout.fillWidth: true
-        spacing: Kirigami.Units.smallSpacing
-        visible: inputs.showSubmit
+        id: ownRow
 
-        // The user's own words: always offered (the model is told never
-        // to add an "other" option), and enough on their own. Enter
-        // sends, like Shift+Enter sends a follow-up.
+        Layout.fillWidth: true
+        Layout.topMargin: Kirigami.Units.smallSpacing
+        spacing: Kirigami.Units.smallSpacing
+
+        PC3.RadioButton {
+            objectName: "ownAnswerRadio"
+
+            checked: inputs.ownSelected
+            onClicked: inputs.pickOwn()
+
+            PC3.ToolTip {
+                text: i18n("Write your own answer")
+            }
+        }
+
         PC3.TextField {
             id: ownAnswer
 
@@ -173,10 +206,23 @@ ColumnLayout {
 
             placeholderText: i18n("…or write your own answer")
 
+            // Typing is choosing: the radio goes on the moment words
+            // arrive, so the answer's shape is visible while it is
+            // written.
+            onTextChanged: if (text.trim().length > 0 && !inputs.ownSelected) {
+                inputs.pickOwn();
+            }
+
             onAccepted: if (inputs.canSend) {
                 inputs.submit();
             }
         }
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Kirigami.Units.smallSpacing
+        visible: inputs.showSubmit
 
         PC3.Button {
             objectName: "answerButton"
