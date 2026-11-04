@@ -64,11 +64,16 @@ public:
     /*! \brief \a fraction restated in cores ("how many cores busy"). */
     Q_PROPERTY(qreal cores READ cores NOTIFY fractionChanged)
 
+    /*! \brief How many cores the machine has (the ceiling of \a cores).
+     *  The pane reserves the readout's column for it. */
+    Q_PROPERTY(qint64 coreCount READ coreCount NOTIFY coreCountChanged)
+
     bool isActive() const { return m_active; }
     QString command() const { return m_command; }
     qreal fraction() const { return m_level; }
     qreal peak() const { return m_peak; }
     qreal cores() const { return m_level * m_coreCount; }
+    qint64 coreCount() const { return m_coreCount; }
 
     /*! \brief Follows \a pid (a command's session leader) and meters the
      *  CPU usage of its process tree until release().
@@ -87,6 +92,7 @@ Q_SIGNALS:
     void commandChanged();
     void fractionChanged();
     void peakChanged();
+    void coreCountChanged();
 
 private:
     void sample();

@@ -1018,6 +1018,11 @@ Window {
                                             fraction: meter ? meter.fraction : 0.0
                                             peak: meter ? meter.peak : 0.0
                                             cores: meter ? meter.cores : 0.0
+                                            // The readouts' columns are reserved
+                                            // for the machine's widest values, so
+                                            // the bar cannot breathe with the
+                                            // digits.
+                                            maxCores: meter ? meter.coreCount : 16
                                         }
 
                                         Kirigami.SelectableLabel {

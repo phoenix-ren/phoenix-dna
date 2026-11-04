@@ -49,6 +49,13 @@ RowLayout {
     // percentage of the machine.
     property real cores: 0.0
 
+    // How far \a cores can rise (the machine's core count, passed in by
+    // the results window). The readouts' columns are reserved for their
+    // widest possible values ("100%", "x<maxCores>"): a value that
+    // changes width with every digit would take the bar with it, and
+    // the meter would flicker exactly when it animates.
+    property int maxCores: 16
+
     spacing: Kirigami.Units.smallSpacing
 
     opacity: root.showing ? 1.0 : 0.0
@@ -131,19 +138,46 @@ RowLayout {
         }
     }
 
-    PC3.Label {
-        Layout.alignment: Qt.AlignVCenter
+    // The readouts keep constant columns: measured for the widest value
+    // they can show, right-aligned inside. Only the digits change, never
+    // the layout — the LED bar must not breathe with the numbers.
+    TextMetrics {
+        id: percentMetrics
+        font: percentLabel.font
+        text: "100%"
+    }
+    TextMetrics {
+        id: coresMetrics
+        font: coresLabel.font
+        // <maxCores> with a decimal ("x16.0"), or a value beyond it on a
+        // machine that reports more cores than it has - the column grows
+        // once, at most, and never shrinks back mid-command.
+        text: "×" + Math.max(root.maxCores, root.cores).toFixed(1)
+    }
 
+    PC3.Label {
+        id: percentLabel
+
+        Layout.alignment: Qt.AlignVCenter
+        Layout.preferredWidth: percentMetrics.width
+
+        horizontalAlignment: Text.AlignRight
         text: Math.round(root.fraction * 100) + "%"
         color: PhoenixTheme.secondaryTextColor
         font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.8)
     }
 
     PC3.Label {
-        Layout.alignment: Qt.AlignVCenter
+        id: coresLabel
 
-        visible: root.cores >= 1.0
-        text: "×" + root.cores.toFixed(1)
+        Layout.alignment: Qt.AlignVCenter
+        Layout.preferredWidth: coresMetrics.width
+
+        horizontalAlignment: Text.AlignRight
+        // Empty rather than hidden below one core: hiding the label
+        // would hand its column back to the bar, and a command hovering
+        // around one core would toggle the bar's width with it.
+        text: root.cores >= 1.0 ? "×" + root.cores.toFixed(1) : ""
         color: PhoenixTheme.secondaryTextColor
         opacity: 0.7
         font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.75)

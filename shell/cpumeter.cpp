@@ -96,6 +96,9 @@ CpuMeter::CpuMeter(QObject *parent) : QObject(parent)
 {
     m_sampleTimer.setInterval(kSampleIntervalMs);
     connect(&m_sampleTimer, &QTimer::timeout, this, &CpuMeter::sample);
+    // A sane answer before anything is tracked (the pane sizes its
+    // readout columns from it).
+    m_coreCount = qMax<qint64>(1, sysconf(_SC_NPROCESSORS_ONLN));
 }
 
 void CpuMeter::track(int pid, const QString &command)
@@ -112,7 +115,11 @@ void CpuMeter::track(int pid, const QString &command)
     m_lastTicks = 0;
     m_level = 0.0;
     m_peak = 0.0;
-    m_coreCount = qMax<qint64>(1, sysconf(_SC_NPROCESSORS_ONLN));
+    const qint64 coreCount = qMax<qint64>(1, sysconf(_SC_NPROCESSORS_ONLN));
+    if (coreCount != m_coreCount) {
+        m_coreCount = coreCount;
+        Q_EMIT coreCountChanged();
+    }
     m_clkTck = qMax<qint64>(1, sysconf(_SC_CLK_TCK));
     m_sincePeak.start();
     m_sinceSample.start();
