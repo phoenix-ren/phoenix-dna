@@ -96,24 +96,24 @@ Window {
     // renders as the inline card; several open the wizard view.
     property var pendingForm: ({})
 
-    // The wizard summary from the bridge ({active, goal, count}); {}
-    // while no wizard is in flight. Bound by the shell.
-    property var wizardSummary: ({})
-
-    // Whether a form is waiting — a card or the wizard is on screen.
+    // Whether a form is waiting — a card or the wizard overlay is up.
     readonly property bool formPending: pendingForm
         && pendingForm.askId !== undefined
 
-    // Whether the wizard view owns the window's centre: a form of
-    // several questions.
-    readonly property bool wizardActive: formPending
-        && (pendingForm.questions ?? []).length >= 2
+    // Whether the pending form is a wizard (several questions) whose
+    // overlay the user dismissed: the slim card below the conversation
+    // then offers to bring it back. Set by the shell, which owns the
+    // overlay.
+    property bool wizardOverlayDismissed: false
 
     // Emitted when the user submits a form's answers: one
     // {selected, text} map per question, in order (the card's single
     // question is a form of one). The shell routes it to the agent
     // bridge, which sends it as AnswerQuestion over D-Bus.
     signal formSubmitted(var answers)
+
+    // Emitted when the user wants the dismissed wizard overlay back.
+    signal showQuestionsRequested()
 
     // Emitted when the user picks a file to attach to the follow-up.
     signal attachmentAdded(url file)
@@ -406,10 +406,6 @@ Window {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                // The wizard view replaces the conversation while the
-                // agent is asking its series; a hidden item does not
-                // take layout space, so the two cleanly alternate.
-                visible: !resultsWindow.wizardActive
 
                 contentWidth: width
                 contentHeight: column.implicitHeight
@@ -995,27 +991,6 @@ Window {
                 }
             }
 
-            // ---- The wizard view -------------------------------------------
-            // A form of several questions (one ask_user call) takes over
-            // the window's centre: one question at a time, instant back,
-            // exact progress — all client-side, because the whole form
-            // arrived at once. Nothing is sent until the user submits;
-            // then every answer leaves together, and when the agent
-            // stops asking and goes to work, the conversation returns.
-            WizardView {
-                id: wizardView
-
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: resultsWindow.wizardActive
-
-                form: resultsWindow.pendingForm
-                wizard: resultsWindow.wizardSummary
-
-                onSubmitted: (answers) =>
-                    resultsWindow.formSubmitted(answers)
-            }
-
             // ---- The agent's lone question ---------------------------------
             // ask_user blocks the run on this form; when it is a form of
             // one question (or a harness confirmation), the card under
@@ -1029,8 +1004,11 @@ Window {
                 Layout.fillWidth: true
                 implicitHeight: questionBody.implicitHeight
                                 + 2 * Kirigami.Units.largeSpacing
+                // A form of one question - or a wizard whose overlay the
+                // user dismissed (the card offers to bring it back).
                 visible: resultsWindow.formPending
-                         && !resultsWindow.wizardActive
+                         && (resultsWindow.wizardOverlayDismissed
+                             || (resultsWindow.pendingForm.questions ?? []).length < 2)
 
                 // Themed like the conversation's bubbles (see
                 // PhoenixTheme): the card reads correctly in both the
@@ -1125,6 +1103,16 @@ Window {
                             9, Math.round(
                                 Qt.application.font.pixelSize * 0.8))
                         color: PhoenixTheme.secondaryTextColor
+                    }
+
+                    // The dismissed wizard: its questions are still
+                    // pending, and the run is still blocked - bring the
+                    // overlay back.
+                    PC3.Button {
+                        visible: resultsWindow.wizardOverlayDismissed
+                        icon.name: "view-form"
+                        text: i18n("Show questions")
+                        onClicked: resultsWindow.showQuestionsRequested()
                     }
                 }
             }

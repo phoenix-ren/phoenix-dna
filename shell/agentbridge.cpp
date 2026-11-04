@@ -467,11 +467,19 @@ bool AgentBridge::submitAnswers(const QVariantList &answers)
                 const QDBusReply<bool> reply = *watcher;
                 watcher->deleteLater();
                 if (!reply.isValid() || !reply.value()) {
-                    // The form stays pending: the run is still blocked on
-                    // it, and the view remains to retry.
                     qWarning() << "answers were not accepted:" << reply.error().message();
+                    // Restore the form: the run is still blocked on it,
+                    // and the user must see their questions again.
+                    setPendingForm(m_lastSubmittedForm);
                 }
             });
+
+    // Hand the answers over optimistically: the view returns to the
+    // conversation (with the answers in its tool log) the instant the
+    // user submits, not a D-Bus round-trip later. A rejection brings
+    // the form back above.
+    m_lastSubmittedForm = m_pendingForm;
+    setPendingForm(QVariantMap());
     return true;
 }
 
@@ -538,19 +546,6 @@ void AgentBridge::onQuestionAsked(const QString &runId,
         payload.insert(QStringLiteral("harness"), true);
     }
     setPendingForm(payload);
-
-    // Several questions open the wizard. The questions, the cursor and
-    // the answers live in the view (client-side: instant back, exact
-    // progress), so the bridge carries only the summary.
-    if (questions.size() >= 2) {
-        QVariantMap wizard;
-        wizard.insert(QStringLiteral("active"), true);
-        wizard.insert(QStringLiteral("count"), questions.size());
-        if (!goal.isEmpty()) {
-            wizard.insert(QStringLiteral("goal"), goal);
-        }
-        setWizardState(wizard);
-    }
 }
 
 void AgentBridge::onQuestionAnswered(const QString &runId,
@@ -568,7 +563,6 @@ void AgentBridge::onQuestionAnswered(const QString &runId,
         return;
     }
     setPendingForm(QVariantMap());
-    endWizard();
 }
 
 void AgentBridge::setPendingForm(const QVariantMap &form)
@@ -578,25 +572,6 @@ void AgentBridge::setPendingForm(const QVariantMap &form)
     }
     m_pendingForm = form;
     Q_EMIT pendingFormChanged();
-}
-
-void AgentBridge::setWizardState(const QVariantMap &state)
-{
-    if (m_wizardState == state) {
-        return;
-    }
-    m_wizardState = state;
-    Q_EMIT wizardStateChanged();
-}
-
-void AgentBridge::endWizard()
-{
-    if (!m_wizardState.value(QStringLiteral("active")).toBool()) {
-        return;
-    }
-    QVariantMap wizard = m_wizardState;
-    wizard.insert(QStringLiteral("active"), false);
-    setWizardState(wizard);
 }
 
 void AgentBridge::onServiceOwnerChanged(const QString &service,
@@ -707,7 +682,6 @@ void AgentBridge::onRunStarted(const QString &runId, const QString &mode, const 
     // A form never survives its run: if the previous run ended without
     // QuestionAnswered (daemon restart mid-question), its view must go.
     setPendingForm(QVariantMap());
-    endWizard();
     if (ours) {
         const QueuedPrompt queued = m_pendingPrompts.takeFirst();
         if (queued.newSession) {
@@ -793,13 +767,6 @@ void AgentBridge::onToolCallStarted(const QString &runId,
     flushDeltas();
     m_conversation.demoteResultToThinking();
     m_conversation.noteToolCall();
-
-    // The agent went to work: if a wizard was collecting answers, it is
-    // over — the conversation returns. (ask_user's own call is the
-    // wizard continuing, not ending.)
-    if (tool != QLatin1String("ask_user")) {
-        endWizard();
-    }
 
     // Head of a log entry: the tool name and its arguments. Written at
     // "started" rather than "finished" so a command that hangs or dies with
@@ -916,7 +883,6 @@ void AgentBridge::onRunFinished(const QString &runId,
     // ...and any form the run was blocked on is over now, answered or
     // not (QuestionAnswered usually got here first).
     setPendingForm(QVariantMap());
-    endWizard();
     if (!finalText.trimmed().isEmpty()) {
         m_conversation.setResult(finalText);
     }

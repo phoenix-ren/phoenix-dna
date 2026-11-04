@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 import QtQuick
+import QtQuick.Window
 import QtQuick.Layouts
+import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
 
 // The applet's own QML module: it exposes the C++ controller singleton, the
@@ -346,19 +348,20 @@ PlasmoidItem {
         // bridge fills it from the daemon's QuestionAsked and empties it
         // when the form is answered, times out or the run ends. One
         // question renders as the card above the input bar; several open
-        // the wizard view.
+        // the wizard overlay.
         pendingForm: Phoenix.PhoenixController.agent.pendingForm
 
-        // The wizard summary of a multi-question form: while the bridge
-        // keeps it active, the window shows the wizard view — one
-        // question at a time, instant back, exact progress — instead of
-        // the conversation.
-        wizardSummary: Phoenix.PhoenixController.agent.wizardState
+        // Whether the wizard overlay was dismissed for this form: the
+        // slim card then offers to bring it back.
+        wizardOverlayDismissed: wizardOverlay.dismissed
 
-        // The card's and the wizard's answers go straight back to the
-        // daemon as one AnswerQuestion call per form.
+        // The card's answers go straight back to the daemon as one
+        // AnswerQuestion call per form.
         onFormSubmitted: (answers) =>
             Phoenix.PhoenixController.agent.submitAnswers(answers)
+
+        // The card's "Show questions" brings the dismissed overlay back.
+        onShowQuestionsRequested: wizardOverlay.reopen()
 
         // The same toggle the panel widget's record button performs.
         onRecordClicked: Phoenix.PhoenixController.toggleRecording()
@@ -409,6 +412,149 @@ PlasmoidItem {
                 dictationOverlay.statusMessage = Phoenix.PhoenixController.statusMessage;
                 dictationOverlay.inputAnchor = root;
                 dictationOverlay.visible = true;
+            }
+        }
+    }
+
+    // Component 3b — the wizard overlay.
+    //
+    // A form of several questions (one ask_user call) takes the form of
+    // a large, transient, centred window of its own — like the session
+    // search, a Plasma Dialog so it can sit above the shell's surfaces
+    // on Wayland, painting its own themed backdrop (dark in the dark
+    // scheme, light in the light one). The questions are walked entirely
+    // client-side; the answers leave as one submission, the bridge
+    // clears the form the instant they do, and the overlay follows it
+    // out — the conversation underneath carries the summary in its tool
+    // log. Esc dismisses the overlay (the run keeps waiting; the results
+    // window shows a card that brings it back).
+    PlasmaCore.Dialog {
+        id: wizardOverlay
+
+        // Whether the user put this form's overlay away without
+        // answering; cleared when another form arrives or this one ends.
+        property bool dismissed: false
+        property string dismissedAskId: ""
+
+        readonly property real minimumWidth: 700
+        readonly property real minimumHeight: 560
+        readonly property real overlayWidth: Math.max(
+            minimumWidth, Math.round(Screen.desktopAvailableWidth * 0.55))
+        readonly property real overlayHeight: Math.max(
+            minimumHeight, Math.round(Screen.desktopAvailableHeight * 0.7))
+
+        location: PlasmaCore.Types.Floating
+        type: PlasmaCore.Dialog.WindowType.DialogWindow
+        backgroundHints: PlasmaCore.Dialog.NoBackground
+        flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
+        hideOnWindowDeactivate: false
+        visible: false
+
+        // The form being walked; {} once it is answered or gone.
+        property var form: Phoenix.PhoenixController.agent.pendingForm
+
+        // A wizard form pending and not dismissed: the overlay is up.
+        // The optimistic clear on submit empties the form, so the
+        // overlay leaves the moment the answers are handed over.
+        onFormChanged: sync()
+
+        function reopen() {
+            dismissed = false;
+            dismissedAskId = "";
+            sync();
+        }
+
+        function sync() {
+            const askId = (form && form.askId) || "";
+            if (askId !== dismissedAskId) {
+                // Another form arrived (or this one ended): the
+                // dismissal belonged to the old one.
+                dismissed = false;
+                dismissedAskId = "";
+            }
+            const questions = (form && form.questions) || [];
+            if (questions.length >= 2 && !dismissed) {
+                open();
+            } else {
+                close();
+            }
+        }
+
+        function open() {
+            width = overlayWidth;
+            height = overlayHeight;
+            x = Screen.virtualX + Math.round((Screen.width - width) / 2);
+            y = Screen.virtualY + Math.round((Screen.height - height) / 2);
+            visible = true;
+            // The compositor places the window itself, so the position
+            // is applied again a tick later — it then wins over the
+            // placement the compositor chose.
+            Qt.callLater(function() {
+                x = Screen.virtualX + Math.round((Screen.width - width) / 2);
+                y = Screen.virtualY + Math.round((Screen.height - height) / 2);
+            });
+        }
+
+        // Esc puts the overlay away; the questions stay pending, and the
+        // results window's card offers to bring them back.
+        function dismiss() {
+            dismissed = true;
+            dismissedAskId = form && form.askId ? form.askId : "";
+            close();
+        }
+
+        // The dialog's default property is mainItem, so the backdrop is
+        // a bare child (see the session search overlay).
+        mainItem: Rectangle {
+            id: wizardBackdrop
+
+            implicitWidth: wizardOverlay.overlayWidth
+            implicitHeight: wizardOverlay.overlayHeight
+            radius: Kirigami.Units.smallSpacing
+
+            // The themed backdrop, painted here because the dialog
+            // surface itself is bare: dark and near-black in the dark
+            // scheme, the theme's own light one otherwise.
+            color: PhoenixTheme.backgroundColor
+            border.width: 1
+            border.color: PhoenixTheme.backdropBorderColor
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: Kirigami.Units.gridUnit * 2
+
+                PhoenixResults.WizardView {
+                    id: wizardWalker
+
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+
+                    form: wizardOverlay.form
+
+                    onSubmitted: (answers) =>
+                        Phoenix.PhoenixController.agent.submitAnswers(answers)
+                }
+
+                // Esc dismisses; the caption says where the questions
+                // went, so dismissing never reads as losing them.
+                Text {
+                    Layout.fillWidth: true
+
+                    text: i18n("Esc hides this window; the agent keeps waiting for your answers.")
+                    font.pixelSize: Math.max(
+                        9, Math.round(Qt.application.font.pixelSize * 0.8))
+                    color: PhoenixTheme.secondaryTextColor
+                }
+            }
+
+            // Esc's home is the overlay itself; the walker's inputs
+            // (Enter in the own-answer field) must not be stolen.
+            FocusScope {
+                id: overlayKeys
+
+                anchors.fill: parent
+                focus: true
+                Keys.onEscapePressed: wizardOverlay.dismiss()
             }
         }
     }

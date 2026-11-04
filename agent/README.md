@@ -97,16 +97,20 @@ is told it was not run and must not retry it unchanged. Set
 (`dnf remove` and friends then run as before, on the non-interactive
 flags alone).
 
-**The wizard view:** a form of several questions opens the results
-window's wizard view — the conversation gives way to one question at a
-time with a progress bar, the answers collected so far, a **back button**
-and a final "Submit answers". The whole walk is client-side (the form
-arrived at once, so the progress is exact — no "~" estimates — and back
-is instant), and nothing is sent until the user submits: every answer
-leaves together, blanks included as deliberate skips. When the form is
-answered the wizard gives way; a follow-up form (or the agent going to
-work — its first non-`ask_user` tool call) ends it, the run's end
-always does.
+**The wizard overlay:** a form of several questions opens a large,
+transient, centred overlay of its own (themed like the session search:
+near-black in the dark scheme, light in the light one) — not a pane in
+the results window. One question at a time, exact progress (the form
+arrived whole, so the bar stands full on the last question), a **back
+button** that is instant because everything is client-side, a
+final-question gate (Next stays disabled until the question is answered;
+the own-words choice, a radio option of its own that picks itself when
+you type, counts), and a "Submit answers" that hands every answer over
+**optimistically**: the overlay closes and the conversation returns at
+once, with the answers summarized in the run's tool log — a rejected
+payload restores the form. Esc dismisses the overlay; the run keeps
+waiting, and the results window shows a card that brings the questions
+back.
 
 The results window renders a pending question as a card above its input
 bar: one radio button per option (checkboxes when `multiple` is set), a

@@ -8,26 +8,24 @@ import org.kde.kirigami as Kirigami
 import org.phoenixdna.theme
 
 /*
- * The wizard view: while the run is blocked on a form of several
- * questions (one ask_user call), the results window's conversation gives
- * way to this pane. It walks the questions entirely client-side — one
- * question at a time, instant back, exact progress (the count is known:
- * the whole form arrived at once) — and submits every answer together
- * only when the user finishes. A blank answer is a deliberate skip; the
- * model is told there was no answer, not asked again.
+ * The wizard: a form of several questions (one ask_user call) walked
+ * one question at a time, entirely client-side — the whole form arrived
+ * at once, so back is instant and the progress is exact. Every answer
+ * is kept as it is given (a question cannot be left behind: Next stays
+ * disabled until it is answered) and all of them are submitted together
+ * by the final Submit.
  *
- * Fed by the agent bridge: `form` is its pendingForm ({askId, questions,
- * goal}) and the answers leave as one submit signal, routed to
- * AnswerQuestion.
+ * Fed by `form` ({askId, questions, goal}); the answers leave as one
+ * submitted(answers) signal, routed to AnswerQuestion. Embedded in the
+ * wizard overlay (the large, transient, centered window).
  */
 ColumnLayout {
     id: wizardView
 
     property var form: ({})
-    property var wizard: ({})   // the bridge's summary: {active, goal, count}
 
-    // Emitted when the user finishes the form: one {selected, text} map
-    // per question, in order.
+    // Emitted when the user finishes the form: one {selected, text}
+    // map per question, in order.
     signal submitted(var answers)
 
     readonly property var questions: form.questions ?? []
@@ -39,9 +37,14 @@ ColumnLayout {
     // nothing reaches the agent until the final submit.
     property int __cursor: 0
     property var __answers: []
+    // Set with the final Submit; the chrome waits with the agent until
+    // the form is answered or replaced (the overlay usually closes long
+    // before that - the bridge clears the form optimistically).
+    property bool __sent: false
 
     onFormChanged: {
         __cursor = 0;
+        __sent = false;
         __answers = questions.map(question => ({ "selected": [], "text": "" }));
     }
 
@@ -52,25 +55,39 @@ ColumnLayout {
     }
 
     function goBack() {
-        if (__cursor > 0) {
+        if (__cursor > 0 && !__sent) {
             saveCurrent();
             __cursor--;
         }
     }
 
     function goNext() {
-        if (__cursor < count - 1) {
+        if (!__sent && inputs.canSend && __cursor < count - 1) {
             saveCurrent();
             __cursor++;
         }
     }
 
     function submitAll() {
+        if (__sent || !inputs.canSend) {
+            return;
+        }
         saveCurrent();
+        __sent = true;
         submitted(__answers);
     }
 
-    on__CursorChanged: Qt.callLater(() => inputs.setState(__answers[__cursor] || {}))
+    // Restoring a page's answer is bound to the question change itself
+    // (not a callLater): the inputs reset first - their own handler -
+    // and this connection puts the snapshot back right after it, in a
+    // deterministic order. Choices survive navigation.
+    Connections {
+        target: inputs
+
+        function onQuestionChanged() {
+            inputs.setState(wizardView.__answers[wizardView.cursor] || {});
+        }
+    }
 
     // The goal names what the questions collect ("backup setup"); the
     // fallback keeps the pane titled when the model omitted it.
@@ -85,8 +102,7 @@ ColumnLayout {
     }
 
     // Exact progress: the whole form is known, so the count is real -
-    // no "~" estimates. The bar's filled part is the answered part; the
-    // question on screen is the one being answered.
+    // no "~" estimates - and the bar stands full on the last question.
     ColumnLayout {
         Layout.fillWidth: true
         spacing: Kirigami.Units.smallSpacing
@@ -94,9 +110,9 @@ ColumnLayout {
         PC3.ProgressBar {
             Layout.fillWidth: true
             // PC3, not Kirigami: Kirigami has no ProgressBar (c300500).
-            from: 0
-            to: wizardView.count
-            value: wizardView.cursor
+            from: 1
+            to: Math.max(wizardView.count, 1)
+            value: wizardView.cursor + 1
         }
 
         Text {
@@ -147,19 +163,19 @@ ColumnLayout {
 
                 text: {
                     const answer = answeredEntry.answer ?? {};
+                    const own = answer.text ?? "";
+                    if (answer.ownSelected && own) {
+                        return "✓ " + own;
+                    }
                     const labels = (answer.selected ?? []).map(
                         index => answeredEntry.question.options[index].label);
-                    const own = answer.text ?? "";
                     if (labels && own) {
                         return "✓ " + labels.join(", ") + " — " + own;
                     }
                     if (labels) {
                         return "✓ " + labels.join(", ");
                     }
-                    if (own) {
-                        return "✓ " + own;
-                    }
-                    return "· " + i18n("left blank");
+                    return own ? "✓ " + own : "· " + i18n("left blank");
                 }
                 wrapMode: Text.WordWrap
                 color: PhoenixTheme.secondaryTextColor
@@ -210,8 +226,8 @@ ColumnLayout {
     }
 
     // The walker's chrome: back through the answered questions (instant
-    // - it is all local state), forward (a blank is a deliberate skip),
-    // and the submit that finally sends every answer at once.
+    // - it is all local state), forward - only once this question is
+    // answered - and the submit that finally sends every answer at once.
     RowLayout {
         Layout.fillWidth: true
         Layout.topMargin: Kirigami.Units.smallSpacing
@@ -220,7 +236,7 @@ ColumnLayout {
         PC3.Button {
             objectName: "backButton"
 
-            enabled: wizardView.cursor > 0
+            enabled: wizardView.cursor > 0 && !wizardView.__sent
             icon.name: "go-previous"
             text: i18n("Back")
             onClicked: wizardView.goBack()
@@ -228,10 +244,18 @@ ColumnLayout {
 
         Item { Layout.fillWidth: true }
 
+        PC3.BusyIndicator {
+            Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+            Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
+            visible: wizardView.__sent
+            running: wizardView.__sent
+        }
+
         PC3.Button {
             objectName: "nextButton"
 
             visible: wizardView.cursor < wizardView.count - 1
+            enabled: inputs.canSend && !wizardView.__sent
             icon.name: "go-next"
             text: i18n("Next")
             onClicked: wizardView.goNext()
@@ -241,6 +265,7 @@ ColumnLayout {
             objectName: "submitButton"
 
             visible: wizardView.cursor >= wizardView.count - 1
+            enabled: inputs.canSend && !wizardView.__sent
             icon.name: "document-send"
             text: i18n("Submit answers")
             onClicked: wizardView.submitAll()
@@ -251,9 +276,11 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.topMargin: Kirigami.Units.smallSpacing
 
-        text: wizardView.cursor >= wizardView.count - 1
-              ? i18n("Everything is sent together when you submit; the agent is waiting.")
-              : i18n("Nothing is sent until you submit; Back revisits your answers.")
+        text: wizardView.__sent
+              ? i18n("Answers sent — the agent is working with them.")
+              : (wizardView.cursor >= wizardView.count - 1
+                 ? i18n("Everything is sent together when you submit; the agent is waiting.")
+                 : i18n("Nothing is sent until you submit; Back revisits your answers."))
         font.pixelSize: Math.max(
             9, Math.round(Qt.application.font.pixelSize * 0.8))
         color: PhoenixTheme.secondaryTextColor
