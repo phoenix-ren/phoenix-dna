@@ -280,10 +280,11 @@ void SettingsStore::refresh()
     if (llmProvider.isEmpty()) {
         llmProvider = keys.value(QStringLiteral("llm_provider")).toString();
     }
-    if (llmProvider.isEmpty()) {
+    llmProvider = llmProvider.toLower();
+    if (llmProvider != kLlmProviderOpenAI && llmProvider != kLlmProviderGroq
+        && llmProvider != kLlmProviderCustom) {
         llmProvider = kLlmProviderMiniMax;
     }
-    llmProvider = llmProvider.toLower();
 
     const QString llmKey = keys.value(llmKeyFieldFor(llmProvider)).toString();
 

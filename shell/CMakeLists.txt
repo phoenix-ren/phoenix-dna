@@ -235,6 +235,30 @@ target_link_libraries(transcriberconfigtest PRIVATE
 )
 add_test(NAME transcriberconfigtest COMMAND transcriberconfigtest)
 
+# The settings store's provider handling: which provider is in force for
+# the model, the voice and the dictation, and which keys.json field its
+# key lives in. The store needs no window for this, so it is
+# instantiated directly. Registers with CTest; run `ctest` from the
+# build directory.
+#
+#   settingsstoretest
+add_executable(settingsstoretest
+    settingsstoretest.cpp
+    settingsstore.cpp
+    settingsstore.h
+)
+target_include_directories(settingsstoretest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(settingsstoretest PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Qml
+    KF6::ConfigWidgets
+    KF6::I18n
+    KF6::GlobalAccel
+    KF6::CoreAddons
+)
+add_test(NAME settingsstoretest COMMAND settingsstoretest)
+
 # The CPU meter of a running bash tool call — the /proc sampling and its
 # peak-meter ballistics — checked without a window: a busy command is
 # tracked until it dies (the meter must stop by itself when the
