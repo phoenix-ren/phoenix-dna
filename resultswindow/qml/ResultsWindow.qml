@@ -86,6 +86,12 @@ Window {
     // meter out (no meter to follow).
     property var cpuMeter: null
 
+    // The rate of the conversation with the model (see AgentBridge): the
+    // bytes that go out and come in, as a pair of level meters under the
+    // running thought step. Bound by the shell to the agent bridge's
+    // meter; null leaves the meters out.
+    property var wireMeter: null
+
     // ---- Follow-on input, mirroring the dictation overlay ---------------
     // The transcript of a follow-on being dictated into the window, and the
     // dictation state. Bound by the shell exactly like the overlay's; the
@@ -938,6 +944,40 @@ Window {
                                             busy: trailItem.modelData.running
                                             detail: trailItem.elapsed
                                             onToggled: trailItem.toggle()
+                                        }
+
+                                        // ---- The rate of the talk ----
+                                        // While the model is thinking, the
+                                        // pace of the conversation with it:
+                                        // what goes out on the wire and what
+                                        // comes back, as a pair of level
+                                        // meters (the request on top, the
+                                        // answer below). The rates are
+                                        // moving averages of the traffic, and
+                                        // the bars are scaled against the
+                                        // busiest each direction has been.
+                                        WireMeterView {
+                                            Layout.fillWidth: true
+                                            Layout.topMargin: Kirigami.Units.smallSpacing
+                                            // The whole meter keeps to a third
+                                            // of the window, as the CPU meter
+                                            // does.
+                                            Layout.maximumWidth: Math.min(
+                                                resultsWindow.width * 0.33, 300)
+
+                                            readonly property var meter:
+                                                resultsWindow.wireMeter
+
+                                            showing: Boolean(meter && meter.active
+                                                && trailItem.modelData.running)
+                                            sendRate: meter ? meter.sendRate : 0.0
+                                            receiveRate: meter ? meter.receiveRate : 0.0
+                                            sendPeak: meter ? meter.sendPeak : 0.0
+                                            receivePeak: meter ? meter.receivePeak : 0.0
+                                            sendFraction: meter ? meter.sendFraction : 0.0
+                                            receiveFraction:
+                                                meter ? meter.receiveFraction : 0.0
+                                            turn: meter ? meter.turn : 0
                                         }
 
                                         Kirigami.SelectableLabel {

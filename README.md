@@ -58,6 +58,16 @@ itself when they are not), so a `make -j` reads as busy and a hung command
 as the silence it is. The share is of all cores together — the readout
 beside the bar restates it in cores ("×2.4").
 
+While the model thinks, its step shows the pace of the conversation with it
+instead: two level meters, the request on top and the answer below, with
+the rate in bytes a second beside each. The daemon counts the bytes that
+cross the wire — the body of the request that goes out, the answer that
+comes back — and the widget turns them into rates with a three-second
+moving average, computed over the time that actually passed between the
+packets, so the bursts of a streamed answer read as the rate they are.
+Each bar is scaled against the busiest that direction has been since the
+run began, and the numbers beside them are the real rates.
+
 None of it is read aloud. The read-aloud speaks the answer — the words after
 the last tool call — and never a working note; the same is true of the
 daemon's own speech (see *Reading the answers aloud* below).

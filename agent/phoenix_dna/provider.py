@@ -20,6 +20,14 @@ their thinking around the answer — in ``<think>…</think>`` blocks inside the
 content, or in a separate ``reasoning_content`` field — and the provider
 splits it out as ``thinking_delta`` items, so frontends can show the answer
 as the result of the run and the thinking as its trail.
+
+Wire traffic is counted on the way, so a frontend can meter the data rate
+of the connection: the request body goes out in one piece, the answer
+comes back in pieces. The counting is deliberately approximate — it does
+not include the fixed-size HTTP headers, nor the TLS framing beneath them
+— but it is exact about the payload bytes that carry the conversation.
+The counts ride along with the progress dicts as ``bytes_in`` /
+``bytes_out`` (a frontend that does not care about them ignores them).
 """
 
 from __future__ import annotations
@@ -81,6 +89,32 @@ class Usage:
     output_tokens: int = 0
 
 
+@dataclass
+class WireCounter:
+    """Counts the bytes that cross the wire for one API call.
+
+    The request goes out in one piece (the JSON body of the request), the
+    answer comes back in many (the SSE lines of the response). Both are
+    counted here so a frontend can meter the rate of the connection.
+
+    The counts are the payload bytes only: the fixed-size HTTP headers
+    and the TLS framing beneath them are not included, which makes the
+    numbers an approximation of the wire's true cost — good enough to
+    see whether a connection is busy, which is what they are for.
+    """
+
+    #: The bytes of the request body sent to the server.
+    sent: int = 0
+    #: The bytes of the response body received from the server.
+    received: int = 0
+
+    def add_sent(self, count: int) -> None:
+        self.sent += count
+
+    def add_received(self, count: int) -> None:
+        self.received += count
+
+
 @dataclass(frozen=True)
 class LLMResponse:
     #: The model's answer: its content with the thinking taken out (the
@@ -97,6 +131,11 @@ class LLMResponse:
     tool_calls: list[ToolCall] = field(default_factory=list)
     usage: Usage | None = None
     finish_reason: str | None = None
+    #: The bytes this call put on the wire: the request body that went
+    #: out, the response body that came in. The frontend meters the rate
+    #: of the connection from them.
+    bytes_sent: int = 0
+    bytes_received: int = 0
 
 
 class LLMProvider(Protocol):
@@ -229,6 +268,10 @@ class OpenAICompatProvider:
         self.api_key = api_key
         self.model = model
         self.timeout = timeout
+        # The bytes of the calls this provider made: what went out, what
+        # came in. The frontend meters the rate of the connection from
+        # these.
+        self.wire = WireCounter()
 
     # -- public API ---------------------------------------------------------
 
@@ -275,9 +318,16 @@ class OpenAICompatProvider:
     # -- internals ----------------------------------------------------------
 
     def _open(self, payload: dict):
+        # The body is the request's whole payload: the conversation, the
+        # model, the tools. Its size is what goes over the wire (apart
+        # from the headers urllib adds), and it is counted here, where it
+        # is materialised. A request that is retried counts twice: both
+        # bodies really were sent.
+        body = json.dumps(payload).encode()
+        self.wire.add_sent(len(body))
         request = urllib.request.Request(
             self.base_url + "/chat/completions",
-            data=json.dumps(payload).encode(),
+            data=body,
             headers={
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {self.api_key}",
@@ -308,6 +358,11 @@ class OpenAICompatProvider:
                 if should_cancel is not None and should_cancel():
                     response.close()
                     raise CancelledError("cancelled by user")
+                # Every byte of the response body passes through here,
+                # one line at a time: the SSE events, their framing and
+                # their payloads. Counted as they arrive, so a frontend
+                # can watch the rate the answer comes in at.
+                self.wire.add_received(len(raw_line))
                 line = raw_line.strip()
                 if not line.startswith(b"data:"):
                     continue
@@ -338,7 +393,11 @@ class OpenAICompatProvider:
                 reasoning = delta.get("reasoning_content")
                 if reasoning:
                     thinking_parts.append(reasoning)
-                    yield {"type": "thinking_delta", "text": reasoning}
+                    yield {
+                        "type": "thinking_delta",
+                        "text": reasoning,
+                        "bytes_in": len(reasoning.encode()),
+                    }
                 content = delta.get("content")
                 if content:
                     raw_parts.append(content)
@@ -346,10 +405,18 @@ class OpenAICompatProvider:
                     thinking, answer = splitter.feed(content)
                     if thinking:
                         thinking_parts.append(thinking)
-                        yield {"type": "thinking_delta", "text": thinking}
+                        yield {
+                            "type": "thinking_delta",
+                            "text": thinking,
+                            "bytes_in": len(thinking.encode()),
+                        }
                     if answer:
                         text_parts.append(answer)
-                        yield {"type": "text_delta", "text": answer}
+                        yield {
+                            "type": "text_delta",
+                            "text": answer,
+                            "bytes_in": len(answer.encode()),
+                        }
                 for tc in delta.get("tool_calls") or []:
                     index = tc.get("index", 0)
                     slot = tool_calls.setdefault(
@@ -375,10 +442,18 @@ class OpenAICompatProvider:
         tail_thinking, tail_answer = splitter.finish()
         if tail_thinking:
             thinking_parts.append(tail_thinking)
-            yield {"type": "thinking_delta", "text": tail_thinking}
+            yield {
+                "type": "thinking_delta",
+                "text": tail_thinking,
+                "bytes_in": len(tail_thinking.encode()),
+            }
         if tail_answer:
             text_parts.append(tail_answer)
-            yield {"type": "text_delta", "text": tail_answer}
+            yield {
+                "type": "text_delta",
+                "text": tail_answer,
+                "bytes_in": len(tail_answer.encode()),
+            }
 
         calls: list[ToolCall] = []
         for index in sorted(tool_calls):
@@ -413,6 +488,8 @@ class OpenAICompatProvider:
                 tool_calls=calls,
                 usage=usage,
                 finish_reason=finish_reason,
+                bytes_sent=self.wire.sent,
+                bytes_received=self.wire.received,
             ),
         }
 
@@ -473,12 +550,28 @@ class FakeProvider:
         thinking = item.get("thinking", "")
         if thinking:
             half = max(1, len(thinking) // 2)
-            yield {"type": "thinking_delta", "text": thinking[:half]}
-            yield {"type": "thinking_delta", "text": thinking[half:]}
+            yield {
+                "type": "thinking_delta",
+                "text": thinking[:half],
+                "bytes_in": len(thinking[:half].encode()),
+            }
+            yield {
+                "type": "thinking_delta",
+                "text": thinking[half:],
+                "bytes_in": len(thinking[half:].encode()),
+            }
         if text:
             half = max(1, len(text) // 2)
-            yield {"type": "text_delta", "text": text[:half]}
-            yield {"type": "text_delta", "text": text[half:]}
+            yield {
+                "type": "text_delta",
+                "text": text[:half],
+                "bytes_in": len(text[:half].encode()),
+            }
+            yield {
+                "type": "text_delta",
+                "text": text[half:],
+                "bytes_in": len(text[half:].encode()),
+            }
 
         calls = []
         if item.get("tool"):
@@ -495,6 +588,11 @@ class FakeProvider:
                 tool_calls=calls,
                 usage=Usage(input_tokens=11, output_tokens=7),
                 finish_reason="tool_calls" if calls else "stop",
+                # The fake carries no wire, but the counts are part of
+                # the contract now: a scripted run still has a turn, and
+                # the meter must have something to show.
+                bytes_sent=0,
+                bytes_received=len((text + thinking).encode()),
             ),
         }
 

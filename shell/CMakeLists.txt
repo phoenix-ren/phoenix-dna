@@ -33,6 +33,8 @@ plasma_add_applet(org.phoenixdna.agent
         conversationmodel.h
         cpumeter.cpp
         cpumeter.h
+        wiremeter.cpp
+        wiremeter.h
         sessiontranscriptmodel.cpp
         sessiontranscriptmodel.h
         cliprecorder.cpp
@@ -184,6 +186,25 @@ target_link_libraries(cpumetertest PRIVATE
     Qt6::Qml
 )
 add_test(NAME cpumetertest COMMAND cpumetertest)
+
+# The rate of the conversation with the model — the moving average over
+# the bytes that crossed the wire — checked against known traffic: a
+# steady stream reads its own rate, a burst decays away within the
+# window, the two directions stay apart and the peaks are kept as the
+# bars' scale. Registers with CTest; run `ctest` from the build directory.
+#
+#   wiremetertest
+add_executable(wiremetertest
+    wiremetertest.cpp
+    wiremeter.cpp
+    wiremeter.h
+)
+target_include_directories(wiremetertest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(wiremetertest PRIVATE
+    Qt6::Core
+    Qt6::Qml
+)
+add_test(NAME wiremetertest COMMAND wiremetertest)
 
 # The transcript of a session — the queries and responses the session
 # search shows — checked without a window: the empty turns are dropped,

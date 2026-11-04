@@ -13,6 +13,9 @@
 // two samples liquid, so the bar animates while /proc is read a
 // modest ten times a second.
 //
+// The bar itself is LedBar; the wire meter beside it in the trail uses
+// the same one, twice.
+//
 
 import QtQuick
 import QtQuick.Layouts
@@ -31,18 +34,6 @@ RowLayout {
     // Whether the meter should show at all: it fades in and out, so a
     // command that just ended does not blink away but glides.
     property bool showing: false
-
-    // An audio meter's scale: everything below 60% is fine, up to 85%
-    // is busy, beyond is flat out.
-    readonly property real warnFraction: 0.6
-    readonly property real hotFraction: 0.85
-
-    readonly property int segmentCount: 28
-    // The gap between two LED segments: a hint of separation, no more.
-    readonly property int segmentGap: Math.max(1, Math.round(Kirigami.Units.smallSpacing / 4))
-    readonly property int litCount: Math.round(root.fraction * root.segmentCount)
-    readonly property int peakIndex:
-        Math.min(root.segmentCount - 1, Math.round(root.peak * (root.segmentCount - 1)))
 
     // The level restated for the readout beside the bar: a share of all
     // cores reads better as "how many cores" ("2.4x") than as a
@@ -67,14 +58,6 @@ RowLayout {
             easing.type: Easing.InOutQuad
         }
     }
-    // The samples arrive every 100 ms; the bar should not step with
-    // them but glide.
-    Behavior on fraction {
-        NumberAnimation { duration: 130; easing.type: Easing.OutQuad }
-    }
-    Behavior on peak {
-        NumberAnimation { duration: 160; easing.type: Easing.OutQuad }
-    }
 
     PC3.Label {
         Layout.alignment: Qt.AlignVCenter
@@ -84,58 +67,14 @@ RowLayout {
         font.pixelSize: Math.round(Qt.application.font.pixelSize * 0.8)
     }
 
-    Item {
+    LedBar {
         id: bar
 
         Layout.fillWidth: true
         Layout.alignment: Qt.AlignVCenter
-        implicitHeight: Math.round(Kirigami.Units.gridUnit * 0.45)
 
-        // The unlit shell of the scale, so the meter reads as a row of
-        // LEDs and not as a bar that grows out of nothing.
-        Rectangle {
-            anchors.fill: parent
-            radius: Math.min(2, height / 4)
-            color: PhoenixTheme.textColor
-            opacity: 0.08
-        }
-
-        Repeater {
-            model: root.segmentCount
-
-            delegate: Rectangle {
-                id: segment
-
-                required property int index
-
-                // Buckets must be positioned explicitly: a Repeater in a
-                // plain Item leaves every delegate at x = 0 (see
-                // WaveformView).
-                x: segment.index * (width + root.segmentGap)
-                width: (bar.width - (root.segmentCount - 1) * root.segmentGap)
-                       / root.segmentCount
-                height: bar.height
-                radius: Math.min(2, height / 4)
-
-                // The zone the segment belongs to: fine, busy or flat
-                // out, lit or dark.
-                readonly property color zoneColor: {
-                    const at = (segment.index + 1) / root.segmentCount
-                    if (at > root.hotFraction) {
-                        return PhoenixTheme.errorColor
-                    }
-                    if (at > root.warnFraction) {
-                        return PhoenixTheme.warningColor
-                    }
-                    return PhoenixTheme.successColor
-                }
-                readonly property bool lit: segment.index < root.litCount
-                readonly property bool held: segment.index === root.peakIndex
-
-                color: zoneColor
-                opacity: lit ? 0.95 : (held ? 0.55 : 0.14)
-            }
-        }
+        fraction: root.fraction
+        peak: root.peak
     }
 
     // The readouts keep constant columns: measured for the widest value

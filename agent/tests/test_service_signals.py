@@ -33,6 +33,9 @@ class FakeService:
     def ToolProcessFinished(self, *args):
         self.calls.append(("ToolProcessFinished", args))
 
+    def WireBytes(self, *args):
+        self.calls.append(("WireBytes", args))
+
 
 def test_cleanup_event_maps_to_transcript_cleaned():
     service = FakeService()
@@ -120,6 +123,28 @@ def test_tool_process_defaults_blank_command_and_zero_pid():
         events.make(events.TOOL_PROCESS_STARTED, run_id="run_1", call_id="call_2")
     )
     assert service.calls == [("ToolProcessStarted", ("run_1", "call_2", "", 0))]
+
+
+def test_wire_bytes_maps_with_its_counts():
+    service = FakeService()
+    bridge = SignalBridge({"wire_bytes": service.WireBytes})
+    bridge.dispatch(
+        events.make(
+            events.WIRE_BYTES,
+            run_id="run_1",
+            turn=2,
+            bytes_sent=4096,
+            bytes_received=65536,
+        )
+    )
+    assert service.calls == [("WireBytes", ("run_1", 2, 4096, 65536))]
+
+
+def test_wire_bytes_defaults_to_zero():
+    service = FakeService()
+    bridge = SignalBridge({"wire_bytes": service.WireBytes})
+    bridge.dispatch(events.make(events.WIRE_BYTES, run_id="run_1"))
+    assert service.calls == [("WireBytes", ("run_1", 0, 0, 0))]
 
 
 def test_title_event_maps_to_session_title_changed():
