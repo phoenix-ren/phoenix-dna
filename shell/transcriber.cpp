@@ -28,12 +28,21 @@ struct ProviderSpec
 };
 
 // MiniMax asr-1.0 ≈ $0.006/min; OpenAI whisper-1 $0.006/min and
-// gpt-4o-mini-transcribe $0.003/min. Both accept WAV up to 500 s / 50 MB.
+// gpt-4o-mini-transcribe $0.003/min; Groq's whisper-large-v3-turbo
+// $0.04/h. All accept WAV up to 500 s / 50 MB.
+//
+// "custom" stands for any other OpenAI-compatible speech-to-text
+// server: it has no endpoint or model of its own, so PHOENIX_STT_ENDPOINT
+// and PHOENIX_STT_MODEL must name them, and its key lives in the
+// dedicated "stt_api_key" entry.
 const ProviderSpec kProviders[] = {
     {"minimax", "https://api.minimax.io/v1/speech_to_text", "asr-1.0", "minimax_api_key",
      "MINIMAX_API_KEY", "PHOENIX_MINIMAX_API_KEY"},
     {"openai", "https://api.openai.com/v1/audio/transcriptions", "gpt-4o-mini-transcribe",
      "openai_api_key", "OPENAI_API_KEY", "PHOENIX_OPENAI_API_KEY"},
+    {"groq", "https://api.groq.com/openai/v1/audio/transcriptions", "whisper-large-v3-turbo",
+     "groq_api_key", "GROQ_API_KEY", "PHOENIX_GROQ_API_KEY"},
+    {"custom", "", "", "stt_api_key", "", "PHOENIX_STT_API_KEY"},
 };
 
 const ProviderSpec &providerSpec(const QString &name)
@@ -92,6 +101,16 @@ TranscriptionConfig Transcriber::resolveConfig()
         config.endpoint = endpoint;
     }
 
+    // A provider with no endpoint of its own ("custom") may still be
+    // named in keys.json, so a user who configures everything in the
+    // file need not set environment variables.
+    if (config.endpoint.isEmpty()) {
+        config.endpoint = keysJsonValue("stt_endpoint");
+    }
+    if (config.model.isEmpty()) {
+        config.model = keysJsonValue("stt_model");
+    }
+
     // Environment beats keys.json; within the environment the PHOENIX_-
     // prefixed spelling wins. Same precedence as config.py.
     config.apiKey = environmentOrEmpty(spec.secondaryEnv);
@@ -108,6 +127,13 @@ TranscriptionConfig Transcriber::resolveConfig()
 void Transcriber::transcribe(const QByteArray &wav)
 {
     const TranscriptionConfig config = resolveConfig();
+    if (config.endpoint.isEmpty()) {
+        qWarning() << "Transcriber: no endpoint for provider" << config.provider;
+        Q_EMIT failed(QStringLiteral("the %1 speech-to-text provider has no "
+                                     "endpoint — set PHOENIX_STT_ENDPOINT")
+                          .arg(config.provider));
+        return;
+    }
     if (config.apiKey.isEmpty()) {
         qWarning() << "Transcriber: no" << config.provider << "API key found";
         Q_EMIT failed(QStringLiteral("no %1 API key found — add it to "

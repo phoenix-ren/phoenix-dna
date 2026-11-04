@@ -122,15 +122,20 @@ The panel's gear button opens the settings window, which configures:
   and the notes it thinks in — are set in them; the chrome around them
   (labels, buttons, tooltips) always keeps the system's font.
 
-* **API keys** — the LLM key (the agent daemon's MiniMax key) and the
-  speech-to-text key, with the speech-to-text provider (MiniMax or OpenAI)
-  chosen alongside it. Both are stored in
+* **API keys** — the LLM key and the speech-to-text key, each with its
+  provider chosen alongside it (MiniMax, OpenAI, Groq, or Custom for any
+  other OpenAI-compatible server). Both are stored in
   `~/.config/phoenix-dna/keys.json` (mode 0600), the file the daemon and
   the transcriber already read. A changed speech-to-text key applies to
   the next dictation; the daemon reads its key at startup, so a changed
   LLM key applies after `systemctl --user restart phoenix.service`.
   Environment variables still take precedence over the file, and the
   window says so when it sees one set.
+
+  The **Read aloud** section has the same choice for the voice: MiniMax,
+  OpenAI, Groq, or the on-device engine (Local), which needs no key at
+  all. Switching it applies at once — the shell asks the daemon to
+  rebuild its speech pipeline.
 
 * **Global shortcuts** — the recording, screenshot, session-search and
   typed-prompt hotkeys, captured with the keyboard and bound through
@@ -176,6 +181,80 @@ dialog) and run it as root, with a confirmation card (Allow/Deny) for
 destructive commands, answered by you before they run. See `agent/README.md`
 for the details.
 
+## Choosing the model
+
+The agent talks to whichever OpenAI-compatible endpoint you name. The
+settings window offers the two hosted services; `agent.toml` (or the
+environment) reaches any other one.
+
+| `llm_provider` | Endpoint | Model | Key |
+| --- | --- | --- | --- |
+| `minimax` (default) | `https://api.minimax.io/v1` | `MiniMax-Text-01` | `minimax_api_key` |
+| `openai` | `https://api.openai.com/v1` | `gpt-4o-mini` | `openai_api_key` |
+| `groq` | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | `groq_api_key` |
+| `custom` | — you name it | — you name it | `llm_api_key` |
+
+A provider only supplies *defaults*. `llm_base_url` and `model` override
+them, so a gateway or a self-hosted model is reached by naming its
+endpoint — no new entry in the code:
+
+```toml
+[agent]
+llm_provider = "openai"
+llm_base_url = "https://my.gateway/v1"
+model = "qwen3-32b"
+```
+
+The key lives in `~/.config/phoenix-dna/keys.json` under the provider's
+own field, or in the environment (`OPENAI_API_KEY`, `GROQ_API_KEY`,
+`MINIMAX_API_KEY`, `PHOENIX_LLM_API_KEY`); `PHOENIX_LLM_PROVIDER` names
+the provider from the environment, and `PHOENIX_BASE_URL` /
+`PHOENIX_MODEL` override the endpoint and the model. The daemon reads
+all of this when it starts, so a changed key or endpoint applies after
+`systemctl --user restart phoenix.service`.
+
+Switching provider does not leave the old one's model behind: a model
+that belongs to another provider follows the new one (OpenAI would
+refuse "MiniMax-M3"). A model you named yourself — for your own server
+— is left alone.
+
+`vision` is a separate question and is *not* switched with the
+provider: `vision = true` in `agent.toml` states it outright, so a
+provider change that lands on a text-only model (Llama, for instance)
+will be sent images it cannot read. Use `vision = "auto"` to let the
+model name decide.
+
+The **custom** provider has no defaults at all: with no `llm_base_url`
+and no `model` the daemon says so rather than calling somewhere
+unexpected.
+
+Models that reason out loud (MiniMax's `<think>` blocks) are handled the
+same way whichever provider serves them — the reasoning is shown
+separately and never read aloud.
+
+## Dictation (speech to text)
+
+The dictation clip is transcribed by whichever provider is chosen in the
+settings window. All of them take the same multipart request — a
+`model` field and the audio as `file` — because MiniMax deliberately
+mirrors the OpenAI schema, so one code path serves them all.
+
+| Provider | Endpoint | Model |
+| --- | --- | --- |
+| `minimax` (default) | `https://api.minimax.io/v1/speech_to_text` | `asr-1.0` |
+| `openai` | `https://api.openai.com/v1/audio/transcriptions` | `gpt-4o-mini-transcribe` |
+| `groq` | `https://api.groq.com/openai/v1/audio/transcriptions` | `whisper-large-v3-turbo` |
+| `custom` | — you name it | — you name it |
+
+The **custom** provider stands for any other OpenAI-compatible server:
+name its endpoint and model in `~/.config/phoenix-dna/agent.toml`, or
+through `PHOENIX_STT_ENDPOINT` and `PHOENIX_STT_MODEL`, and put its key
+in the `stt_api_key` entry of `keys.json` (or `PHOENIX_STT_API_KEY`).
+
+Unlike the model calls, a changed provider or key applies to the *very
+next* dictation — the transcriber re-resolves its configuration for
+every clip, so nothing has to be restarted.
+
 ## Reading the answers aloud
 
 The daemon can speak its own answers (opt-in, off by default): the
@@ -214,6 +293,30 @@ with the agent's own MiniMax key; a dedicated `tts_api_key` entry in
 `keys.json` (or `PHOENIX_TTS_API_KEY`) overrides it. Every setting has a
 `PHOENIX_TTS_*` environment spelling (`PHOENIX_TTS_ENABLED`, …) that
 beats the file.
+
+The **voice provider** is a choice of its own: `tts_provider` picks the
+engine, and each engine brings its own endpoint, model and voice ids.
+
+| `tts_provider` | Endpoint | Model | Voices |
+| --- | --- | --- | --- |
+| `minimax` (default) | `https://api.minimax.io/v1/t2a_v2` | `speech-2.8-turbo` | `English_expressive_narrator` and the rest of MiniMax's catalogue |
+| `openai` | `https://api.openai.com/v1/audio/speech` | `gpt-4o-mini-tts` | `alloy`, `ash`, `nova`, … |
+| `groq` | `https://api.groq.com/openai/v1/audio/speech` | `canopylabs/orpheus-v1-english` | `troy`, `austin`, `hannah`, … |
+| `local` | — | — | the local model's own voices (see below) |
+
+The hosted engines speak two protocols — MiniMax answers with a
+hex-encoded SSE stream, OpenAI (and Groq, which mirrors it) with a plain
+audio body — so each has its own implementation behind the same
+interface. `tts_endpoint`, `tts_model` and `tts_voice` override the
+provider's defaults, which is how a third OpenAI-compatible server is
+used:
+
+```toml
+[agent]
+tts_provider = "openai"
+tts_endpoint = "https://my.gateway/v1/audio/speech"
+tts_voice = "nova"
+```
 
 Two read modes exist, and they are genuinely different:
 

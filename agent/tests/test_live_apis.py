@@ -1,11 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
-"""Live tests against real MiniMax / Tavily / Exa endpoints.
+"""Live tests against the real model, speech and search endpoints.
 
-Disabled by default - they cost tokens and need network. Enable with:
+Which provider is exercised is the configured one (see llm_provider), so
+the same tests run against MiniMax, OpenAI or any other endpoint the
+user has configured. Disabled by default - they cost tokens and need
+network. Enable with:
 
-    PHOENIX_LIVE_TEST=1 python -m pytest tests/test_live_minimax.py -q -s
+    PHOENIX_LIVE_TEST=1 python -m pytest tests/test_live_apis.py -q -s
 """
 
 from __future__ import annotations
@@ -25,7 +28,7 @@ def _config():
 
     config = load_config()
     if not config.llm_api_key:
-        pytest.skip("no MiniMax API key configured")
+        pytest.skip(f"no API key configured for the '{config.llm_provider}' provider")
     return config
 
 
