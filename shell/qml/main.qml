@@ -608,7 +608,7 @@ PlasmoidItem {
 
     // Component 5 — the settings window.
     //
-    // The gear button opens it. The window itself is presentational
+    // The gear button toggles it. The window itself is presentational
     // (like the other components): the state below is bound from the
     // controller's settings store and the live hotkey bindings, and the
     // interaction signals are routed back to the store, which owns
@@ -706,9 +706,20 @@ PlasmoidItem {
     compactRepresentation: Phoenix.CompactRepresentation {
         onRecordClicked: Phoenix.PhoenixController.toggleRecording()
 
-        // The window re-reads keys.json when it opens, so hand-edits and
-        // the installer's writes are reflected without a restart.
+        // The gear button is a toggle: the pane's own visibility decides
+        // which way a press goes, and the button's checked state follows.
+        settingsOpen: settingsWindow.visible
+
         onSettingsClicked: {
+            // A press while the pane is up puts it away, exactly as
+            // closing it by hand does (the window hides, not closes).
+            if (settingsWindow.visible) {
+                settingsWindow.hide()
+                return
+            }
+
+            // The window re-reads keys.json when it opens, so hand-edits
+            // and the installer's writes are reflected without a restart.
             Phoenix.PhoenixController.settings.refresh()
             settingsWindow.openSettings()
         }
@@ -717,7 +728,14 @@ PlasmoidItem {
     fullRepresentation: Phoenix.CompactRepresentation {
         onRecordClicked: Phoenix.PhoenixController.toggleRecording()
 
+        settingsOpen: settingsWindow.visible
+
         onSettingsClicked: {
+            if (settingsWindow.visible) {
+                settingsWindow.hide()
+                return
+            }
+
             Phoenix.PhoenixController.settings.refresh()
             settingsWindow.openSettings()
         }

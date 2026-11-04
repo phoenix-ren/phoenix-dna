@@ -20,7 +20,7 @@ import plasma.applet.org.phoenixdna.agent as Phoenix
  *   * the keyboard button, which opens the prompt editor for a typed query
  *   * the camera button, which photographs a window of the desktop
  *   * the search button, which opens the session search
- *   * the settings button, which opens the settings window
+ *   * the settings button, which toggles the settings window
  *
  * Every button sits in a PlasmaCore.ToolTipArea rather than carrying a
  * PC3.ToolTip. The widget-level tooltip Plasma shows for this applet
@@ -62,6 +62,11 @@ Item {
 
     // Emitted when the settings window should open (the gear button).
     signal settingsClicked()
+
+    // Whether the settings window is up, so the gear button can act as
+    // a toggle: one press opens the pane, the next puts it away. main.qml
+    // owns the truth here — it is the window's own visibility.
+    property bool settingsOpen: false
 
     // Around 1.5 cm of physical panel width, so the waveform stays legible on
     // any display. Screen reports physical dots per millimetre; dividing out
@@ -347,7 +352,7 @@ Item {
         }
 
         // ---- Far right: the settings button ---------------------------------
-        // Opens the settings window: the API keys and the global hotkeys.
+        // Toggles the settings window: the API keys and the global hotkeys.
         PlasmaCore.ToolTipArea {
             id: settingsArea
 
@@ -368,6 +373,12 @@ Item {
                 icon.name: "settings-configure"
                 icon.width: Kirigami.Units.iconSizes.small
                 icon.height: Kirigami.Units.iconSizes.small
+
+                // The pane is up while the button is checked; as with the
+                // search button, the next press puts it away.
+                checked: root.settingsOpen
+                icon.color: checked ? Kirigami.Theme.highlightColor
+                                    : Kirigami.Theme.textColor
 
                 onClicked: root.settingsClicked()
 
