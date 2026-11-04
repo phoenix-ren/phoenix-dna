@@ -50,27 +50,24 @@ def test_minimax_streaming_completion():
     assert response.usage is None or response.usage.output_tokens > 0
 
 
-def test_user_mode_example_question():
+def test_example_question():
     """The canonical date-arithmetic question, run through the full loop."""
     from phoenix_dna.loop import AgentLoop
-    from phoenix_dna.modes import MODE_PROFILES, Mode, build_toolset
     from phoenix_dna.prompts import build_system_prompt
     from phoenix_dna.provider import build_provider
     from phoenix_dna.sessions import SessionManager, SessionStore
+    from phoenix_dna.toolset import build_toolset
 
     config = _config()
-    profile = MODE_PROFILES[Mode.USER]
     events = []
+    manager = SessionManager(SessionStore(config.data_dir / "sessions"))
     loop = AgentLoop(
         run_id="run_live_user",
-        mode_name="user",
         provider=build_provider(config),
-        tools=build_toolset(profile, config),
-        system_prompt=build_system_prompt(profile),
-        conversation=SessionManager(SessionStore(config.data_dir / "sessions")).get(
-            "user"
-        ),
-        session_manager=SessionManager(SessionStore(config.data_dir / "sessions")),
+        tools=build_toolset(config),
+        system_prompt=build_system_prompt(),
+        conversation=manager.get(),
+        session_manager=manager,
         event_sink=lambda e: events.append(e),
     )
     summary = loop.run(

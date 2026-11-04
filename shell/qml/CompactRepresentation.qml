@@ -7,6 +7,7 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
+import org.kde.ksvg as KSvg
 
 import plasma.applet.org.phoenixdna.agent as Phoenix
 
@@ -14,13 +15,16 @@ import plasma.applet.org.phoenixdna.agent as Phoenix
  * The panel widget's compact representation.
  *
  * Layout, left to right:
- *   * the two mode buttons       (root / user, active one checked on)
+ *   * the keyboard button, which opens the prompt editor for a typed query
  *   * the ring-buffered waveform  (the last five seconds of audio)
  *   * the record button, which becomes a stop button while recording
- *   * the keyboard button, which opens the prompt editor for a typed query
  *   * the camera button, which photographs a window of the desktop
  *   * the search button, which opens the session search
  *   * the settings button, which toggles the settings window
+ *
+ * The waveform and the record button next to it are one target: the
+ * waveform is the button's hover and press area, so hovering it lights
+ * the button up and clicking it starts or stops the recording.
  *
  * Every button sits in a PlasmaCore.ToolTipArea rather than carrying a
  * PC3.ToolTip. The widget-level tooltip Plasma shows for this applet
@@ -46,9 +50,6 @@ Item {
     readonly property bool tooltipsEnabled:
         plasmoidItem ? !plasmoidItem.expanded : true
 
-    // The current privilege mode. Owned by the C++ controller.
-    property int mode: Phoenix.PhoenixController.mode
-
     // While recording, the record button turns into a stop button.
     property bool recording: Phoenix.PhoenixController.recording
 
@@ -57,6 +58,11 @@ Item {
 
     // The waveform model: one row per bucket, each with a minimum and maximum.
     property var waveformModel: Phoenix.PhoenixController.waveform
+
+    // The record target: the microphone button and the waveform next to it
+    // act as one button. The pointer over the waveform lights the record
+    // button up, and a click on the waveform presses it.
+    readonly property bool waveformHovered: waveformPointer.containsMouse
 
     signal recordClicked()
 
@@ -95,126 +101,7 @@ Item {
         anchors.fill: parent
         spacing: Kirigami.Units.smallSpacing
 
-        // ---- Left: the two mode buttons -----------------------------------
-        // One button per mode, the active one shown checked, so every mode is
-        // reachable with a single click — no cycling, no popup. Selecting the
-        // system (root) mode makes the daemon pop the KDE password dialog.
-        Flow {
-            id: modeButtons
-
-            spacing: Kirigami.Units.smallSpacing
-
-            Repeater {
-                model: [
-                    { mode: Phoenix.AgentMode.Root, label: i18n("Root") },
-                    { mode: Phoenix.AgentMode.User, label: i18n("User") }
-                ]
-
-                delegate: PlasmaCore.ToolTipArea {
-                    id: modeArea
-
-                    required property var modelData
-
-                    width: Kirigami.Units.iconSizes.medium
-                    height: Kirigami.Units.iconSizes.medium
-
-                    // Tooltips pop away from the panel, and stay quiet while
-                    // the applet is expanded, exactly like the widget-level
-                    // tooltip the container shows for the rest of the widget.
-                    location: Plasmoid.location
-                    active: root.tooltipsEnabled
-
-                    mainText: modelData.label
-
-                    PC3.ToolButton {
-                        id: modeButton
-
-                        anchors.fill: parent
-
-                        // Whether this button's mode is the one the controller
-                        // currently runs in. On the button rather than the
-                        // ToolTipArea above, because ToolTipArea already has
-                        // an `active` property of its own.
-                        readonly property bool active:
-                            root.mode === modeArea.modelData.mode
-
-                        icon.name: Phoenix.PhoenixController.modeIconName(modeArea.modelData.mode)
-                        icon.width: Kirigami.Units.iconSizes.small
-                        icon.height: Kirigami.Units.iconSizes.small
-                        // The inactive icons take the theme's text colour
-                        // rather than a fixed white: the panel they sit on
-                        // follows the Plasma theme, which may be light.
-                        icon.color: active ? Kirigami.Theme.highlightColor
-                                           : Kirigami.Theme.textColor
-
-                        // The controller owns the state; the buttons only display
-                        // it. `checked` paints the active mode as pressed/on.
-                        checked: active
-
-                        onClicked: Phoenix.PhoenixController.mode = modeArea.modelData.mode
-
-                        Accessible.name: modeArea.mainText
-                    }
-                }
-            }
-        }
-
-        // ---- Middle: the waveform ------------------------------------------
-        Phoenix.WaveformView {
-            id: waveformView
-            objectName: "waveformView"
-
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            // How far the waveform may be squeezed when the panel is
-            // crowded. Note that this is not what makes the applet wide:
-            // the row's implicit width is, and that is the sum of what the
-            // children ask for - the waveform's own implicitWidth among
-            // them.
-            Layout.minimumWidth: Kirigami.Units.gridUnit * 3
-
-            model: root.waveformModel
-            active: root.recording
-        }
-
-        // ---- Right: the record button --------------------------------------
-        PlasmaCore.ToolTipArea {
-            id: recordArea
-
-            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
-            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-
-            location: Plasmoid.location
-            active: root.tooltipsEnabled
-
-            // Mentions the global hotkey when one is bound, so the
-            // pairing of button and shortcut is discoverable without a
-            // detour through System Settings.
-            mainText: {
-                const action = root.recording ? i18n("Stop") : i18n("Record");
-                const hotkey = Phoenix.PhoenixController.recordShortcut;
-                return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
-            }
-
-            PC3.ToolButton {
-                id: recordButton
-
-                anchors.fill: parent
-
-                // The record button becomes a stop button while recording. A
-                // microphone rather than a red circle signals speech input;
-                // no colour tint needed either way.
-                icon.name: root.recording ? "media-playback-stop" : "audio-input-microphone"
-                icon.width: Kirigami.Units.iconSizes.small
-                icon.height: Kirigami.Units.iconSizes.small
-
-                onClicked: Phoenix.PhoenixController.toggleRecording()
-
-                Accessible.name: recordArea.mainText
-            }
-        }
-
-        // ---- Right: the keyboard button -----------------------------------
+        // ---- Far left: the keyboard button --------------------------------
         // Opens the prompt editor: the query is typed rather than spoken,
         // and nothing is recorded at all. The global hotkey does the same
         // from any application.
@@ -260,6 +147,97 @@ Item {
                 onClicked: Phoenix.PhoenixController.togglePromptEditor()
 
                 Accessible.name: keyboardArea.mainText
+            }
+        }
+
+        // ---- Left: the waveform --------------------------------------------
+        Phoenix.WaveformView {
+            id: waveformView
+            objectName: "waveformView"
+
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            // How far the waveform may be squeezed when the panel is
+            // crowded. Note that this is not what makes the applet wide:
+            // the row's implicit width is, and that is the sum of what the
+            // children ask for - the waveform's own implicitWidth among
+            // them.
+            Layout.minimumWidth: Kirigami.Units.gridUnit * 3
+
+            model: root.waveformModel
+            active: root.recording
+
+            // The waveform is part of the record button's target: the two
+            // act as one button. A click on the waveform presses the record
+            // button - starting or stopping the recording - and hovering it
+            // lights the button up.
+            //
+            // The mouse area also carries the pointing hand: it says that
+            // the waveform is something to click. (A plain item cannot: only
+            // the mouse area and the pointer handlers know a cursor shape.)
+            MouseArea {
+                id: waveformPointer
+
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+
+                // animateClick() rather than clicked(): the button shows its
+                // pressed state for a moment, exactly as it does when it is
+                // clicked itself.
+                onClicked: recordButton.animateClick()
+            }
+        }
+
+        // ---- Right: the record button --------------------------------------
+        PlasmaCore.ToolTipArea {
+            id: recordArea
+
+            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+            location: Plasmoid.location
+            active: root.tooltipsEnabled
+
+            // Mentions the global hotkey when one is bound, so the
+            // pairing of button and shortcut is discoverable without a
+            // detour through System Settings.
+            mainText: {
+                const action = root.recording ? i18n("Stop") : i18n("Record");
+                const hotkey = Phoenix.PhoenixController.recordShortcut;
+                return hotkey.length > 0 ? i18n("%1 (%2)", action, hotkey) : action;
+            }
+
+            // The hover surface of the record button, drawn while the
+            // pointer is on the waveform: the waveform is part of the
+            // button's target, so the button lights up there as well.
+            //
+            // The button cannot be told about it (AbstractButton.hovered is
+            // read-only), so the theme's own hover surface is drawn here
+            // instead - the very one the button draws for itself. It sits
+            // below the button, so the icon stays on top of it.
+            KSvg.FrameSvgItem {
+                anchors.fill: parent
+                imagePath: "widgets/button"
+                prefix: ["toolbutton-hover", "normal"]
+                visible: root.waveformHovered
+            }
+
+            PC3.ToolButton {
+                id: recordButton
+
+                anchors.fill: parent
+
+                // The record button becomes a stop button while recording. A
+                // microphone rather than a red circle signals speech input;
+                // no colour tint needed either way.
+                icon.name: root.recording ? "media-playback-stop" : "audio-input-microphone"
+                icon.width: Kirigami.Units.iconSizes.small
+                icon.height: Kirigami.Units.iconSizes.small
+
+                onClicked: Phoenix.PhoenixController.toggleRecording()
+
+                Accessible.name: recordArea.mainText
             }
         }
 

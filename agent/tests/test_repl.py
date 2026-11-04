@@ -29,7 +29,6 @@ def test_printer_renders_a_full_run(capsys):
         {
             "kind": "run_started",
             "run_id": "run_abc",
-            "mode": "user",
             "session_id": "sess1",
         },
         {"kind": "turn_started", "run_id": "run_abc", "turn": 1},
@@ -71,7 +70,7 @@ def test_printer_renders_a_full_run(capsys):
         },
     )
     out = capsys.readouterr().out
-    assert "── run run_abc · user · session sess1" in out
+    assert "── run run_abc · session sess1" in out
     assert "Let me check the file." in out
     assert '⚒ bash {"command": "ls -la /tmp"}' in out
     assert "✓ total 0" in out
@@ -310,10 +309,9 @@ def test_wait_for_run_returns_only_the_matching_finish():
 
 
 def test_dbus_signal_to_event():
-    assert dbus_signal_to_event("RunStarted", "r1", "user", "s9") == {
+    assert dbus_signal_to_event("RunStarted", "r1", "s9") == {
         "kind": "run_started",
         "run_id": "r1",
-        "mode": "user",
         "session_id": "s9",
     }
     assert dbus_signal_to_event("TextDelta", "r1", "chunk") == {

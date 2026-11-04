@@ -51,6 +51,55 @@ def test_keys_json_tts_settings_tolerate_real_json_types(tmp_path):
     assert config.tts_read_mode == "stream"
 
 
+def test_the_playback_speed_is_read_from_keys_json(tmp_path):
+    """The speed the window writes reaches the config (and the player)."""
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    _write_keys(cfg, tts_playback_speed="1.50")
+    config = load_config(config_dir=cfg, data_dir=tmp_path / "d", env={})
+    assert config.tts_playback_speed == 1.5
+
+    # The default is the speed the voice was spoken at.
+    _write_keys(cfg, tts_enabled="true")
+    config = load_config(config_dir=cfg, data_dir=tmp_path / "d", env={})
+    assert config.tts_playback_speed == 1.0
+
+    # The environment beats the file, like every other speech setting.
+    config = load_config(
+        config_dir=cfg,
+        data_dir=tmp_path / "d",
+        env={"PHOENIX_TTS_PLAYBACK_SPEED": "0.75"},
+    )
+    assert config.tts_playback_speed == 0.75
+
+
+def test_the_player_is_built_with_the_playback_speed(config):
+    """The speaker's player carries the speed into the playback chain."""
+    import dataclasses
+
+    from phoenix_dna.speech.speaker import build_speaker
+
+    # Speech off: there is no player at all.
+    off = dataclasses.replace(config, tts_enabled=False, tts_playback_speed=1.25)
+    speaker = build_speaker(off)
+    assert speaker is not None
+    assert speaker._player is None
+
+    # Speech on: the player knows the speed.
+    on = dataclasses.replace(
+        off,
+        tts_enabled=True,
+        keys={**off.keys, "minimax_api_key": "k"},
+        tts_playback_speed=1.25,
+    )
+    speaker = build_speaker(on)
+    try:
+        assert speaker._player is not None
+        assert speaker._player.speed == 1.25
+    finally:
+        speaker.close()
+
+
 def test_keys_json_speech_settings_sit_below_toml_and_env(tmp_path):
     cfg = tmp_path / "cfg"
     cfg.mkdir()

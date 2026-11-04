@@ -29,7 +29,6 @@ class AgentLoop:
         self,
         *,
         run_id: str,
-        mode_name: str,
         provider: LLMProvider,
         tools: dict[str, Tool],
         system_prompt: str,
@@ -41,7 +40,6 @@ class AgentLoop:
         vision: bool = False,
     ):
         self.run_id = run_id
-        self.mode_name = mode_name
         self._provider = provider
         self._tools = tools
         self._system_prompt = system_prompt
@@ -69,14 +67,13 @@ class AgentLoop:
             events.make(
                 events.RUN_STARTED,
                 run_id=self.run_id,
-                mode=self.mode_name,
                 session_id=self._conversation.id,
             )
         )
         self._sessions.record(
             self._conversation,
             "run_started",
-            {"run_id": self.run_id, "mode": self.mode_name},
+            {"run_id": self.run_id},
         )
         self._sessions.append(
             self._conversation,

@@ -71,23 +71,23 @@ def test_one_database_per_user(tmp_path):
 
 def test_manager_new_session(tmp_path):
     manager = SessionManager(SessionStore(tmp_path / "users"))
-    conv = manager.get("user")
+    conv = manager.get()
     assert conv.id and len(conv.id) == 12
     assert conv.messages == []
     assert conv.mode == "user"
     assert conv.user == manager.store.local_user
 
 
-def test_manager_root_gets_root_user(tmp_path):
+def test_manager_belongs_to_the_local_user(tmp_path):
     manager = SessionManager(SessionStore(tmp_path / "users"))
-    conv = manager.get("root")
-    assert conv.user == "root"
+    conv = manager.get("sess42")
+    assert conv.user == manager.store.local_user
 
 
 def test_manager_persistence_and_reload(tmp_path):
     store = SessionStore(tmp_path / "users")
     manager = SessionManager(store)
-    conv = manager.get("user", "sess42")
+    conv = manager.get("sess42")
     assert conv.messages == []  # unknown id -> fresh conversation
 
     manager.append(conv, {"role": "user", "content": "hello"})
@@ -96,7 +96,7 @@ def test_manager_persistence_and_reload(tmp_path):
 
     # a brand new manager (fresh process simulation) reloads from disk
     fresh = SessionManager(SessionStore(tmp_path / "users"))
-    conv2 = fresh.get("user", "sess42")
+    conv2 = fresh.get("sess42")
     assert [m["content"] for m in conv2.messages] == ["hello", "hi"]
     assert conv2.messages[0]["role"] == "user"
 
@@ -106,25 +106,20 @@ def test_manager_persistence_and_reload(tmp_path):
     assert [r[0] for r in runs] == ["run_finished"]
 
 
-def test_manager_cache_is_per_user(tmp_path):
+def test_manager_caches_the_conversation(tmp_path):
     manager = SessionManager(SessionStore(tmp_path / "users"))
-    user_conv = manager.get("user", "shared-id")
-    root = manager.get("root", "shared-id")
-    # Same id, different user databases: two distinct conversations.
-    assert user_conv.user == manager.store.local_user
-    assert root.user == "root"
-    assert user_conv is not root
+    conv = manager.get("shared-id")
 
-    user_conv.messages.append({"role": "user", "content": "my q"})
-    cached = manager.get("user", "shared-id")
-    assert cached is user_conv
+    conv.messages.append({"role": "user", "content": "my q"})
+    cached = manager.get("shared-id")
+    assert cached is conv
 
 
 def test_tool_call_message_roundtrip(tmp_path):
     """Assistant messages with tool calls survive replay faithfully."""
     store = SessionStore(tmp_path / "users")
     manager = SessionManager(store)
-    conv = manager.get("user", "tools")
+    conv = manager.get("tools")
     message = {
         "role": "assistant",
         "content": "",
@@ -139,7 +134,7 @@ def test_tool_call_message_roundtrip(tmp_path):
     manager.append(conv, message)
 
     fresh = SessionManager(SessionStore(tmp_path / "users"))
-    replay = fresh.get("user", "tools").messages
+    replay = fresh.get("tools").messages
     assert replay == [message]
 
 
@@ -147,7 +142,7 @@ def test_stored_transcript_text_carries_no_thinking(tmp_path):
     """The searchable content is the answer; message_json keeps the raw."""
     store = SessionStore(tmp_path / "users")
     manager = SessionManager(store)
-    conv = manager.get("user", "thinkest")
+    conv = manager.get("thinkest")
     manager.append(
         conv,
         {
@@ -161,14 +156,14 @@ def test_stored_transcript_text_carries_no_thinking(tmp_path):
     assert messages[-1]["content"] == "The answer."
     # the replayable message keeps the reasoning
     fresh = SessionManager(SessionStore(tmp_path / "users"))
-    replay = fresh.get("user", "thinkest").messages
+    replay = fresh.get("thinkest").messages
     assert replay[-1]["content"] == "<think>Pondering.</think>The answer."
 
 
 def test_stored_transcript_text_drops_unclosed_thinking(tmp_path):
     store = SessionStore(tmp_path / "users")
     manager = SessionManager(store)
-    conv = manager.get("user", "thinkest")
+    conv = manager.get("thinkest")
     manager.append(
         conv,
         {"role": "assistant", "content": "Answer first. <think>cut off mid"},

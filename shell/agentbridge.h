@@ -43,17 +43,15 @@ class Speaker;
  * The service is optional: if it is not running the widget still works, it
  * simply never receives transcripts.
  *
- * Mode selection is the one message that already speaks to the *live* daemon
- * (agent/phoenix_dna/service.py): bus name dna.phoenix.Agent, object path
- * /dna/phoenix/Agent, interface dna.phoenix.Agent. Its SetMode(name) method
- * records the widget's mode and shows the KDE password dialog when root is
- * selected, so the credentials are settled before the first root prompt.
- * SubmitPrompt(prompt, mode, session_id) sends a generated query to it.
+ * The live agent daemon is the Python service (agent/phoenix_dna/service.py):
+ * bus name dna.phoenix.Agent, object path /dna/phoenix/Agent, interface
+ * dna.phoenix.Agent. Its SubmitPrompt(prompt, session_id) method sends a
+ * generated query to it; an empty session id starts a new conversation.
  * RunStarted clears the slate, TextDelta streams the answer into the
  * \a conversation model as it is generated (activityStarted fires once, at
  * the run's first output — the cue to open the results pane), ThinkingDelta
- * streams the model's reasoning into the row's thinking, ToolCall*
- * accumulate the row's tool log, and RunFinished(run_id, status,
+ * streams the model's reasoning into the row's trail, ToolCall* add their
+ * steps to it, and RunFinished(run_id, status,
  * final_text, turns, tokens_in, tokens_out) completes the run's row.
  *
  * Transcript cleanup: SubmitTranscriptCleanup(text) asks the daemon to
@@ -90,9 +88,9 @@ class Speaker;
  *
  * Session titles: the daemon (re)generates a session's title with a single
  * LLM call after every completed run and announces it with
- * SessionTitleChanged(session_id, mode, title). onSessionTitleChanged
+ * SessionTitleChanged(session_id, title). onSessionTitleChanged
  * exposes the title of this widget's current session as \a sessionTitle
- * (empty until the first title arrives; dropped when the session or mode
+ * (empty until the first title arrives; dropped when the session
  * changes), for the pane's header.
  *
  * The conversation model is the ChatGPT-style history the results pane
@@ -104,22 +102,21 @@ class Speaker;
  * conversation a run belongs to arrives with RunStarted; this bridge
  * remembers it (for runs it started itself) and passes it back with every
  * following SubmitPrompt, so follow-on queries — typed or dictated from the
- * results pane — continue that history. The id is dropped when the mode
- * changes: sessions are filed per mode by the daemon, and a root follow-on
- * must not land in the user session. Submitting with the new-session intent
+ * results pane — continue that history. Submitting with the new-session intent
  * (sendPrompt(prompt, true), wired to the panel's record button — a fresh
  * conversation starts there) also drops the id *and* restarts the pane's
  * history when the run begins, so earlier, unrelated conversations never
  * bleed into a new one; prompts from the pane keep the id and append.
  *
- * The tool log is Markdown (each tool call's arguments and output in
- * fenced code blocks), which the results pane renders under the answer —
- * that is what makes a failed run debuggable from the pane.
+ * The trail of a run is Markdown (each tool call's arguments and output
+ * in fenced code blocks), which the results pane renders step by step,
+ * in the order the agent did them — that is what makes a failed run
+ * debuggable from the pane.
  *
  * The text the model streams before it calls a tool is its working
- * notes, not its answer: the bridge moves it into the row's thinking,
- * so the pane can show the answer as the point of the run and the
- * notes as its trail.
+ * notes, not its answer: the bridge moves it out of the answer, so the
+ * pane can show the answer as the point of the run and the notes as
+ * its trail.
  *
  * Session search: the widget can browse the history the daemon keeps in
  * its per-user SQLite store. SearchSessions(user, query) answers with the
@@ -159,10 +156,10 @@ public:
      * One row per prompt/answer pair; sendPrompt() queues the prompt text
      * and RunStarted pairs the queue's head with the run that just began
      * (the daemon executes prompts in submission order), opening a new
-     * row. TextDelta streams into the row's answer, ThinkingDelta into
-     * its thinking, ToolCall* into its tool log — and the text streamed
-     * before them into its thinking too, for the agent was working
-     * rather than answering — and RunFinished finalizes it. Rows are
+     * row. TextDelta streams into the row's answer, ThinkingDelta and
+     * ToolCall* into its trail — and the text streamed before them into
+     * the trail too, for the agent was working rather than answering —
+     * and RunFinished finalizes it. Rows are
      * appended, never cleared, so follow-on questions flow downwards. */
     Q_PROPERTY(ConversationModel *conversation READ conversation CONSTANT)
 
@@ -170,9 +167,9 @@ public:
      *
      * LLM-generated by the daemon after every completed run — so a
      * follow-on that shifts the conversation renames it — and emptied
-     * when a new session starts or the mode changes, until the new
-     * session's first title arrives. Empty means "no title (yet)": the
-     * pane shows its default heading instead. */
+     * when a new session starts, until the new session's first title
+     * arrives. Empty means "no title (yet)": the pane shows its default
+     * heading instead. */
     Q_PROPERTY(QString sessionTitle READ sessionTitle NOTIFY sessionTitleChanged)
 
     /*! \brief The sessions the session search lists.
@@ -251,27 +248,13 @@ public:
     /*! \brief Asks the agent service to stop the current utterance. */
     Q_INVOKABLE void stopDictation();
 
-    /*! \brief Tells the service which directory to treat as its working context. */
-    Q_INVOKABLE void setWorkingDirectory(const QString &path);
-
-    /*! \brief Tells the service whether it may escalate privileges. */
-    Q_INVOKABLE void setElevated(bool elevated);
-
-    /*! \brief Tells the daemon which privilege mode the widget selected.
-     *
-     * Sent to the live agent service (dna.phoenix.Agent). Selecting root
-     * makes the daemon pop the KDE password dialog right away and cache the
-     * credential for the root prompts that follow; leaving root drops it. */
-    Q_INVOKABLE void setMode(const QString &mode);
-
     /*! \brief Sends a prompt to the live agent daemon.
      *
      * With \a newSession the widget's remembered session id is dropped, so
      * the daemon starts a fresh conversation (and the pane's history
      * restarts at the run's first output); otherwise the prompt continues
      * the conversation of the widget's latest run. An empty id either way
-     * (nothing started yet, or the mode just changed) makes the daemon
-     * begin a fresh conversation.
+     * (nothing started yet) makes the daemon begin a fresh conversation.
      *
      * \a attachments are the files the user attached to the prompt (see
      * PromptAttachments). They are sent along as a JSON payload; a prompt
@@ -315,9 +298,9 @@ public:
      * opened. The session id is adopted as well: a follow-on typed in
      * the pane continues that very session.
      *
-     * \a mode is the session's mode ("root" or "user"): it names
-     * the sender of the session's queries. \a title is the name the
-     * pane's header shows.
+     * \a mode is the session's mode: it names the sender of the session's
+     * queries ("root" for the sessions of the older daemon, the login name
+     * for the rest). \a title is the name the pane's header shows.
      */
     Q_INVOKABLE void openStoredSession(const QString &user,
                                        const QString &sessionId,
@@ -411,10 +394,8 @@ Q_SIGNALS:
 
     /*! \brief The daemon's sudo password dialog closed.
      *
-     * \a runId is empty for the pre-authentication dialog the daemon
-     * shows when root mode is selected (a non-empty id belongs to a
-     * running prompt); \a success is false when the dialog was cancelled
-     * or the password rejected. */
+     * \a runId names the run that needed the password; \a success is false
+     * when the dialog was cancelled or the password rejected. */
     void authFinished(const QString &runId, bool success);
 
 private Q_SLOTS:
@@ -439,7 +420,7 @@ private Q_SLOTS:
                        uint tokensOut);
 
     /*! \brief RunStarted: reset the streaming state for the new run. */
-    void onRunStarted(const QString &runId, const QString &mode, const QString &sessionId);
+    void onRunStarted(const QString &runId, const QString &sessionId);
 
     /*! \brief AuthFinished: the daemon's password dialog closed. */
     void onAuthFinished(const QString &runId, bool success);
@@ -477,7 +458,7 @@ private Q_SLOTS:
     /*! \brief SessionTitleChanged: adopt the title when it belongs to the
      *  session this widget is following; titles of other sessions (e.g.
      *  REPL runs) are ignored. */
-    void onSessionTitleChanged(const QString &sessionId, const QString &mode, const QString &title);
+    void onSessionTitleChanged(const QString &sessionId, const QString &title);
 
     /*! \brief QuestionAsked: the running prompt is blocked on a question.
      *
@@ -520,8 +501,8 @@ private:
      * answer, the ones before it the notes the agent wrote while it
      * worked.
      *
-     * \a mode names the sender of the queries ("root" or the login
-     * name). */
+     * \a mode names the sender of the queries ("root" for the sessions of the
+     * older daemon, the login name otherwise). */
     void loadStoredSession(const QVariantList &messages, const QString &mode);
 
     /*! \brief Stores one exchange of a stored session: the prompt, who
@@ -533,8 +514,9 @@ private:
                        const QString &sender,
                        const QStringList &messages);
 
-    /*! \brief The sender attribution for a prompt submitted in \a mode:
-     *  "root" in root mode, the local user's login name otherwise. */
+    /*! \brief The sender attribution for a prompt of the given mode:
+     *  "root" for the sessions of the older daemon, the local user's
+     *  login name otherwise. */
     static QString senderNameForMode(const QString &mode);
 
 private Q_SLOTS:
@@ -544,11 +526,6 @@ private Q_SLOTS:
 
 private:
     bool m_available = false;
-    QString m_workingDirectory;
-    bool m_elevated = false;
-    // The daemon mode name ("root"/"user") last sent via setMode();
-    // submitPrompt() needs it to route the prompt.
-    QString m_modeName = QStringLiteral("user");
     QString m_partialTranscript;
     QString m_finalTranscript;
     QString m_agentMessage;
@@ -561,27 +538,22 @@ private:
     QString m_pendingDelta;
     QString m_pendingThinking;
     QTimer m_deltaTimer;
-    // Prompts sent whose runs have not begun yet, each with the daemon
-    // mode name at submit time (the sender attribution of the exchange:
-    // the mode can change before the daemon starts the queued prompt) and
-    // whether it was submitted as a *new* session — those restart the
-    // pane's history at RunStarted. FIFO: the daemon executes prompts in
-    // submission order, so RunStarted pairs the queue's head with the row
-    // it opens.
+    // Prompts sent whose runs have not begun yet, each with whether it was
+    // submitted as a *new* session — those restart the pane's history at
+    // RunStarted. FIFO: the daemon executes prompts in submission order,
+    // so RunStarted pairs the queue's head with the row it opens.
     struct QueuedPrompt
     {
         QString text;
-        QString mode;
         bool newSession = false;
     };
     QList<QueuedPrompt> m_pendingPrompts;
     // The session id reported by RunStarted for the latest run this widget
     // started: the conversation that following sendPrompt() calls continue.
-    // Cleared on mode changes — the daemon files sessions per mode.
     QString m_sessionId;
     // The daemon-generated title of that session, shown in the pane's
-    // header; emptied when the session or mode changes until the new
-    // session's first title arrives.
+    // header; emptied when the session changes until the new session's
+    // first title arrives.
     QString m_sessionTitle;
     // The in-flight transcript cleanup: the daemon-side id and the raw text
     // it was asked to clean (the source the eventual replacement applies

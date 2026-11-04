@@ -153,7 +153,7 @@ def test_question_round_trip_over_dbus(client):
         on_finished, signal_name="RunFinished", dbus_interface=INTERFACE
     )
 
-    run_id = str(iface.SubmitPrompt("back up my disk", "user", ""))
+    run_id = str(iface.SubmitPrompt("back up my disk", ""))
     assert asked_event.wait(15), "QuestionAsked signal never arrived"
 
     assert seen["asked"]["run_id"] == run_id

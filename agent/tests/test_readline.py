@@ -18,21 +18,10 @@ from phoenix_dna.repl import (
 
 def test_slash_command_completion():
     completer = Completer()
-    assert completer.matches("/mo", buf="/mo") == ["/mode", "/modes"]
-    assert completer.complete("/mo", 0) == "/mode"
-    assert completer.complete("/mo", 1) == "/modes"
-    assert completer.complete("/mo", 2) is None  # readline end-of-matches
+    assert completer.matches("/se", buf="/se") == ["/session"]
     assert completer.matches("/q", buf="/q") == ["/quit", "/q"]
     # mid-line text is not a command position -> falls through to path completion
-    assert completer.matches("/mo", buf="hello /mo") != ["/mode", "/modes"]
-
-
-def test_mode_argument_completion():
-    completer = Completer()
-    assert completer.matches("", buf="/mode ") == ["root", "user"]
-    assert completer.matches("us", buf="/mode us") == ["user"]
-    assert completer.matches("ro", buf="/mode ro") == ["root"]
-    assert completer.matches("zz", buf="/mode zz") == []
+    assert completer.matches("/se", buf="hello /se") != ["/session"]
 
 
 def test_path_completion(tmp_path):

@@ -5,7 +5,8 @@
 
 Kept deliberately short (the pi lesson: frontier models already know how to
 be tool-using agents; a fat system prompt only burns context). The prompt has
-an identity block, the current date, a per-mode block and shared style rules.
+an identity block, the current date, a block about the working context and
+shared style rules.
 """
 
 from __future__ import annotations
@@ -14,7 +15,6 @@ import datetime as _dt
 from pathlib import Path
 
 from .config import Config
-from .modes import Mode, ModeProfile
 
 _IDENTITY = (
     "You are Phoenix, a desktop AI agent living in the KDE Plasma panel of a "
@@ -24,29 +24,22 @@ _IDENTITY = (
     "is code, a list or math."
 )
 
-_MODE_BLOCKS = {
-    Mode.ROOT: """\
-MODE root - system administration.
-- Your bash commands are executed as root via sudo; the user has already
-  authenticated. The working directory is /.
-- Inspect before you change: run status/show/list/read-only variants first.
-- Be extremely careful with destructive commands (rm -rf, dd, mkfs, package
-  removal, systemctl mask...). Never reboot or shut down unless explicitly
-  asked. Do not edit files under /proc, /sys or /dev.
-- When you change the system, briefly list what you changed in your final
-  answer.""",
-    Mode.USER: """\
-MODE user - everyday assistant.
-- Your bash commands run as the regular user. The working directory is the
-  user's home directory (~).
-- You may read and edit files, run applications, and use standard CLI tools
-  (systemctl --user, nmcli, kdialog, flatpak, git, ...).""",
-}
+_CONTEXT_BLOCK = """\
+CONTEXT - everyday assistant on this desktop.
+- Your bash commands run as the regular user, in the user's home directory
+  (~). You may read and edit files, run applications, and use standard CLI
+  tools (systemctl --user, nmcli, kdialog, flatpak, git, ...).
+- When a task needs administrator rights, run the command with sudo (for
+  example "sudo dnf install -y ..."): the user is asked for their password
+  and the command then runs as root. Inspect before you change, and never
+  run a destructive command (rm -rf, dd, mkfs, package removal, systemctl
+  mask...) without the user's confirmation - it is refused when nobody
+  confirms it in time."""
 
-#: Appended to the mode block when at least one search tool is actually
+#: Appended to the context block when at least one search tool is actually
 #: registered. The prompt must not advertise tools the run does not have:
 #: the model would otherwise refuse ("I cannot search the web") exactly
-#: like it did before the tools were wired into these modes.
+#: like it did before the tools were wired in.
 _SEARCH_LINE = (
     "- Web search tools ({names}) are available: use them for anything "
     "that depends on current or specific facts, and cite the source URLs."
@@ -136,11 +129,10 @@ def build_title_messages(exchanges: list[tuple[str, str]]) -> list[dict]:
 
 
 def build_system_prompt(
-    profile: ModeProfile,
     extra_context: str | None = None,
     tool_names: tuple[str, ...] | list[str] = (),
 ) -> str:
-    """Assemble the system prompt for a mode run.
+    """Assemble the system prompt for a run.
 
     ``tool_names`` are the tools actually registered for the run (the
     daemon passes the built toolset's keys): the search line is appended
@@ -148,14 +140,14 @@ def build_system_prompt(
     a tool the model cannot call.
     """
     now = _dt.datetime.now().strftime("%A, %Y-%m-%d %H:%M")
-    mode_block = _MODE_BLOCKS[profile.mode]
+    context_block = _CONTEXT_BLOCK
     search_names = [n for n in tool_names if n in ("tavily_search", "exa_search")]
     if search_names:
-        mode_block += "\n" + _SEARCH_LINE.format(names=", ".join(search_names))
+        context_block += "\n" + _SEARCH_LINE.format(names=", ".join(search_names))
     parts = [
         _IDENTITY,
         "",
-        mode_block,
+        context_block,
         "",
         _STYLE.format(now=now),
     ]

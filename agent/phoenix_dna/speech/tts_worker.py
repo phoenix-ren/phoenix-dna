@@ -186,7 +186,7 @@ def _answer_hello(request: dict) -> int:
                 "engine": type(engine).__name__.lower(),
                 "sample_rate": engine.sample_rate,
                 "voices": engine.voices,
-            )
+            }
         )
         + "\n"
     )

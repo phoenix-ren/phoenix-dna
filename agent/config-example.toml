@@ -22,7 +22,21 @@
 # kdialog_bin = "/usr/bin/kdialog"
 # ask_timeout_seconds = 300       # unanswered ask_user questions release the
 #                                 # run after this long (0 = wait forever)
-# confirm_destructive = true      # root mode: destructive bash commands need
-#                                 # an explicit Allow (fail closed on timeout)
+# confirm_destructive = true      # destructive commands that need root
+#                                 # need an explicit Allow (fail closed on
+#                                 # timeout)
 # confirm_patterns = []           # extra regexes that count as destructive,
 #                                 # e.g. ["\\bsystemctl\\s+restart\\b"]
+
+# Read-aloud (the daemon speaking its own answers). The settings window
+# writes these into ~/.config/phoenix-dna/keys.json; this file wins over
+# it.
+# tts_enabled = true
+# tts_voice = "English_expressive_narrator"
+# tts_read_mode = "final"         # "final" (the finished answer) or
+#                                 # "stream" (as it is generated)
+# tts_playback_speed = 1.0        # how fast the audio is played back:
+#                                 # 1.0 is the speed it was spoken at,
+#                                 # 1.5 half again as fast. The pitch
+#                                 # stays - it is a time-stretch, not a
+#                                 # resampling.

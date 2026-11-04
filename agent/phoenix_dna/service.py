@@ -38,7 +38,7 @@ except ImportError:  # tests that do not touch D-Bus
 # kind -> (emitter key, payload keys in order)
 
 _SIGNAL_MAP = {
-    "run_started": ("run_started", ("run_id", "mode", "session_id")),
+    "run_started": ("run_started", ("run_id", "session_id")),
     "text_delta": ("text_delta", ("run_id", "text")),
     "thinking_delta": ("thinking_delta", ("run_id", "text")),
     "tool_call_started": (
@@ -67,7 +67,7 @@ _SIGNAL_MAP = {
     ),
     "session_title_changed": (
         "session_title_changed",
-        ("session_id", "mode", "title"),
+        ("session_id", "title"),
     ),
     "speech_state_changed": ("speech_state_changed", ("state",)),
 }
@@ -75,7 +75,6 @@ _SIGNAL_MAP = {
 
 _DEFAULTS = {
     "run_id": "",
-    "mode": "",
     "session_id": "",
     "call_id": "",
     "tool": "",
@@ -183,8 +182,8 @@ if dbus is not None:
 
         # -- signals ---------------------------------------------------------
 
-        @dbus.service.signal(INTERFACE, signature="sss")
-        def RunStarted(self, run_id, mode, session_id): ...
+        @dbus.service.signal(INTERFACE, signature="ss")
+        def RunStarted(self, run_id, session_id): ...
 
         @dbus.service.signal(INTERFACE, signature="ss")
         def TextDelta(self, run_id, text): ...
@@ -221,25 +220,26 @@ if dbus is not None:
         @dbus.service.signal(INTERFACE, signature="ssss")
         def TranscriptCleaned(self, cleanup_id, source, cleaned, status): ...
 
-        @dbus.service.signal(INTERFACE, signature="sss")
-        def SessionTitleChanged(self, session_id, mode, title): ...
+        @dbus.service.signal(INTERFACE, signature="ss")
+        def SessionTitleChanged(self, session_id, title): ...
 
         @dbus.service.signal(INTERFACE, signature="s")
         def SpeechStateChanged(self, state): ...
 
         # -- methods -----------------------------------------------------------
 
-        @dbus.service.method(INTERFACE, in_signature="sss", out_signature="s")
-        def SubmitPrompt(self, prompt, mode, session_id):
+        @dbus.service.method(INTERFACE, in_signature="ss", out_signature="s")
+        def SubmitPrompt(self, prompt, session_id):
+            """Submit a prompt; an empty session id starts a new session."""
             try:
-                return self._daemon.submit(str(prompt), str(mode), str(session_id))
+                return self._daemon.submit(str(prompt), str(session_id))
             except ValueError as exc:
                 raise dbus.exceptions.DBusException(
                     f"{_ERROR}.InvalidArgument", str(exc)
                 )
 
-        @dbus.service.method(INTERFACE, in_signature="ssss", out_signature="s")
-        def SubmitPromptWithAttachments(self, prompt, mode, session_id, attachments):
+        @dbus.service.method(INTERFACE, in_signature="sss", out_signature="s")
+        def SubmitPromptWithAttachments(self, prompt, session_id, attachments):
             """Submit a prompt together with the files attached to it.
 
             ``attachments`` is a JSON array of ``{"name", "path",
@@ -249,7 +249,7 @@ if dbus is not None:
             """
             try:
                 return self._daemon.submit(
-                    str(prompt), str(mode), str(session_id), str(attachments)
+                    str(prompt), str(session_id), str(attachments)
                 )
             except ValueError as exc:
                 raise dbus.exceptions.DBusException(
@@ -281,23 +281,6 @@ if dbus is not None:
             question keeps waiting and the caller may retry.
             """
             return bool(self._daemon.answer_question(str(ask_id), str(answer_json)))
-
-        @dbus.service.method(INTERFACE, in_signature="s", out_signature="s")
-        def SetMode(self, mode):
-            """Record the widget's mode selection (and pre-auth root)."""
-            try:
-                return self._daemon.set_mode(str(mode))
-            except ValueError as exc:
-                raise dbus.exceptions.DBusException(
-                    f"{_ERROR}.InvalidArgument", str(exc)
-                )
-
-        @dbus.service.method(INTERFACE, in_signature="", out_signature="a(sss)")
-        def GetModes(self):
-            return [
-                (p.mode.value, p.description, str(p.working_dir(self._daemon.config)))
-                for p in self._daemon.modes()
-            ]
 
         @dbus.service.method(INTERFACE, in_signature="ss", out_signature="s")
         def SearchSessions(self, user, query):

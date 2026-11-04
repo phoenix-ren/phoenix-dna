@@ -12,7 +12,7 @@ session bus.
 
 Architecture in one line: **LLM + system prompt + tools, in a loop** (the
 minimal-agent design validated by pi and friends — see
-`../design_docs/CODING_AGENT_ANALYSIS.md`), wrapped in a daemon with two operating modes.
+`../design_docs/CODING_AGENT_ANALYSIS.md`), wrapped in a daemon.
 
 ```
 plasmoid (C++/QML)  ──D-Bus──▶  phoenix-dna-agent (this daemon)
@@ -23,28 +23,75 @@ plasmoid (C++/QML)  ──D-Bus──▶  phoenix-dna-agent (this daemon)
                                                tavily_search / exa_search
 ```
 
-## Operating modes
+## The working context
 
-| Mode | Auth | Working dir | Tools | Purpose |
-|---|---|---|---|---|
-| `root` | KDE password dialog (`kdialog`), cached 15 min | `/` | bash (via `sudo`), read, write, edit, ls, tavily_search, exa_search, ask_user | system administration; one password covers multiple prompts |
-| `user` | none | `~` | bash, read, write, edit, ls, tavily_search, exa_search, ask_user | everyday desktop tasks and questions that need a web lookup |
+The agent works as the desktop user, in their home directory (`~`). The
+tools are the filesystem quartet (read, write, edit, ls), the web search
+pair (tavily_search, exa_search — registered whenever their API keys are
+configured, and the prompt then tells the model to reach for them on
+anything that depends on current or specific facts, so it never answers
+"I cannot search the web"), the question tool (ask_user) and bash.
 
-The mode also selects the system prompt (e.g. root mode instructs the model to
-inspect before changing and never reboot unasked). The search tools are
-registered in both modes whenever their API keys are configured, and the
-prompt then tells the model to reach for them on anything that depends on
-current or specific facts (so it never answers "I cannot search the web").
-Shared by both modes: commands run without a terminal and stdin is closed, so
-the prompt (and the bash tool's description) demand non-interactive flags
-(`dnf -y`, `apt-get -y`, `flatpak install -y`); when a command still fails
-from asking a question on stdin, the bash tool appends a hint so the next
-attempt fixes itself.
+Commands run without a terminal and stdin is closed, so the prompt (and the
+bash tool's description) demand non-interactive flags (`dnf -y`,
+`apt-get -y`, `flatpak install -y`); when a command still fails from asking
+a question on stdin, the bash tool appends a hint so the next attempt fixes
+itself.
+
+### Reading the answers aloud
+
+The daemon can speak its own answers (opt-in, off by default): the answer
+is normalized for the ear — math is spoken as mathematics (`$\pi r^2$`
+becomes "pi r squared", tied to the renderer's own span detector by a
+shared test fixture), code fences and URLs are not read out — then
+synthesized sentence by sentence and played through a PipeWire sink.
+
+Playback can be interrupted at any moment: the stop control next to the
+record button, closing the results window (or pressing `Esc` in it), or
+pressing record itself. The results window also has a per-answer "Read
+aloud" button.
+
+The settings window (the panel's gear button → **Read aloud**) owns the
+on/off switch, the read mode, the voice and the **playback speed**:
+
+| Setting | Where | Meaning |
+|---|---|---|
+| `tts_enabled` | keys.json | whether the answers are spoken at all |
+| `tts_read_mode` | keys.json | `final` (only the finished answer) or `stream` (as it is generated) |
+| `tts_voice` | keys.json | the voice id the service synthesizes with |
+| `tts_playback_speed` | keys.json | how fast the audio is **played back** |
+
+The playback speed is a time-stretch, not a resampling: the words come
+out faster or slower and the **pitch stays** — 1.5× is the same voice in
+half less time, not a higher voice. It is applied by ffmpeg's `atempo`
+filter in the playback chain (`speech/player.py`), so it works for every
+engine and needs no re-synthesis. Every setting applies at once: the
+window asks the daemon to rebuild its speech pipeline over D-Bus
+(`ReloadSpeech`), so no service restart is needed.
+
+### Administrator rights, on demand
+
+A command that needs administrator rights is written with `sudo`:
+
+```
+sudo dnf install -y btop
+```
+
+The daemon sees the `sudo` call, asks the user for their password with the
+KDE password dialog (`kdialog`) and runs the command as root. The password
+is cached for 15 minutes (like sudo's own timestamp cache), so a session
+that needs privileges only asks once; it lives in memory only, is validated
+immediately with `sudo -S -k -v`, and three failed attempts give up.
+
+A destructive command (`rm -rf`, `dd` to a device, a filesystem format, a
+package removal, ...) that escalates is confirmed by the user first — an
+Allow/Deny card that the harness owns, not the model (see
+[confirmations](#harness-confirmations)).
 
 ## Asking the user (`ask_user`)
 
 Sometimes the right action depends on a decision only the user can make. The
-`ask_user` tool (all modes) shows the user one multiple-choice question and
+`ask_user` tool shows the user one multiple-choice question and
 **blocks the run until it is answered** — the same human-in-the-loop pattern
 OpenCode's `question` and Claude Code's `AskUserQuestion` tools use, so
 models are already trained on its shape:
@@ -84,18 +131,18 @@ too. The question and its answer are recorded in the session transcript
 like any tool call.
 
 **Harness confirmations.** The questions above are *model-authored* —
-fine for clarifications, wrong for consent. When a root-mode bash
-command matches the destructive screen (`rm -rf`, `mkfs`, `dd of=/dev/…`,
-package removal, unit masking, …; extendable via `confirm_patterns`), the
-daemon itself asks a question with the `harness` marker: the command and
-the reason it matched are shown, the options are fixed (`Allow` / `Deny`)
-and no model output can change them. The results window badges it as a
-*system confirmation* (warning tint), and it is **fail-closed**: a Deny,
-a timeout or a cancellation means the command does not run — the model
-is told it was not run and must not retry it unchanged. Set
-`confirm_destructive = false` in `agent.toml` to disable the gate
-(`dnf remove` and friends then run as before, on the non-interactive
-flags alone).
+fine for clarifications, wrong for consent. When a bash command that
+escalates to root matches the destructive screen (`rm -rf`, `mkfs`,
+`dd of=/dev/…`, package removal, unit masking, …; extendable via
+`confirm_patterns`), the daemon itself asks a question with the `harness`
+marker: the command and the reason it matched are shown, the options are
+fixed (`Allow` / `Deny`) and no model output can change them. The results
+window badges it as a *system confirmation* (warning tint), and it is
+**fail-closed**: a Deny, a timeout or a cancellation means the command
+does not run — the model is told it was not run and must not retry it
+unchanged. Set `confirm_destructive = false` in `agent.toml` to disable
+the gate (`dnf remove` and friends then run as before, on the
+non-interactive flags alone).
 
 **The wizard overlay:** a form of several questions opens a large,
 transient, centred overlay of its own (themed like the session search:
@@ -119,7 +166,7 @@ model is asking a series. The window opens on the question by itself —
 a question is activity like any other — and the card gives way when the
 question is answered, times out or its run ends. Answering routes through
 `AnswerQuestion` as option indices plus any typed text; the Q&A also
-shows in the run's tool log. The REPL prints the same question with
+shows in the run's trail. The REPL prints the same question with
 numbered options and answers by number, label or free words.
 
 ## D-Bus API
@@ -131,14 +178,12 @@ interface `dna.phoenix.Agent`.
 
 | Method | In → Out | Description |
 |---|---|---|
-| `SubmitPrompt` | `sss → s` | `(prompt, mode, session_id)` → `run_id`. Empty `session_id` starts a new session; pass a previous `session_id` (from `RunStarted`) to continue it. Prompts submitted while busy are queued and run in order. |
-| `SubmitPromptWithAttachments` | `ssss → s` | `(prompt, mode, session_id, attachments)` → `run_id`. The same, plus the files the user attached to the prompt: a JSON array of `{"name", "path", "mimeType"}` objects. The daemon copies them into `<data_dir>/attachments/<run_id>/`, inlines the images when the model can see them and extracts the text of PDFs — see `phoenix_dna/attachments.py`. |
+| `SubmitPrompt` | `ss → s` | `(prompt, session_id)` → `run_id`. Empty `session_id` starts a new session; pass a previous `session_id` (from `RunStarted`) to continue it. Prompts submitted while busy are queued and run in order. |
+| `SubmitPromptWithAttachments` | `sss → s` | `(prompt, session_id, attachments)` → `run_id`. The same, plus the files the user attached to the prompt: a JSON array of `{"name", "path", "mimeType"}` objects. The daemon copies them into `<data_dir>/attachments/<run_id>/`, inlines the images when the model can see them and extracts the text of PDFs — see `phoenix_dna/attachments.py`. |
 | `Cancel` | `s → b` | Cancel a running prompt (kills its process group) or remove a queued one. |
 | `AnswerQuestion` | `ss → b` | `(ask_id, answer_json)` → whether the pending form was answered. `answer_json` is `{"answers": [{"selected": [0-based index or label, …], "text": "…"}, …]}`, one entry per question — see [Asking the user](#asking-the-user-ask_user). |
-| `SetMode` | `s → s` | `(mode)` → normalized name. Records the widget's mode selection. Selecting `root` shows the KDE password dialog immediately (off the main loop; the credential is cached as usual), switching away from `root` drops the cached password. The plasmoid calls this whenever its mode buttons change state. |
-| `GetModes` | ` → a(sss)` | `(name, description, working_dir)` for root/user. |
 | `GetState` | ` → (ssu)` | `(state, current_run_id, queue_length)`; state is `idle` or `running`. |
-| `SearchSessions` | `ss → s` | `(user, query)` → JSON array of the user's sessions whose summary name matches the query. The match is fuzzy — every character of the query must occur in the name, in order — so typing narrows the list down; an empty query lists every session, newest first. Each entry carries `id`, `mode`, `title`, `summary` (the name the session is listed under: the title, or the first query when the session was never named), `preview`, `createdAt`, `updatedAt` and `messageCount`. |
+| `SearchSessions` | `ss → s` | `(user, query)` → JSON array of the user's sessions whose summary name matches the query. The match is fuzzy — every character of the query must occur in the name, in order — so typing narrows the list down; an empty query lists every session, newest first. Each entry carries `id`, `mode` (the session's mode — `user` today, `root` for the sessions of the older daemon), `title`, `summary` (the name the session is listed under: the title, or the first query when the session was never named), `preview`, `createdAt`, `updatedAt` and `messageCount`. |
 | `GetSessionTranscript` | `ss → s` | `(user, session_id)` → JSON array of the session's messages: `role` (`user` or `assistant`), `content` and `ts`. |
 | `SpeakText` | `s → ` | Speak an arbitrary string on demand (the results pane's "Read aloud"). The text is normalized and segmented exactly like an answer — math is spoken as mathematics, code fences are skipped. A no-op when speech is not enabled. |
 | `StopSpeaking` | ` → ` | Interrupt playback immediately and drop what is queued. |
@@ -150,11 +195,11 @@ interface `dna.phoenix.Agent`.
 
 | Signal | Signature | Emitted when |
 |---|---|---|
-| `RunStarted` | `sss` | run_id, mode, session_id |
+| `RunStarted` | `ss` | run_id, session_id |
 | `TextDelta` | `ss` | streamed answer text (concatenate for partial replies) |
 | `ToolCallStarted` | `ssss` | run_id, call_id, tool name, JSON args |
 | `ToolCallFinished` | `sssss` | run_id, call_id, tool, `success|error`, output text |
-| `AuthRequested` / `AuthFinished` | `ss` / `sb` | the root-mode password dialog opened / closed |
+| `AuthRequested` / `AuthFinished` | `ss` / `sb` | the administrator password dialog opened / closed |
 | `QuestionAsked` | `sss` | run_id, ask_id, JSON of the form: `questions` (`[{question, header, options: [{label, description}], multiple}]`), an optional `goal`, and `harness: true` for daemon-authored confirmations. The run blocks until answered, cancelled or timed out. |
 | `QuestionAnswered` | `ssss` | run_id, ask_id, status (`answered\|timeout\|cancelled`), JSON of the normalized answers (`{"answers": [{"selected": [labels], "text": "…"}, …]}`) |
 | `SpeechStateChanged` | `s` | the daemon's read-aloud switched between `speaking` and `idle` |
@@ -178,12 +223,14 @@ environment → `~/.config/phoenix-dna/keys.json` (mode 0600) for keys, and
 | Key / setting | Env var | Purpose |
 |---|---|---|
 | `minimax_api_key` | `MINIMAX_API_KEY` | LLM (`https://api.minimax.io/v1`, model `MiniMax-Text-01`; set `model = "MiniMax-M3"` for a multimodal model) |
-| `tavily_api_key` | `TAVILY_API_KEY` | web search in every mode (tool omitted if unset) |
-| `exa_api_key` | `EXA_API_KEY` | web search in every mode (tool omitted if unset) |
+| `tavily_api_key` | `TAVILY_API_KEY` | web search (tool omitted if unset) |
+| `exa_api_key` | `EXA_API_KEY` | web search (tool omitted if unset) |
 | `stt_provider`, `openai_api_key` | `PHOENIX_STT_PROVIDER`, `OPENAI_API_KEY` | the plasmoid's speech-to-text: provider (`minimax` default) and its key — read by the widget, not the daemon |
 | `model`, `llm_base_url`, `max_turns`, `credential_ttl_seconds`, bash timeouts … | `PHOENIX_MODEL`, `PHOENIX_BASE_URL`, … | see `config-example.toml` |
+| `tts_enabled`, `tts_voice`, `tts_read_mode` … | `PHOENIX_TTS_ENABLED`, … | the read-aloud settings (see *Reading the answers aloud*) |
+| `tts_playback_speed` | `PHOENIX_TTS_PLAYBACK_SPEED` | how fast the audio is played back: 1.0 is the speed it was spoken at, 1.5 half again as fast. The stretch keeps the pitch, so the voice stays the voice (default 1.0) |
 | `ask_timeout_seconds` | — | how long an unanswered `ask_user` question may block the run before the model proceeds on its own (default 300; `0` waits forever) |
-| `confirm_destructive` | — | root mode: destructive bash commands (screen in `phoenix_dna/confirm.py`) block on a harness-owned Allow/Deny, fail closed (default true) |
+| `confirm_destructive` | — | destructive commands that escalate to root (screen in `phoenix_dna/confirm.py`) block on a harness-owned Allow/Deny, fail closed (default true) |
 | `confirm_patterns` | — | extra regexes that count as destructive, e.g. `["\\bflatpak\\s+uninstall\\b"]` |
 
 Images attached to a prompt reach the model as image parts only when it can
@@ -201,7 +248,6 @@ State lives under `~/.local/state/phoenix-dna/`: `users/<user>/sessions.db`
 (the per-user SQLite history; `sessions/<mode>/<id>.jsonl` is the legacy
 append-only store, imported once), `attachments/<run_id>/` (the files staged
 for a prompt) and `repl_history`.
-
 ## Running
 
 ```sh
@@ -237,11 +283,12 @@ so the service follows the checkout it was installed from.
 
 - The daemon owns a name on the **session bus** — that bus only exists
   inside the user's session, so a system unit would have no bus to join.
-- Root mode elevates *on demand*: the daemon asks for the password with
-  `kdialog` (which needs the GUI session: `DISPLAY`/`WAYLAND_DISPLAY`) and
-  runs the command through `sudo`. As root, `sudo` would succeed silently
-  and the password prompt would be theatre — the daemon would already have
-  all the power it asks for.
+- A command that needs administrator rights elevates *on demand*: the
+  daemon asks for the password with `kdialog` (which needs the GUI
+  session: `DISPLAY`/`WAYLAND_DISPLAY`) and runs the command through
+  `sudo`. As root, `sudo` would succeed silently and the password prompt
+  would be theatre — the daemon would already have all the power it asks
+  for.
 - Config (`~/.config/phoenix-dna`) and state
   (`~/.local/state/phoenix-dna`) belong to the user, and `keys.json` is
   expected to be mode 0600. As root the daemon would litter the home
@@ -258,21 +305,20 @@ exercising the agent without the plasmoid:
 
 ```sh
 ./.venv/bin/python -m phoenix_dna.repl                  # embedded daemon, real MiniMax
-./.venv/bin/python -m phoenix_dna.repl --mode root      # start in root mode
 ./.venv/bin/python -m phoenix_dna.repl --provider fake  # no API key needed
 ./.venv/bin/python -m phoenix_dna.repl --dbus           # drive a running daemon via D-Bus
 ```
 
-Commands: `/mode root|user`, `/new` (fresh session), `/session`, `/modes`,
-`/state`, `/help`, `/quit`. Plain text is submitted in the current mode;
-follow-ups continue the same session; **Ctrl+C while a run is active cancels
-it**; root mode pops the real kdialog password prompt (cached for 15 min).
+Commands: `/new` (fresh session), `/session`, `/state`, `/help`, `/quit`.
+Plain text is submitted as a prompt; follow-ups continue the same session;
+**Ctrl+C while a run is active cancels it**; a command that calls `sudo`
+pops the real kdialog password prompt (cached for 15 min).
 When the model asks, every question of the form is walked one by one —
 answer with a number (or several, comma-separated), a label, or your own
 words; `b` goes back to the previous question, a blank line skips it:
 
 ```
-phoenix:user> back up my disk
+phoenix> back up my disk
   ❓ backup setup
   ❓ (1 of 2) Which disk should the backup use?
      1) /dev/sda — the SSD
@@ -291,15 +337,14 @@ Backing up to /dev/sdb.
 `pyreadline3`): `↑`/`↓` recalls prompts and history persists between sessions
 in `<data_dir>/repl_history` (`--history FILE` to override, `--no-history` to
 disable; blank lines and consecutive duplicates are not recorded). **TAB**
-completes slash commands (`/mo<TAB>` → `/mode`, `/modes`), the `/mode`
-argument (`/mode us<TAB>` → `user`), and file paths — including `~` expansion
-and a trailing `/` on directories (`read ~/Doc<TAB>`).
+completes slash commands (`/se<TAB>` → `/session`) and file paths — including
+`~` expansion and a trailing `/` on directories (`read ~/Doc<TAB>`).
 
-Live example (real MiniMax, user mode):
+Live example (real MiniMax):
 
 ```
-phoenix:user> How many days until the 5th of November next year? ...
-── run run_f688b923bdb3 · user · session c3e3e33918ea
+phoenix> How many days until the 5th of November next year? ...
+── run run_f688b923bdb3 · session c3e3e33918ea
   ⚒ bash {"command": "date -d '2027-11-05' +%j; date +%j"}
   ✓ 309 ⎪ 305 ⎪ [exit 0]
 The 5th of November next year is 4 days away from today.
@@ -323,19 +368,20 @@ same connection).
 
 ## Security notes (v1, honest)
 
-- Root mode runs **arbitrary commands as root** once the user types the
-  password — same trust model as a terminal. The password is kept in memory
-  only (never logged/written), validated immediately via `sudo -S -k -v`, and
-  re-used for 15 minutes (configurable) so multi-prompt sessions ask once.
-- Destructive root commands (recursive forced deletion, filesystem formats,
-  raw device writes, package removal, unit masking…) are gated on a
-  **harness-owned Allow/Deny** — the daemon asks, the options are fixed, and
-  it fails closed on timeout (see *Asking the user*). The screen is a
-  conservative pattern list, not a sandbox: a destructive shape it does not
-  know runs without asking (`confirm_patterns` extends it).
-- No filesystem sandbox exists in any mode. A prompt-injected `rm -rf` in
-  root mode is as dangerous as it sounds — the confirmation gate stops the
-  known-destructive shapes, but mitigations still to consider: a
+- A command that calls `sudo` runs **arbitrary commands as root** once the
+  user types the password — same trust model as a terminal. The password is
+  kept in memory only (never logged/written), validated immediately via
+  `sudo -S -k -v`, and re-used for 15 minutes (configurable) so a session
+  asks once.
+- Destructive commands that escalate to root (recursive forced deletion,
+  filesystem formats, raw device writes, package removal, unit masking…)
+  are gated on a **harness-owned Allow/Deny** — the daemon asks, the options
+  are fixed, and it fails closed on timeout (see *Asking the user*). The
+  screen is a conservative pattern list, not a sandbox: a destructive shape
+  it does not know runs without asking (`confirm_patterns` extends it).
+- No filesystem sandbox exists. A prompt-injected `rm -rf` is as dangerous
+  as it sounds — the confirmation gate stops the known-destructive shapes
+  that escalate to root, but mitigations still to consider: a
   confirm-in-pane step for *every* root write, per-project trust, or
   running the daemon in a `bubbles`/podman sandbox.
 - Commands run in their own process group so cancellation and timeouts kill
@@ -347,7 +393,7 @@ same connection).
 
 - Four filesystem/shell tools with pi/Claude-Code-shaped schemas (models are
   RL-trained on these shapes).
-- Minimal system prompt (per-mode block + current date, well under 1000
+- Minimal system prompt (a context block + current date, well under 1000
   tokens).
 - No todo tool, no plan mode, no sub-agents — write a file if state must
   persist.

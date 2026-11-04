@@ -16,7 +16,7 @@ from conftest import wait_for
 
 from phoenix_dna.daemon import AgentDaemon
 from phoenix_dna.loop import AgentLoop
-from phoenix_dna.modes import MODE_PROFILES, Mode, build_toolset
+from phoenix_dna.toolset import build_toolset
 from phoenix_dna.prompts import build_system_prompt
 from phoenix_dna.provider import FakeProvider
 from phoenix_dna.sessions import SessionManager, SessionStore
@@ -298,7 +298,6 @@ def make_ask_loop(config, home_dir, script):
     events: list[dict] = []
     coordinator = AskCoordinator(emit=lambda event: events.append(event))
     tools = build_toolset(
-        MODE_PROFILES[Mode.USER],
         config,
         home_dir=home_dir,
         run_id="run_test",
@@ -307,11 +306,10 @@ def make_ask_loop(config, home_dir, script):
     manager = SessionManager(SessionStore(config.data_dir / "sessions"))
     loop = AgentLoop(
         run_id="run_test",
-        mode_name="user",
         provider=FakeProvider(script),
         tools=tools,
-        system_prompt=build_system_prompt(MODE_PROFILES[Mode.USER]),
-        conversation=manager.get("user"),
+        system_prompt=build_system_prompt(),
+        conversation=manager.get(),
         session_manager=manager,
         event_sink=lambda event: events.append(event),
     )

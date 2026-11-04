@@ -11,8 +11,8 @@ A voice-first desktop AI agent for KDE Plasma 6, packaged as a plasmoid
 (panel widget) plus a Python D-Bus daemon.
 
 The plasmoid captures speech, transcribes it, and forwards the text to the
-agent daemon over D-Bus. The daemon runs an LLM tool loop in one of two
-modes, streams progress back, and renders the result in a fully-fledged results
+agent daemon over D-Bus. The daemon runs an LLM tool loop as the desktop
+user, streams progress back, and renders the result in a fully-fledged results
 window. When the agent needs a decision only the user can make, it asks: the
 question appears in the results window as a card — radio buttons (or
 checkboxes) per option, or the user's own words — and the run continues once
@@ -28,10 +28,38 @@ and the selected session's queries and responses on the right. Double-clicking
 a session opens it in the results window, where the conversation can be
 continued.
 
+## The trail of a run
+
+The results window shows what the agent did while it worked, in the order it
+did it: the notes it thinks in, the words it says, the tools it calls. Each
+step is one line — "Used 1 Thought", "Used 2 Edit" — that opens into the
+step's own text: the reasoning, the command with its output, the code it
+changed. The steps of one stretch belong together, so a run of eight calls
+reads as one entry.
+
+The answer comes last and on its own, in the agent's font and at full size —
+the point of the run. What the agent *says* on the way there — the working
+notes that precede a tool call — is set the same way: it is the agent's own
+words, and it is read as such. Only the titles of the steps around them are
+dimmed, and only the reasoning and the tool output stay behind their titles:
+they are the model's private notes and a log, not words for the user.
+
+Because the trail is written as the run goes on, the window can be followed
+while the agent works. A step that is still running says so, and says for
+how long — the difference between an agent at work and an agent that hung.
+
+None of it is read aloud. The read-aloud speaks the answer — the words after
+the last tool call — and never a working note; the same is true of the
+daemon's own speech (see *Reading the answers aloud* below).
+
+The microphone button and the waveform next to it are one big button: the
+waveform is part of the button's target, so hovering it lights the button up
+and clicking it starts or stops the recording.
+
 ## Typing a query
 
-Not every prompt has to be spoken. The keyboard button next to the record
-button opens the same prompt editor as the microphone, but empty and with
+Not every prompt has to be spoken. The keyboard button at the far left of the
+panel opens the same prompt editor as the microphone, but empty and with
 the keyboard in it: nothing is recorded, nothing is transcribed, and the
 query is sent to the agent like a dictated one. The global shortcut
 `Meta+Alt+Return` does the same from any application.
@@ -42,6 +70,14 @@ throw the draft away: the editor closes and the query is gone.
 
 The conversation window owns the prompt while it is on screen: a typed
 query continues that session, exactly like a dictated follow-on.
+
+## The dictated prompt on the clipboard
+
+When the voice input has ended and the prompt editor opens on the
+transcript, the prompt is put on the clipboard — so it can be pasted
+into another application without being picked out of the editor by
+hand. The editor remains the place where the prompt is checked and
+corrected; corrections made there are not copied.
 
 ## Layout
 
@@ -151,9 +187,10 @@ systemctl --user status phoenix.service
 journalctl --user -u phoenix.service -f
 ```
 
-It runs as the desktop user, not as root: it lives on the session bus that
-the plasmoid connects to, and it elevates to root on demand through `sudo`
-when a prompt asks for it — with a confirmation card (Allow/Deny) for
+It runs as the desktop user: it lives on the session bus that
+the plasmoid connects to, and it elevates to root on demand — a command
+that calls `sudo` makes the daemon ask for the password (KDE password
+dialog) and run it as root, with a confirmation card (Allow/Deny) for
 destructive commands, answered by you before they run. See `agent/README.md`
 for the details.
 
@@ -173,11 +210,13 @@ Enable it in the settings window (the panel's gear button → **Read
 aloud**): flip the toggle, and it applies at once — the window asks the
 daemon to rebuild its speech pipeline over D-Bus, so no service
 restart, and turning it off mid-utterance falls silent. The same
-section offers the read mode and the voice, plus a Test button. The
-settings are stored in `~/.config/phoenix-dna/keys.json` as `tts_*`
-entries; power users can still set the same things in
-`~/.config/phoenix-dna/agent.toml`, which wins over the file the window
-writes:
+section offers the read mode, the voice and a **playback speed** slider
+(half as slow to twice as fast), plus a Test button. The speed is a
+time-stretch: the voice keeps its pitch, so 1.5× is the same voice in
+half less time — not a higher voice. The settings are stored in
+`~/.config/phoenix-dna/keys.json` as `tts_*` entries; power users can
+still set the same things in `~/.config/phoenix-dna/agent.toml`, which
+wins over the file the window writes:
 
 ```toml
 [agent]
@@ -185,6 +224,7 @@ tts_enabled = true
 # tts_read_mode = "stream"    # speak while the answer is generated
 # tts_voice = "English_expressive_narrator"
 # tts_speed = 1.0
+# tts_playback_speed = 1.0    # how fast it is played back (pitch kept)
 ```
 
 Synthesis uses MiniMax's streaming `t2a_v2` endpoint (`speech-2.8-turbo`)

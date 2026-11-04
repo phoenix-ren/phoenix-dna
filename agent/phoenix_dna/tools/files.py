@@ -3,7 +3,7 @@
 
 """Filesystem tools: read / write / edit / ls.
 
-Relative paths resolve against the mode's working directory; absolute paths
+Relative paths resolve against the agent's working directory; absolute paths
 are allowed anywhere the process can reach (this is a desktop agent, not a
 sandboxed one - see the security notes in agent/README.md).
 """

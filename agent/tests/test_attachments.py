@@ -169,7 +169,6 @@ def test_daemon_sends_the_attachments_with_the_prompt(config, tmp_path):
     try:
         daemon.submit(
             "what is this?",
-            "user",
             "",
             json.dumps(
                 [{"name": "shot.png", "path": str(image), "mimeType": "image/png"}]
@@ -204,7 +203,6 @@ def test_daemon_lists_attachments_the_model_cannot_see(config, tmp_path):
     try:
         daemon.submit(
             "what is this?",
-            "user",
             "",
             json.dumps(
                 [{"name": "shot.png", "path": str(image), "mimeType": "image/png"}]
@@ -230,7 +228,7 @@ def test_daemon_without_attachments_sends_a_plain_prompt(config):
         emitter=lambda event: events.append(event),
     )
     try:
-        daemon.submit("hello", "user")
+        daemon.submit("hello")
         assert wait_for(
             lambda: [e for e in events if e["kind"] == "run_finished"], timeout=10
         )

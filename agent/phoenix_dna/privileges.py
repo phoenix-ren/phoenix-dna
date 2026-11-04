@@ -1,14 +1,14 @@
 # SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
-"""Root-mode privileges: KDE password dialog + sudo password caching.
+"""Administrator privileges: KDE password dialog + sudo password caching.
 
 Security properties (v1):
 * the password lives only in process memory (never logged, never written
   to disk, ``__repr__`` is redacted);
 * it is validated immediately via ``sudo -S -k -v`` before use;
 * it is re-used for ``credential_ttl_seconds`` (default 900s, like sudo)
-  so that multi-prompt root sessions only ask once;
+  so that a session that needs privileges only asks once;
 * three failed attempts give up.
 """
 
@@ -80,7 +80,7 @@ class AuthNotifier:
 
 
 class SudoCredentialCache:
-    """Obtains, validates and caches the sudo password for root mode."""
+    """Obtains, validates and caches the sudo password of the user."""
 
     def __init__(
         self,

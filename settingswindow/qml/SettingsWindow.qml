@@ -98,6 +98,10 @@ Window {
     property string speechReadMode: "final"
     property string speechVoice: ""
     readonly property string speechVoiceDefault: "English_expressive_narrator"
+
+    // How fast the spoken answers play; 1.0 is the speed the voice was
+    // spoken at.
+    property real speechPlaybackSpeed: 1.0
     property bool speechFromEnvironment: false
 
     // The settings store's answer to the last action.
@@ -118,6 +122,7 @@ Window {
     signal speechEnabledChangeRequested(bool enabled)
     signal speechReadModeChangeRequested(string mode)
     signal speechVoiceChangeRequested(string voice)
+    signal speechPlaybackSpeedChangeRequested(real speed)
     signal speechTestRequested()
 
     title: i18n("Settings — Phoenix DNA")
@@ -159,6 +164,8 @@ Window {
             speechVoiceCombo.editText = window.speechVoice !== ""
                 ? window.speechVoice
                 : window.speechVoiceDefault
+            speechSpeedCombo.currentIndex =
+                speechSpeedCombo.speeds.indexOf(window.speechPlaybackSpeed)
             // The font lists are rebuilt on every opening: what this
             // system has may have changed since the last look.
             window.lightFontChoices = window.buildFontChoices(false)
@@ -188,6 +195,8 @@ Window {
     onSpeechVoiceChanged: speechVoiceCombo.editText = window.speechVoice !== ""
         ? window.speechVoice
         : window.speechVoiceDefault
+    onSpeechPlaybackSpeedChanged: speechSpeedCombo.currentIndex =
+        speechSpeedCombo.speeds.indexOf(window.speechPlaybackSpeed)
     onThemeChanged: themeCombo.currentIndex = window.themeIndex(window.theme)
     onLightFontChanged: lightFontCombo.currentIndex =
         window.fontIndex(window.lightFontChoices, window.lightFont)
@@ -883,6 +892,50 @@ Window {
                         Layout.fillWidth: true
                         text: i18n("A MiniMax voice id; the entry is editable for "
                             + "the voices the service offers.")
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PC3.Label {
+                            text: i18n("Speed:")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.ComboBox {
+                            id: speechSpeedCombo
+                            objectName: "speechSpeedCombo"
+
+                            // The playback speeds on offer. The audio is
+                            // stretched without touching the pitch, so
+                            // every entry is the same voice; 1.0 is the
+                            // speed the voice was spoken at. The player's
+                            // own range reaches further by chaining its
+                            // filters — these are the speeds worth
+                            // hearing.
+                            readonly property var speeds:
+                                [0.75, 1.0, 1.25, 1.5, 2.0]
+
+                            model: speeds
+                            // A bare number reads as a setting, not a
+                            // speed; the × says faster or slower.
+                            displayText:
+                                (currentIndex >= 0
+                                 ? speeds[currentIndex]
+                                 : window.speechPlaybackSpeed) + "×"
+
+                            onActivated: (index) =>
+                                window.speechPlaybackSpeedChangeRequested(
+                                    speeds[index])
+                        }
+                    }
+
+                    HintLabel {
+                        Layout.fillWidth: true
+                        text: i18n("How fast the answers play back. The audio "
+                            + "is stretched with the pitch kept, so the voice "
+                            + "stays the voice at every speed.")
                     }
 
                     HintLabel {

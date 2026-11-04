@@ -398,7 +398,11 @@ def build_speaker(config, emitter=None) -> Speaker:
     points is a no-op — existing behaviour, untouched.
     """
     engine = build_engine(config) if config.tts_enabled else None
-    player = Player(rate=32000) if engine is not None else None
+    player = (
+        Player(rate=32000, speed=config.tts_playback_speed)
+        if engine is not None
+        else None
+    )
     return Speaker(
         engine=engine,
         player=player,

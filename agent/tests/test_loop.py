@@ -8,31 +8,28 @@ from __future__ import annotations
 import dataclasses
 
 from phoenix_dna.loop import AgentLoop
-from phoenix_dna.modes import MODE_PROFILES, Mode, build_toolset
 from phoenix_dna.privileges import SudoCredentialCache, StaticPasswordProvider
 from phoenix_dna.prompts import build_system_prompt
 from phoenix_dna.provider import FakeProvider
 from phoenix_dna.sessions import SessionManager, SessionStore
+from phoenix_dna.toolset import build_toolset
 
 
 def make_loop(
-    config, home_dir, script, mode=Mode.USER, cache=None, sudo_bin=None,
-    provider=None, **loop_kw
+    config, home_dir, script, cache=None, sudo_bin=None, provider=None, **loop_kw
 ):
-    profile = MODE_PROFILES[mode]
     cfg = dataclasses.replace(config, sudo_bin=sudo_bin or config.sudo_bin)
-    tools = build_toolset(profile, cfg, credential_cache=cache, home_dir=home_dir)
+    tools = build_toolset(cfg, credential_cache=cache, home_dir=home_dir)
     manager = SessionManager(SessionStore(config.data_dir / "sessions"))
-    conversation = manager.get(mode.value)
+    conversation = manager.get()
     events, sink = [], (lambda e: events.append(e))
     provider = provider or FakeProvider(script)
     loop = AgentLoop(
         run_id="run_test",
-        mode_name=mode.value,
         provider=provider,
         tools=tools,
         # like the daemon: the prompt advertises the registered tools
-        system_prompt=build_system_prompt(profile, tool_names=tuple(tools)),
+        system_prompt=build_system_prompt(tool_names=tuple(tools)),
         conversation=conversation,
         session_manager=manager,
         event_sink=sink,
@@ -272,17 +269,19 @@ def test_max_turns_guard(config, home_dir):
     assert kinds(events).count("turn_started") == 3
 
 
-def test_root_mode_flow_with_sudo(config, home_dir, fake_sudo):
+def test_command_asking_for_root_is_escalated(config, home_dir, fake_sudo):
+    """A command that calls sudo runs as root - the password comes from
+    the credential cache, not from the command itself."""
     cache = SudoCredentialCache(
         StaticPasswordProvider(["hunter2"]), sudo_bin=str(fake_sudo)
     )
     script = [
-        {"tool": "bash", "args": {"command": "echo sudo-$FAKE_SUDO_OK"}},
+        {"tool": "bash", "args": {"command": "sudo echo sudo-$FAKE_SUDO_OK"}},
         {"tool": "read", "args": {"path": "/etc/os-release", "limit": 3}},
         "System checked.",
     ]
     loop, events, conv, _m = make_loop(
-        config, home_dir, script, mode=Mode.ROOT, cache=cache, sudo_bin=str(fake_sudo)
+        config, home_dir, script, cache=cache, sudo_bin=str(fake_sudo)
     )
     summary = loop.run("check the system")
 
@@ -291,8 +290,27 @@ def test_root_mode_flow_with_sudo(config, home_dir, fake_sudo):
     assert "sudo-1" in outputs[0]
     assert "os-release" in outputs[1].lower() or "fedora" in outputs[1].lower()
 
-    # session persisted under root/
-    assert (config.data_dir / "sessions" / "root").is_dir()
+    # the session is filed under the local user, not under "root"
+    assert not (config.data_dir / "sessions" / "root").exists()
+
+
+def test_plain_command_stays_unprivileged(config, home_dir, fake_sudo):
+    """Without a sudo call the command runs as the user - no password."""
+    cache = SudoCredentialCache(
+        StaticPasswordProvider(["hunter2"]), sudo_bin=str(fake_sudo)
+    )
+    script = [
+        {"tool": "bash", "args": {"command": "echo plain-$FAKE_SUDO_OK"}},
+        "Done.",
+    ]
+    loop, events, _c, _m = make_loop(
+        config, home_dir, script, cache=cache, sudo_bin=str(fake_sudo)
+    )
+    loop.run("say something")
+    outputs = [e["output"] for e in events if e["kind"] == "tool_call_finished"]
+    # the fake sudo was never asked to run anything: the marker the fake
+    # sudo exports is empty, so the command ran as the user
+    assert "plain-\n" in outputs[0]
 
 
 def test_system_prompt_included_in_request(config, home_dir):

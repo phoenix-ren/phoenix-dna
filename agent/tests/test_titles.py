@@ -52,14 +52,14 @@ def test_session_titled_after_first_run(config):
         emitter=events.append,
     )
     try:
-        daemon.submit("who was the first US president", "user")
+        daemon.submit("who was the first US president")
         assert wait_for(lambda: events_of(events, SESSION_TITLE_CHANGED), timeout=5)
         event = events_of(events, SESSION_TITLE_CHANGED)[0]
         assert event["title"] == "US Presidents"
         assert event["session_id"]  # a real session was named
 
         # The title is persisted in the session row.
-        conversation = daemon._sessions.get("user", event["session_id"])
+        conversation = daemon._sessions.get(event["session_id"])
         assert title_of(daemon, conversation) == "US Presidents"
     finally:
         daemon.shutdown()
@@ -75,18 +75,18 @@ def test_title_updates_on_follow_on(config):
         emitter=events.append,
     )
     try:
-        run = daemon.submit("first question", "user")
+        run = daemon.submit("first question")
         assert wait_for(lambda: events_of(events, SESSION_TITLE_CHANGED), timeout=5)
         session_id = events_of(events, "run_started")[0]["session_id"]
 
-        daemon.submit("second question", "user", session_id=session_id)
+        daemon.submit("second question", session_id=session_id)
         assert wait_for(
             lambda: len(events_of(events, SESSION_TITLE_CHANGED)) >= 2, timeout=5
         )
         titles = [e["title"] for e in events_of(events, SESSION_TITLE_CHANGED)]
         assert titles == ["First Topic", "Second Topic"]
 
-        conversation = daemon._sessions.get("user", session_id)
+        conversation = daemon._sessions.get(session_id)
         assert title_of(daemon, conversation) == "Second Topic"
         assert run.startswith("run_")
     finally:
@@ -99,7 +99,7 @@ def test_no_titles_without_provider(config):
         config, provider=FakeProvider(["answer"]), emitter=events.append
     )
     try:
-        daemon.submit("hi", "user")
+        daemon.submit("hi")
         assert wait_for(lambda: events_of(events, "run_finished"), timeout=5)
         assert events_of(events, SESSION_TITLE_CHANGED) == []
     finally:
@@ -117,16 +117,16 @@ def test_failed_title_keeps_previous(config):
         emitter=events.append,
     )
     try:
-        daemon.submit("one", "user")
+        daemon.submit("one")
         assert wait_for(lambda: events_of(events, SESSION_TITLE_CHANGED), timeout=5)
         session_id = events_of(events, SESSION_TITLE_CHANGED)[0]["session_id"]
 
-        daemon.submit("two", "user", session_id=session_id)
+        daemon.submit("two", session_id=session_id)
         assert wait_for(lambda: len(events_of(events, "run_finished")) >= 2, timeout=5)
         assert wait_for(
             lambda: len(events_of(events, SESSION_TITLE_CHANGED)) == 1, timeout=1
         )
-        conversation = daemon._sessions.get("user", session_id)
+        conversation = daemon._sessions.get(session_id)
         assert title_of(daemon, conversation) == "Good Title"  # previous kept
     finally:
         daemon.shutdown()
@@ -141,12 +141,12 @@ def test_cancelled_run_names_nothing(config):
         emitter=events.append,
     )
     try:
-        run = daemon.submit("slow", "user")
+        run = daemon.submit("slow")
         assert wait_for(lambda: daemon.state()["state"] == "running", timeout=5)
         daemon.cancel(run)
         assert wait_for(lambda: events_of(events, "run_finished"), timeout=5)
         session_id = events_of(events, "run_started")[0]["session_id"]
-        conversation = daemon._sessions.get("user", session_id)
+        conversation = daemon._sessions.get(session_id)
         assert title_of(daemon, conversation) == ""
         assert events_of(events, SESSION_TITLE_CHANGED) == []
     finally:
@@ -162,7 +162,7 @@ def test_title_collapses_whitespace_and_wrappers(config):
         emitter=events.append,
     )
     try:
-        daemon.submit("hi", "user")
+        daemon.submit("hi")
         assert wait_for(lambda: events_of(events, SESSION_TITLE_CHANGED), timeout=5)
         assert events_of(events, SESSION_TITLE_CHANGED)[0]["title"] == "A Wrapped Title"
     finally:

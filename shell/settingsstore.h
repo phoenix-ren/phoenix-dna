@@ -133,6 +133,13 @@ class SettingsStore : public QObject
     /*! \brief The voice id the daemon synthesizes with ("tts_voice"). */
     Q_PROPERTY(QString speechVoice READ speechVoice NOTIFY speechVoiceChanged)
 
+    /*! \brief How fast the spoken answers play ("tts_playback_speed").
+     *
+     *  A time-stretch with the pitch kept: 1.0 is the speed the voice
+     *  was spoken at, 1.5 half again as fast. Clamped to the window the
+     *  daemon's player reaches (0.25–4.0). */
+    Q_PROPERTY(qreal speechPlaybackSpeed READ speechPlaybackSpeed NOTIFY speechPlaybackSpeedChanged)
+
     /*! \brief The keys.json field behind speechEnabled, shown by the UI. */
     Q_PROPERTY(QString speechEnabledField READ speechEnabledField CONSTANT)
 
@@ -174,6 +181,7 @@ public:
     bool speechEnabled() const { return m_speechEnabled; }
     QString speechReadMode() const { return m_speechReadMode; }
     QString speechVoice() const { return m_speechVoice; }
+    qreal speechPlaybackSpeed() const { return m_speechPlaybackSpeed; }
     QString speechEnabledField() const { return QStringLiteral("tts_enabled"); }
     bool speechFromEnvironment() const { return m_speechFromEnvironment; }
     QString statusMessage() const { return m_statusMessage; }
@@ -243,6 +251,10 @@ public:
     /*! \brief Stores the voice id the daemon synthesizes with. */
     Q_INVOKABLE bool saveSpeechVoice(const QString &voice);
 
+    /*! \brief Stores the speed the spoken answers play at; the daemon
+     *  re-reads it when the shell asks it to reload speech. */
+    Q_INVOKABLE bool saveSpeechPlaybackSpeed(qreal speed);
+
 Q_SIGNALS:
     void llmApiKeyChanged();
     void sttApiKeyChanged();
@@ -255,6 +267,7 @@ Q_SIGNALS:
     void speechEnabledChanged();
     void speechReadModeChanged();
     void speechVoiceChanged();
+    void speechPlaybackSpeedChanged();
     void keysEnvironmentChanged();
     void statusMessageChanged();
     void statusIsErrorChanged();
@@ -318,6 +331,7 @@ private:
     bool m_speechEnabled = false;
     QString m_speechReadMode = QStringLiteral("final");
     QString m_speechVoice = QStringLiteral("English_expressive_narrator");
+    qreal m_speechPlaybackSpeed = 1.0;
     QString m_statusMessage;
     bool m_llmKeyFromEnvironment = false;
     bool m_sttKeyFromEnvironment = false;

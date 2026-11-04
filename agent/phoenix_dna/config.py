@@ -44,6 +44,7 @@ _TTS_ENV_FIELDS = (
     "tts_endpoint",
     "tts_voice",
     "tts_speed",
+    "tts_playback_speed",
     "tts_format",
     "tts_read_mode",
     "tts_holdback_sentences",
@@ -60,6 +61,7 @@ _TTS_KEY_FIELDS = (
     "tts_provider",
     "tts_voice",
     "tts_speed",
+    "tts_playback_speed",
     "tts_format",
     "tts_read_mode",
 )
@@ -101,7 +103,7 @@ class Config:
     # the run before the model is told the user may be away (0 = forever).
     ask_timeout_seconds: float = 300.0
 
-    # Root mode: destructive bash commands block on a harness-owned
+    # Destructive commands that escalate to root block on a harness-owned
     # Allow/Deny (fail closed on timeout). Extra regexes that should
     # count as destructive can be configured.
     confirm_destructive: bool = True
@@ -121,6 +123,10 @@ class Config:
     tts_endpoint: str = "https://api.minimax.io/v1/t2a_v2"
     tts_voice: str = "English_expressive_narrator"
     tts_speed: float = 1.0
+    #: How fast the synthesized audio is *played back*: 1.0 is the speed
+    #: it was spoken at, 1.5 is half again as fast. The stretch keeps
+    #: the pitch, so the voice stays the voice (see speech/player.py).
+    tts_playback_speed: float = 1.0
     tts_format: str = "opus"  # opus (preferred) | mp3 | flac | pcm
     tts_read_mode: str = "final"  # "final" | "stream"
     tts_holdback_sentences: int = 1
@@ -312,6 +318,7 @@ def describe(config: Config) -> str:
         f"max turns       : {config.max_turns}",
         f"ask timeout     : {config.ask_timeout_seconds:.0f}s (0 = wait indefinitely)",
         f"tts             : {'on' if config.tts_enabled else 'off'} "
-        f"({config.tts_provider}, {config.tts_read_mode} mode)",
+        f"({config.tts_provider}, {config.tts_read_mode} mode, "
+        f"playback speed {config.tts_playback_speed:g}x)",
     ]
     return "\n".join(lines)

@@ -157,7 +157,9 @@ def test_confirm_skips_benign_commands_without_asking():
 # -- the bash gate --------------------------------------------------------------
 
 
-def make_root_bash(fake_sudo, confirm, passwords=("hunter2",)):
+def make_privileged_bash(fake_sudo, confirm, passwords=("hunter2",)):
+    """A bash tool that may escalate to root: a command that calls sudo
+    asks the user and then runs as root."""
     cache = SudoCredentialCache(
         StaticPasswordProvider(list(passwords)), sudo_bin=str(fake_sudo)
     )
@@ -179,9 +181,9 @@ def test_bash_denied_command_never_touches_sudo(config, fake_sudo):
     # with an authentication error instead of the denial.
     confirmer, _coordinator = make_confirmer(events, timeout=1.0)
 
-    bash = make_root_bash(fake_sudo, confirmer, passwords=())
+    bash = make_privileged_bash(fake_sudo, confirmer, passwords=())
     with pytest.raises(ToolError, match="not run"):
-        bash.execute({"command": "rm -rf /usr/local/junk"})
+        bash.execute({"command": "sudo rm -rf /usr/local/junk"})
 
     asked = [e for e in events if e["kind"] == "question_asked"]
     assert asked, "the destructive command should have asked first"
@@ -195,8 +197,8 @@ def test_bash_allowed_command_runs_as_root(config, fake_sudo):
     confirmer, coordinator = make_confirmer(events)
 
     thread = answer_when_asked(coordinator, events, {"answers": [{"selected": [0]}]})
-    result = make_root_bash(fake_sudo, confirmer).execute(
-        {"command": "echo sudo-$FAKE_SUDO_OK > /tmp/confirm-marker"}
+    result = make_privileged_bash(fake_sudo, confirmer).execute(
+        {"command": "sudo echo sudo-$FAKE_SUDO_OK > /tmp/confirm-marker"}
     )
     thread.join(timeout=5)
 
@@ -205,6 +207,18 @@ def test_bash_allowed_command_runs_as_root(config, fake_sudo):
     with open("/tmp/confirm-marker") as handle:
         assert handle.read() == "sudo-1\n"
     os.remove("/tmp/confirm-marker")
+
+
+def test_bash_command_without_sudo_runs_as_the_user(config, fake_sudo):
+    """A command that needs no privileges is not gated and not elevated."""
+    events: list[dict] = []
+    confirmer, _coordinator = make_confirmer(events)
+
+    bash = make_privileged_bash(fake_sudo, confirmer)
+    result = bash.execute({"command": "echo plain"})
+
+    assert "[exit 0]" in result.output
+    assert [e for e in events if e["kind"] == "question_asked"] == []
 
 
 # -- the daemon flow -------------------------------------------------------------
@@ -221,7 +235,7 @@ def test_daemon_root_confirm_denied(config, fake_sudo, tmp_path):
         cfg,
         provider=FakeProvider(
             [
-                {"tool": "bash", "args": {"command": "rm -rf /var/cache/junk"}},
+                {"tool": "bash", "args": {"command": "sudo rm -rf /var/cache/junk"}},
                 "Cleaned up anyway.",
             ]
         ),
@@ -229,7 +243,7 @@ def test_daemon_root_confirm_denied(config, fake_sudo, tmp_path):
         emitter=lambda event: events.append(event),
     )
     try:
-        daemon.submit("clean the cache", "root")
+        daemon.submit("clean the cache")
 
         assert wait_for(lambda: events_of(events, "question_asked"), timeout=5)
         asked = events_of(events, "question_asked")[0]
@@ -265,7 +279,7 @@ def test_daemon_root_confirm_disabled_runs_directly(config, fake_sudo):
         cfg,
         provider=FakeProvider(
             [
-                {"tool": "bash", "args": {"command": "echo sudo-$FAKE_SUDO_OK"}},
+                {"tool": "bash", "args": {"command": "sudo echo sudo-$FAKE_SUDO_OK"}},
                 "Done.",
             ]
         ),
@@ -273,7 +287,7 @@ def test_daemon_root_confirm_disabled_runs_directly(config, fake_sudo):
         emitter=lambda event: events.append(event),
     )
     try:
-        daemon.submit("clean the cache", "root")
+        daemon.submit("clean the cache")
         assert wait_for(lambda: events_of(events, "run_finished"), timeout=5)
         assert events_of(events, "question_asked") == []
         assert "sudo-1" in events_of(events, "tool_call_finished")[0]["output"]
@@ -288,7 +302,7 @@ def test_daemon_root_benign_command_does_not_ask(config, fake_sudo):
         cfg,
         provider=FakeProvider(
             [
-                {"tool": "bash", "args": {"command": "echo sudo-$FAKE_SUDO_OK"}},
+                {"tool": "bash", "args": {"command": "sudo echo sudo-$FAKE_SUDO_OK"}},
                 "Done.",
             ]
         ),
@@ -296,7 +310,7 @@ def test_daemon_root_benign_command_does_not_ask(config, fake_sudo):
         emitter=lambda event: events.append(event),
     )
     try:
-        daemon.submit("check", "root")
+        daemon.submit("check")
         assert wait_for(lambda: events_of(events, "run_finished"), timeout=5)
         assert events_of(events, "question_asked") == []
     finally:

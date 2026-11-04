@@ -12,10 +12,11 @@
 #   * the daemon owns the session-bus name dna.phoenix.Agent, which the
 #     plasmoid reaches over QDBusConnection::sessionBus() - a system unit
 #     has no session bus to join;
-#   * root mode elevates on demand: the daemon asks for the password with
-#     kdialog (needs the GUI session: DISPLAY/WAYLAND_DISPLAY) and runs the
-#     command through sudo. Running the daemon as root would make sudo a
-#     no-op and turn the password prompt into theatre;
+#   * a command that needs administrator rights elevates on demand: the
+#     daemon asks for the password with kdialog (needs the GUI session:
+#     DISPLAY/WAYLAND_DISPLAY) and runs the command through sudo. Running
+#     the daemon as root would make sudo a no-op and turn the password
+#     prompt into theatre;
 #   * config (~/.config/phoenix-dna) and state (~/.local/state/phoenix-dna)
 #     belong to the desktop user, and keys.json is expected to be 0600.
 #

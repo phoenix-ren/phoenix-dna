@@ -3,7 +3,6 @@
 
 #include "phoenixcontroller.h"
 #include "agentbridge.h"
-#include "agentmode.h"
 #include "audiocapture.h"
 #include "audioringbuffer.h"
 #include "cliprecorder.h"
@@ -16,7 +15,9 @@
 #include <QQmlEngine>
 
 #include <QAction>
+#include <QClipboard>
 #include <QFileInfo>
+#include <QGuiApplication>
 #include <QKeySequence>
 #include <cstdio>
 
@@ -119,21 +120,15 @@ PhoenixController::PhoenixController(QObject *parent)
                 Q_EMIT partialTranscriptChanged();
             });
 
-    // Selecting root makes the daemon pop the sudo password dialog right
-    // away. Cancelling it (or exhausting the attempts) voids the mode
-    // switch: the widget falls back to user mode, as if the root button
-    // had never been pressed. A dialog that fails during a running
-    // prompt (non-empty run id) is that run's error, not a mode change.
+    // The daemon asks for the administrator password when a command
+    // needs administrator rights. A cancelled dialog is worth a word in
+    // the status line: the run itself reports the failure to the model.
     connect(m_agent, &AgentBridge::authFinished, this,
             [this](const QString &runId, bool success) {
-                if (!runId.isEmpty() || success) {
+                if (runId.isEmpty() || success) {
                     return;
                 }
-                if (m_mode == static_cast<int>(AgentMode::Mode::Root)) {
-                    setMode(static_cast<int>(AgentMode::Mode::User));
-                    setStatusMessage(
-                        i18n("Administrator password cancelled; back in user mode."));
-                }
+                setStatusMessage(i18n("Administrator password cancelled."));
             });
     connect(m_transcriber, &Transcriber::failed, this, [this](const QString &message) {
         setTranscribing(false);
@@ -246,39 +241,6 @@ PhoenixController *PhoenixController::create(QQmlEngine *, QJSEngine *)
 {
     // The engine takes ownership of the singleton.
     return new PhoenixController;
-}
-
-void PhoenixController::setMode(int mode)
-{
-    if (m_mode == mode) {
-        return;
-    }
-    m_mode = mode;
-
-    // The agent service needs to know the working context it operates in.
-    const QString directory = AgentMode::workingDirectory(static_cast<AgentMode::Mode>(m_mode));
-    m_agent->setWorkingDirectory(directory);
-    m_agent->setElevated(AgentMode::isElevated(static_cast<AgentMode::Mode>(m_mode)));
-
-    // The daemon learns the mode over D-Bus: selecting root makes it show
-    // the KDE password dialog right away instead of mid-first-prompt.
-    m_agent->setMode(AgentMode::modeName(static_cast<AgentMode::Mode>(m_mode)));
-
-    // The sessions the search lists belong to the mode's user: root-mode
-    // runs are filed under "root", everything else under the login name.
-    Q_EMIT searchUserChanged();
-
-    Q_EMIT modeChanged();
-}
-
-QString PhoenixController::modeIconName(int mode) const
-{
-    return AgentMode::iconName(static_cast<AgentMode::Mode>(mode));
-}
-
-QString PhoenixController::modeDisplayName(int mode) const
-{
-    return AgentMode::displayName(static_cast<AgentMode::Mode>(mode));
 }
 
 void PhoenixController::toggleRecording()
@@ -399,12 +361,9 @@ QString PhoenixController::promptShortcut() const
 
 QString PhoenixController::searchUser() const
 {
-    // The daemon files sessions per user: root-mode runs belong to
-    // "root", everything else (user mode) to the local login name.
-    // The search follows the mode the widget is in.
-    if (m_mode == static_cast<int>(AgentMode::Mode::Root)) {
-        return QStringLiteral("root");
-    }
+    // The daemon files every session under the local login name: the
+    // agent works as the desktop user, and a command that needs
+    // administrator rights asks for the password when it runs.
     return AgentBridge::localUserName();
 }
 
@@ -514,6 +473,24 @@ void PhoenixController::submitText(const QString &text, bool newSession)
     const QVariantList attachments = m_attachments->toPayload();
     m_attachments->clear();
     m_agent->sendPrompt(text, newSession, attachments);
+}
+
+void PhoenixController::copyToClipboard(const QString &text)
+{
+    if (text.isEmpty()) {
+        return;
+    }
+    QClipboard *clipboard = QGuiApplication::clipboard();
+    if (!clipboard) {
+        return;
+    }
+    // Text that is already on the clipboard is left alone: setting it
+    // again would take the clipboard over for nothing (and, on Wayland,
+    // make this process its owner).
+    if (clipboard->text() == text) {
+        return;
+    }
+    clipboard->setText(text);
 }
 
 bool PhoenixController::addAttachment(const QUrl &url)

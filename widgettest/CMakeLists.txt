@@ -4,7 +4,7 @@
 # A standalone testbench for the panel widget.
 #
 # It dlopens the applet plugin straight from the build tree, so the real QML
-# module (controller singleton, mode enum, CompactRepresentation, waveform)
+# module (controller singleton, CompactRepresentation, waveform)
 # registers exactly as it does inside plasmashell — without installing
 # anything. The record button still exercises the real capture path.
 #

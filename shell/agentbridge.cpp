@@ -25,8 +25,8 @@ const QString kPath = QStringLiteral("/org/phoenixdna/Agent");
 const QString kInterface = QStringLiteral("org.phoenixdna.agent.Agent");
 
 // The live agent daemon, as implemented by agent/phoenix_dna/service.py.
-// The dictation contract above is still aspirational; mode selection is
-// what already targets the running service.
+// The dictation contract above is still aspirational; the prompt
+// submission is what already targets the running service.
 const QString kDaemonService = QStringLiteral("dna.phoenix.Agent");
 const QString kDaemonPath = QStringLiteral("/dna/phoenix/Agent");
 const QString kDaemonInterface = QStringLiteral("dna.phoenix.Agent");
@@ -90,7 +90,7 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
     // dismiss countdown.
     QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
                                           QStringLiteral("RunStarted"), this,
-                                          SLOT(onRunStarted(QString, QString, QString)));
+                                          SLOT(onRunStarted(QString, QString)));
     QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
                                           QStringLiteral("TextDelta"), this,
                                           SLOT(onTextDelta(QString, QString)));
@@ -114,7 +114,7 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
         SLOT(onTranscriptCleaned(QString, QString, QString, QString)));
     QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
                                           QStringLiteral("SessionTitleChanged"), this,
-                                          SLOT(onSessionTitleChanged(QString, QString, QString)));
+                                          SLOT(onSessionTitleChanged(QString, QString)));
     // ask_user: the run blocks on a question until it is answered. The
     // question renders as the pane's question card; its end (answered,
     // timeout, cancelled) takes the card away again.
@@ -158,75 +158,28 @@ void AgentBridge::stopDictation()
     QDBusConnection::sessionBus().asyncCall(message);
 }
 
-void AgentBridge::setWorkingDirectory(const QString &path)
-{
-    if (m_workingDirectory == path) {
-        return;
-    }
-    m_workingDirectory = path;
-
-    QDBusMessage message = QDBusMessage::createMethodCall(kService, kPath, kInterface,
-                                                          QStringLiteral("setWorkingDirectory"));
-    message << path;
-    QDBusConnection::sessionBus().asyncCall(message);
-}
-
-void AgentBridge::setElevated(bool elevated)
-{
-    if (m_elevated == elevated) {
-        return;
-    }
-    m_elevated = elevated;
-
-    QDBusMessage message =
-        QDBusMessage::createMethodCall(kService, kPath, kInterface, QStringLiteral("setElevated"));
-    message << elevated;
-    QDBusConnection::sessionBus().asyncCall(message);
-}
-
-void AgentBridge::setMode(const QString &mode)
-{
-    m_modeName = mode;
-    // Sessions are filed per mode by the daemon: a follow-on after a mode
-    // switch must start a new history instead of landing in (or aliasing)
-    // the previous mode's conversation. The previous mode's session title
-    // goes with it — the next title to arrive here belongs to the new
-    // session.
-    m_sessionId.clear();
-    if (!m_sessionTitle.isEmpty()) {
-        m_sessionTitle.clear();
-        Q_EMIT sessionTitleChanged();
-    }
-
-    QDBusMessage message = QDBusMessage::createMethodCall(
-        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("SetMode"));
-    message << mode;
-    QDBusConnection::sessionBus().asyncCall(message);
-}
-
 void AgentBridge::sendPrompt(const QString &prompt,
                              bool newSession,
                              const QVariantList &attachments)
 {
-    // SubmitPrompt(prompt, mode, session_id): the session id continues the
-    // conversation of the widget's latest run — unless the prompt starts a
-    // new session (record button on the desktop pane): the id is dropped,
-    // so the daemon opens a fresh conversation. The text, mode and intent
-    // are remembered so RunStarted can pair them with the run they begin
-    // (queued prompts begin in submission order) — the mode names the
-    // exchange's sender in the pane's history, the intent decides whether
-    // that history restarts.
+    // SubmitPrompt(prompt, session_id): the session id continues the
+    // conversation of the widget's latest run — unless the prompt starts
+    // a new session (record button on the desktop pane): the id is
+    // dropped, so the daemon opens a fresh conversation. The text and the
+    // intent are remembered so RunStarted can pair them with the run they
+    // begin (queued prompts begin in submission order) — the intent
+    // decides whether the pane's history restarts.
     if (newSession) {
         m_sessionId.clear();
     }
-    m_pendingPrompts.append({prompt, m_modeName, newSession});
+    m_pendingPrompts.append({prompt, newSession});
 
     QDBusMessage message = QDBusMessage::createMethodCall(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("SubmitPrompt"));
-    message << prompt << m_modeName << m_sessionId;
+    message << prompt << m_sessionId;
 
     if (!attachments.isEmpty()) {
-        // SubmitPromptWithAttachments(prompt, mode, session_id, attachments):
+        // SubmitPromptWithAttachments(prompt, session_id, attachments):
         // the same call with the attached files as a JSON payload. Only
         // used when there are attachments, so a daemon that predates the
         // method still serves plain prompts.
@@ -234,7 +187,7 @@ void AgentBridge::sendPrompt(const QString &prompt,
         const QByteArray payload = QJsonDocument(files).toJson(QJsonDocument::Compact);
         message = QDBusMessage::createMethodCall(kDaemonService, kDaemonPath, kDaemonInterface,
                                                  QStringLiteral("SubmitPromptWithAttachments"));
-        message << prompt << m_modeName << m_sessionId << QString::fromUtf8(payload);
+        message << prompt << m_sessionId << QString::fromUtf8(payload);
     }
 
     QDBusConnection::sessionBus().asyncCall(message);
@@ -417,9 +370,12 @@ void AgentBridge::storeExchange(const QString &prompt,
     m_conversation.beginExchange(prompt, sender);
     if (!messages.isEmpty()) {
         // The last message is the answer; the ones before it are the
-        // agent's working notes.
-        m_conversation.setThinking(
-            messages.mid(0, messages.size() - 1).join(QStringLiteral("\n\n")));
+        // agent's own words from the turns before it — the trail of the
+        // run, in the order it was said.
+        const QStringList notes = messages.mid(0, messages.size() - 1);
+        for (const QString &note : notes) {
+            m_conversation.appendTrailText(note);
+        }
         m_conversation.setResult(messages.last());
     }
     m_conversation.finishExchange();
@@ -659,10 +615,9 @@ void AgentBridge::onActionResult(const QString &text, bool ok)
     // pending entry when it sees the matching result.
 }
 
-void AgentBridge::onRunStarted(const QString &runId, const QString &mode, const QString &sessionId)
+void AgentBridge::onRunStarted(const QString &runId, const QString &sessionId)
 {
     Q_UNUSED(runId)
-    Q_UNUSED(mode)
 
     // A fresh run opens a row in the pane's history. A run submitted as a
     // *new session* (record button on the desktop pane) first drops the
@@ -694,7 +649,7 @@ void AgentBridge::onRunStarted(const QString &runId, const QString &mode, const 
                 Q_EMIT sessionTitleChanged();
             }
         }
-        m_conversation.beginExchange(queued.text, senderNameForMode(queued.mode));
+        m_conversation.beginExchange(queued.text, localUserName());
     } else {
         m_conversation.beginExchange(QString(), QString());
     }
@@ -763,14 +718,15 @@ void AgentBridge::onToolCallStarted(const QString &runId,
 
     // The text the model produced before it reached for a tool is its
     // working notes, not the answer: move it out of the answer, so the
-    // answer keeps the place it deserves in the pane.
+    // answer keeps the place it deserves in the pane — and out of the
+    // answer's place in the trail, where it keeps the order it was
+    // said in.
     flushDeltas();
-    m_conversation.demoteResultToThinking();
-    m_conversation.noteToolCall();
+    m_conversation.demoteResult();
 
-    // Head of a log entry: the tool name and its arguments. Written at
+    // Head of the step: the tool name and its arguments. Written at
     // "started" rather than "finished" so a command that hangs or dies with
-    // the run still shows up in the log. Bash gets its command as a bash
+    // the run still shows up in the trail. Bash gets its command as a bash
     // block; anything else is shown as the raw JSON arguments.
     QString language = QStringLiteral("json");
     QString body = argsJson;
@@ -783,8 +739,10 @@ void AgentBridge::onToolCallStarted(const QString &runId,
             body = args.value(QLatin1String("command")).toString();
         }
     }
-    m_conversation.appendToolLog(QStringLiteral("\n#### %1 %2\n\n%3\n\n")
-                                     .arg(QStringLiteral("⚒"), tool, fencedBlock(body, language)));
+    m_conversation.beginToolCall(
+        tool,
+        QStringLiteral("#### %1 %2\n\n%3")
+            .arg(QStringLiteral("⚒"), tool, fencedBlock(body, language)));
 }
 
 void AgentBridge::onToolCallFinished(const QString &runId,
@@ -797,20 +755,21 @@ void AgentBridge::onToolCallFinished(const QString &runId,
     Q_UNUSED(callId)
     Q_UNUSED(tool)
 
-    // Tail of the entry: outcome plus the command's output, fenced so the
+    // Tail of the step: outcome plus the command's output, fenced so the
     // pane's Markdown renderer shows it verbatim.
     const QString mark =
         status == QLatin1String("success") ? QStringLiteral("✓") : QStringLiteral("✗ error");
-    m_conversation.appendToolLog(
-        QStringLiteral("%1\n\n%2\n")
+    m_conversation.endToolCall(
+        status,
+        QStringLiteral("%1\n\n%2")
             .arg(mark, fencedBlock(elideOutput(output, kToolLogOutputLimit), QString())));
 }
 
 QString AgentBridge::senderNameForMode(const QString &mode)
 {
     // The pane's bubbles point at whoever (or what) issued the prompt:
-    // root prompts come from "root", user prompts carry the actual login
-    // name.
+    // the sessions of the older daemon carry "root", everything else the
+    // actual login name.
     if (mode == QLatin1String("root")) {
         return QStringLiteral("root");
     }
@@ -898,11 +857,9 @@ void AgentBridge::onRunFinished(const QString &runId,
 
 void AgentBridge::onAuthFinished(const QString &runId, bool success)
 {
-    // Pure pass-through: the bridge is a dumb pipe, the mode policy that
-    // reacts to a cancelled password dialog lives in the controller.
-    // An empty run id marks the pre-authentication dialog the daemon
-    // shows when root mode is selected; a non-empty one belongs to a
-    // running prompt that needed the password again.
+    // Pure pass-through: the bridge is a dumb pipe, and the reaction to a
+    // cancelled password dialog lives in the controller. The run id names
+    // the run that needed the password.
     Q_EMIT authFinished(runId, success);
 }
 
@@ -925,12 +882,8 @@ void AgentBridge::onTranscriptCleaned(const QString &cleanupId,
     Q_EMIT transcriptCleaned(source, cleaned);
 }
 
-void AgentBridge::onSessionTitleChanged(const QString &sessionId,
-                                        const QString &mode,
-                                        const QString &title)
+void AgentBridge::onSessionTitleChanged(const QString &sessionId, const QString &title)
 {
-    Q_UNUSED(mode)
-
     // Only the session this widget is following matters: runs started
     // elsewhere (the REPL) name their own sessions, which must not
     // relabel the pane. The title was also persisted daemon-side, so the

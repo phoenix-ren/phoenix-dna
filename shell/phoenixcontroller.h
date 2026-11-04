@@ -7,7 +7,6 @@
 #include <QQmlEngine>
 #include <QString>
 
-#include "agentmode.h"
 #include "promptattachments.h"
 #include "settingsstore.h"
 #include "windowscreenshotpicker.h"
@@ -41,7 +40,6 @@ class PhoenixController : public QObject
     QML_ELEMENT
     QML_SINGLETON
 
-    Q_PROPERTY(int mode READ mode WRITE setMode NOTIFY modeChanged)
     Q_PROPERTY(bool recording READ isRecording NOTIFY recordingChanged)
     Q_PROPERTY(AudioRingBuffer *waveform READ waveform CONSTANT)
     Q_PROPERTY(AgentBridge *agent READ agent CONSTANT)
@@ -67,9 +65,8 @@ class PhoenixController : public QObject
 
     /*! \brief The user whose session history the search browses.
      *
-     * "root" in root mode (the daemon files root sessions under their
-     * own database), the local login name otherwise. */
-    Q_PROPERTY(QString searchUser READ searchUser NOTIFY searchUserChanged)
+     * The local login name: the daemon files every session under it. */
+    Q_PROPERTY(QString searchUser READ searchUser CONSTANT)
 
     /*! \brief The files attached to the prompt that is being composed.
      *
@@ -94,9 +91,6 @@ public:
 
     /*! \brief Creates the singleton. Called by the QML engine. */
     static PhoenixController *create(QQmlEngine *engine, QJSEngine *);
-
-    int mode() const { return m_mode; }
-    void setMode(int mode);
 
     bool isRecording() const { return m_recording; }
     AudioRingBuffer *waveform() const { return m_waveform; }
@@ -157,12 +151,6 @@ public:
      * The same thing the global shortcut does; the buttons call it so the
      * feature is discoverable. */
     Q_INVOKABLE void startScreenshot();
-
-    /*! \brief The icon representing the given mode. */
-    Q_INVOKABLE QString modeIconName(int mode) const;
-
-    /*! \brief A human-readable name for the given mode. */
-    Q_INVOKABLE QString modeDisplayName(int mode) const;
 
     /*! \brief Toggles capture. Bound to the record button. */
     Q_INVOKABLE void toggleRecording();
@@ -230,9 +218,9 @@ public:
      * then on, so a follow-on typed in the pane continues that very
      * conversation.
      *
-     * \a mode is the session's mode ("root" or "user"), which
-     * names the sender of its queries, and \a title the name the pane's
-     * header shows. */
+     * \a mode is the session's mode, which names the sender of its
+     * queries ("root" for the sessions of the older daemon, the login name
+     * otherwise), and \a title the name the pane's header shows. */
     Q_INVOKABLE void openSessionResults(const QString &sessionId,
                                         const QString &mode,
                                         const QString &title);
@@ -246,8 +234,16 @@ public:
      * record button). */
     Q_INVOKABLE void submitText(const QString &text, bool newSession);
 
+    /*! \brief Puts \a text on the system clipboard.
+     *
+     * What the shell asks for when a dictated prompt becomes editable:
+     * the prompt is on the clipboard, ready to be pasted somewhere else.
+     *
+     * Empty text is ignored — the clipboard is never emptied by this —
+     * and text that is already on the clipboard is left alone. */
+    Q_INVOKABLE void copyToClipboard(const QString &text);
+
 Q_SIGNALS:
-    void modeChanged();
     void recordingChanged();
     void partialTranscriptChanged();
     void transcribingChanged();
@@ -255,7 +251,6 @@ Q_SIGNALS:
     void recordShortcutChanged();
     void searchShortcutChanged();
     void promptShortcutChanged();
-    void searchUserChanged();
     void sessionSearchOpenChanged();
     void promptEditorOpenChanged();
 
@@ -308,7 +303,6 @@ private:
     // Whether the prompt editor is on screen: the panel's keyboard
     // button is a toggle, and this is its state.
     bool m_promptEditorOpen = false;
-    int m_mode = static_cast<int>(AgentMode::Mode::User);
     QString m_partialTranscript;
     QString m_statusMessage;
 };

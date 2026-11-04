@@ -130,8 +130,20 @@ PlasmoidItem {
         target: Phoenix.PhoenixController
 
         function onPartialTranscriptChanged() {
-            dictationOverlay.transcript = Phoenix.PhoenixController.partialTranscript;
-            resultsWindow.transcript = Phoenix.PhoenixController.partialTranscript;
+            const text = Phoenix.PhoenixController.partialTranscript;
+            dictationOverlay.transcript = text;
+            resultsWindow.transcript = text;
+            // The voice input has ended and the transcript is the prompt
+            // the user is about to check: it goes to the clipboard, so it
+            // can be pasted elsewhere without being picked out of the
+            // editor by hand. A transcript that is still being recorded or
+            // transcribed is not a prompt yet, and an empty one is nothing
+            // to copy.
+            if (text.length > 0
+                    && !Phoenix.PhoenixController.recording
+                    && !Phoenix.PhoenixController.transcribing) {
+                Phoenix.PhoenixController.copyToClipboard(text);
+            }
         }
 
         function onTranscribingChanged() {
@@ -572,8 +584,8 @@ PlasmoidItem {
         // No anchor: the search is a workspace of its own, centred on
         // the display - not a popup next to the widget.
 
-        // The user whose history is searched: root mode browses root's
-        // sessions, every other mode the local user's.
+        // The user whose history is searched: the local login name -
+        // the agent works as the desktop user.
         user: Phoenix.PhoenixController.searchUser
 
         // The daemon's answers: the matching sessions, and the messages
@@ -656,6 +668,7 @@ PlasmoidItem {
         speechEnabled: Phoenix.PhoenixController.settings.speechEnabled
         speechReadMode: Phoenix.PhoenixController.settings.speechReadMode
         speechVoice: Phoenix.PhoenixController.settings.speechVoice
+        speechPlaybackSpeed: Phoenix.PhoenixController.settings.speechPlaybackSpeed
         speechFromEnvironment: Phoenix.PhoenixController.settings.speechFromEnvironment
 
         onLlmKeySaveRequested: (key) =>
@@ -696,6 +709,10 @@ PlasmoidItem {
         }
         onSpeechVoiceChangeRequested: (voice) => {
             Phoenix.PhoenixController.settings.saveSpeechVoice(voice)
+            Phoenix.PhoenixController.agent.reloadSpeech()
+        }
+        onSpeechPlaybackSpeedChangeRequested: (speed) => {
+            Phoenix.PhoenixController.settings.saveSpeechPlaybackSpeed(speed)
             Phoenix.PhoenixController.agent.reloadSpeech()
         }
         onSpeechTestRequested:

@@ -48,8 +48,8 @@ PlasmaCore.Dialog {
     // message, with the keys "role", "content" and "ts".
     property var messages: []
 
-    // The user whose history is searched ("root" or the local login
-    // name). Bound by the shell.
+    // The user whose history is searched (the local login name).
+    // Bound by the shell.
     property string user: ""
 
     // Emitted when the query changed: the shell asks the daemon for the
@@ -307,8 +307,8 @@ PlasmaCore.Dialog {
             }
         }
 
-        // The searched user follows the widget's mode: when it changes,
-        // the list is fetched again - for the new user.
+        // The searched user is fixed (the local login name), so the list
+        // is fetched once, when the overlay opens.
         Connections {
             target: searchOverlay
 
@@ -322,13 +322,17 @@ PlasmaCore.Dialog {
         implicitWidth: searchOverlay.searchWidth
         implicitHeight: searchOverlay.searchHeight
 
-        // The semi-transparent backdrop, painted after the chosen colour
-        // scheme (see PhoenixTheme) — the theme's own background would be
-        // opaque; the dialog surface itself stays bare.
+        // The backdrop, painted after the chosen colour scheme (see
+        // PhoenixTheme) — the theme's own background would be opaque; the
+        // dialog surface itself stays bare.
+        //
+        // The search's own backdrop colour: black and nearly opaque in
+        // the dark mode, so the window reads as a hole cut into the
+        // desktop rather than as a grey haze over it.
         Rectangle {
             anchors.fill: parent
             radius: Kirigami.Units.smallSpacing
-            color: PhoenixTheme.backgroundColor
+            color: PhoenixTheme.searchBackdropColor
             border.width: 1
             border.color: PhoenixTheme.backdropBorderColor
         }

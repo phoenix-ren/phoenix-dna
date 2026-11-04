@@ -4,7 +4,7 @@
 """Web search tools: Tavily and Exa.
 
 Both are simple JSON-over-HTTPS POST APIs, so they are implemented with
-urllib - no SDK dependency. Every mode registers them; if a key is
+urllib - no SDK dependency. Both are registered; if a key is
 missing, the corresponding tool is simply not registered (and the system
 prompt does not mention it).
 """

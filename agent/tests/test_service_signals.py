@@ -83,10 +83,9 @@ def test_title_event_maps_to_session_title_changed():
         events.make(
             events.SESSION_TITLE_CHANGED,
             session_id="abc123",
-            mode="user",
             title="First US President",
         )
     )
     assert service.calls == [
-        ("SessionTitleChanged", ("abc123", "user", "First US President"))
+        ("SessionTitleChanged", ("abc123", "First US President"))
     ]

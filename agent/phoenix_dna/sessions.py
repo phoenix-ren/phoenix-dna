@@ -8,10 +8,10 @@ Layout::
     <data_dir>/users/<user>/sessions.db      # one DB per user
     <data_dir>/sessions/<mode>/<id>.jsonl    # legacy store, imported once
 
-The user dimension follows the widget's modes: root-mode sessions belong to
-``root``, everything else (user mode, plus any legacy ``web`` sessions from
-an older daemon) belongs to the local login name — an anonymous browse was
-still this human's history.
+The user dimension: everything the agent does belongs to the local login
+name — an anonymous browse was still this human's history. Sessions
+recorded by an older daemon (the removed ``root`` mode, the even older
+``web`` mode) keep their own user, so their history stays where it was.
 
 Schema (per DB)::
 
@@ -24,8 +24,7 @@ Schema (per DB)::
 ``message_json`` keeps the full OpenAI-style message (tool calls included)
 for faithful replay into the LLM conversation. ``runs`` is the audit trail
 (run_started / run_finished); only ``messages`` are replayed on resume.
-System prompts are not persisted - they are rebuilt from the mode on every
-run.
+System prompts are not persisted - they are rebuilt on every run.
 """
 
 from __future__ import annotations
@@ -48,6 +47,12 @@ log = logging.getLogger("phoenix.sessions")
 
 #: How long the preview of a session's first query may get.
 _PREVIEW_LENGTH = 120
+
+#: The mode every session is filed under. The agent works as the desktop
+#: user; sessions recorded by an older daemon carry their own mode ("root"
+#: back then, when the panel had a root button), and that is what the
+#: search still shows for them.
+SESSION_MODE = "user"
 
 #: Reasoning models wrap their thinking in these tags inside the content.
 _THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
@@ -162,12 +167,11 @@ class SessionStore:
     # -- users --------------------------------------------------------------
 
     def user_for_mode(self, mode: str) -> str:
-        """Which user's history a mode's sessions belong to.
+        """Which user's history a session of the given mode belongs to.
 
-        Root-mode sessions are filed under "root"; user-mode sessions
-        belong to the local login name. Any other mode string can only
-        come from history rows of an older daemon (the removed web
-        mode) — they stay in the local login name's database.
+        Everything the agent does now belongs to the local login name.
+        The modes of the older daemon ("root", "web") only come from
+        history rows of that daemon — they stay in their own database.
         """
         return "root" if mode == "root" else self.local_user
 
@@ -488,13 +492,13 @@ class SessionManager:
         self.max_cached = max_cached
         self._cache: OrderedDict[tuple[str, str], Conversation] = OrderedDict()
 
-    def get(self, mode_name: str, session_id: str = "") -> Conversation:
+    def get(self, session_id: str = "") -> Conversation:
         """Fetch or create a conversation.
 
         An empty or unknown ``session_id`` starts a fresh conversation in
-        the user (and mode) the store files it under.
+        the user's own history.
         """
-        user = self.store.user_for_mode(mode_name)
+        user = self.store.user_for_mode(SESSION_MODE)
         if session_id:
             key = (user, session_id)
             cached = self._cache.get(key)
@@ -503,14 +507,14 @@ class SessionManager:
                 return cached
             conversation = Conversation(
                 id=session_id,
-                mode=mode_name,
+                mode=SESSION_MODE,
                 user=user,
                 messages=self.store.read_messages(user, session_id),
             )
         else:
             conversation = Conversation(
                 id=uuid4().hex[:12],
-                mode=mode_name,
+                mode=SESSION_MODE,
                 user=user,
                 messages=[],
             )

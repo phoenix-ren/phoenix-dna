@@ -3,9 +3,14 @@
 
 """The bash tool.
 
-* user mode: run ``bash -c <command>`` directly in the mode's working dir.
-* root mode: wrap in ``sudo -S -p '' -- bash -c <command>`` and feed the
-  password (obtained/cached via :mod:`phoenix_dna.privileges`) on stdin.
+The command runs as the desktop user, in the agent's working directory:
+``bash -c <command>``, with stdin closed.
+
+A command that asks for administrator rights (a ``sudo`` call) is
+escalated on demand: it is wrapped in ``sudo -S -p '' -- bash -c
+<command>`` and the password the user typed (obtained/cached via
+:mod:`phoenix_dna.privileges`) is fed on stdin. A destructive escalated
+command is confirmed by the user first (see :mod:`phoenix_dna.confirm`).
 
 Subprocesses start in their own session so that cancellation and timeouts
 kill the whole process group, not just bash.
@@ -14,6 +19,7 @@ kill the whole process group, not just bash.
 from __future__ import annotations
 
 import os
+import re
 import signal
 import subprocess
 import threading
@@ -46,6 +52,87 @@ _INTERACTIVE_HINT = (
     "which is closed and nobody can answer it; re-run with a non-interactive "
     "flag (e.g. dnf -y, apt-get -y, flatpak install -y)"
 )
+
+#: The command that asks for administrator rights. A command that starts
+#: one of its segments with it is escalated on demand: the user is asked
+#: for their password and the command then runs as root.
+_ELEVATION_COMMAND = "sudo"
+
+#: Words that may stand in front of the command: "then sudo ls" and
+#: "time sudo ls" are sudo calls too.
+_ELEVATION_WRAPPERS = (
+    "!",
+    "then",
+    "else",
+    "do",
+    "time",
+    "exec",
+    "command",
+    "nohup",
+)
+
+#: Splits a command into the segments a shell would run one after another.
+_SEGMENT_SPLIT = re.compile(r";|\n|&&|\|\||\|")
+
+#: What may stand in front of a command: whitespace, environment
+#: assignments ("FOO=bar ls") and the wrappers above.
+_LEAD = re.compile(
+    r"^(?P<lead>(?:\s+|\s*[A-Za-z_][A-Za-z0-9_]*=\S*\s+|\s*(?:"
+    + "|".join(re.escape(word) for word in _ELEVATION_WRAPPERS)
+    + r")\s+)*)(?P<word>\S+)"
+)
+
+
+def _split_keep(command: str) -> list[tuple[str, str]]:
+    """The command's segments, each with the separator that followed it."""
+    parts = []
+    start = 0
+    for match in _SEGMENT_SPLIT.finditer(command):
+        parts.append((command[start : match.start()], match.group()))
+        start = match.end()
+    parts.append((command[start:], ""))
+    return parts
+
+
+def _analyse_segment(segment: str) -> tuple[bool, str]:
+    """(asks for root, segment without the sudo call) for one segment."""
+    match = _LEAD.match(segment)
+    if match is None or match.group("word") != _ELEVATION_COMMAND:
+        return False, segment
+    rest = segment[match.end() :]
+    # A call whose flags carry meaning ("sudo -u postgres psql") keeps
+    # them: taking them out would change what the command does.
+    if rest.lstrip().startswith("-"):
+        return True, segment
+    return True, segment[: match.start("word")] + rest.lstrip()
+
+
+def analyse_command(command: str) -> tuple[bool, str]:
+    """(asks for root, the command without its sudo calls).
+
+    A command that calls ``sudo`` needs administrator rights: the daemon
+    then asks the user for their password and runs the command as root.
+    The command that runs then no longer needs its own ``sudo`` - it would
+    be a second one, asking for a password of its own.
+
+    The check is deliberately conservative - a ``sudo`` buried in the
+    middle of a segment, or quoted inside another word, is not seen, and
+    such a command simply runs as the user (and fails with a permission
+    error).
+    """
+    asks_for_root = False
+    parts = []
+    for segment, separator in _split_keep(command):
+        segment_asks, stripped = _analyse_segment(segment)
+        asks_for_root = asks_for_root or segment_asks
+        parts.append(stripped)
+        parts.append(separator)
+    return asks_for_root, "".join(parts)
+
+
+def needs_elevation(command: str) -> bool:
+    """Whether the command asks for administrator rights."""
+    return analyse_command(command)[0]
 
 
 def interactive_hint(stdout: str, stderr: str, rc: int) -> str | None:
@@ -92,7 +179,10 @@ class BashTool:
             "stdout, stderr and the exit code. There is no terminal: stdin "
             "is closed and nobody can answer prompts, so use non-interactive "
             "flags (dnf -y, apt-get -y, flatpak install -y, ...) and pass an "
-            "explicit timeout for slow commands like package installs."
+            "explicit timeout for slow commands like package installs. A "
+            "command that needs administrator rights is run with sudo: the "
+            "user is asked for their password, and destructive commands are "
+            "confirmed by them before they run."
         ),
         parameters={
             "type": "object",
@@ -131,9 +221,10 @@ class BashTool:
         self.max_timeout = max_timeout
         self.max_output_chars = max_output_chars
         self.extra_env = extra_env or {}
-        # Root mode only: a RootCommandConfirmer whose confirm() blocks
-        # destructive commands on a harness-owned Allow/Deny. None (user
-        # and web modes, or the feature disabled) runs everything as before.
+        # Escalated commands only: a RootCommandConfirmer whose confirm()
+        # blocks destructive commands on a harness-owned Allow/Deny. None
+        # (no credential cache, or the feature disabled) runs everything as
+        # the user, as before.
         self.confirm = confirm
 
     # -- public API ---------------------------------------------------------
@@ -151,8 +242,9 @@ class BashTool:
             timeout = self.default_timeout
         timeout = max(1.0, min(timeout, self.max_timeout))
 
-        if self.credential_cache is not None:
-            return self._execute_sudo(command, timeout, cancel)
+        asks_for_root, privileged = analyse_command(command)
+        if asks_for_root and self.credential_cache is not None:
+            return self._execute_privileged(privileged, command, timeout, cancel)
         rc, out, err = self._run(
             ["bash", "-c", command], input_bytes=None, timeout=timeout, cancel=cancel
         )
@@ -169,14 +261,25 @@ class BashTool:
             text += "\n" + hint
         return text
 
-    # -- sudo path -----------------------------------------------------------
+    # -- the privileged path ---------------------------------------------------
 
-    def _execute_sudo(self, command: str, timeout: float, cancel) -> ToolResult:
-        # The harness confirmation comes first: a denied command must not
-        # spend a password attempt, and a destructive command nobody
-        # confirmed (timeout: fail closed) never reaches sudo at all.
+    def _execute_privileged(
+        self, command: str, original: str, timeout: float, cancel
+    ) -> ToolResult:
+        """Run a command that asked for administrator rights.
+
+        ``command`` is what runs — the model's own ``sudo`` call is
+        taken out of it, the run under sudo replaces it; ``original`` is
+        what the model asked for, and that is what the user confirms and
+        what the log shows.
+
+        The password the user typed is fed to sudo on stdin. The harness
+        confirmation comes first: a denied command must not spend a
+        password attempt, and a destructive command nobody confirmed
+        (timeout: fail closed) never reaches sudo at all.
+        """
         if self.confirm is not None:
-            allowed, why = self.confirm.confirm(command, cancel=cancel)
+            allowed, why = self.confirm.confirm(original, cancel=cancel)
             if not allowed:
                 if why == "cancelled":
                     raise ToolError("command cancelled")
@@ -207,7 +310,7 @@ class BashTool:
             break
         return ToolResult(
             output=self._compose_output(out, err, rc),
-            details={"command": command, "exit_code": rc, "sudo": True},
+            details={"command": original, "exit_code": rc, "sudo": True},
         )
 
     # -- subprocess plumbing --------------------------------------------------

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
-"""Bash tool tests, including the sudo (root mode) path via a fake sudo."""
+"""Bash tool tests, including the escalation to root via a fake sudo."""
 
 from __future__ import annotations
 
@@ -12,7 +12,13 @@ import pytest
 
 from phoenix_dna.privileges import SudoCredentialCache, StaticPasswordProvider
 from phoenix_dna.tools import ToolError
-from phoenix_dna.tools.shell import BashTool, format_output, interactive_hint
+from phoenix_dna.tools.shell import (
+    BashTool,
+    analyse_command,
+    format_output,
+    interactive_hint,
+    needs_elevation,
+)
 
 
 def make_tool(cwd, **kw):
@@ -92,19 +98,50 @@ def test_interactive_hint_only_on_failure():
     assert interactive_hint("plain failure", "", 1) is None
 
 
-# -- sudo / root mode ---------------------------------------------------------
+# -- escalation to root ---------------------------------------------------------
 
 
 def sudo_tool(home_dir, fake_sudo, passwords, **kw):
+    """A tool that may escalate: it has the credential cache."""
     cache = SudoCredentialCache(
         StaticPasswordProvider(passwords), sudo_bin=str(fake_sudo)
     )
     return make_tool(home_dir, credential_cache=cache, sudo_bin=str(fake_sudo), **kw)
 
 
+def test_needs_elevation():
+    assert needs_elevation("sudo dnf install -y btop")
+    assert needs_elevation("make && sudo make install")
+    assert needs_elevation("FOO=bar sudo ls")
+    assert needs_elevation("then sudo ls")
+    # a sudo that is only mentioned, not called
+    assert not needs_elevation("echo hello")
+    assert not needs_elevation('echo "sudo rm -rf /"')
+    assert not needs_elevation("ls -la")
+
+
+def test_analyse_command_takes_the_sudo_call_out():
+    # the command runs under sudo already - its own sudo would ask for a
+    # password of its own
+    assert analyse_command("sudo dnf install -y btop") == (
+        True,
+        "dnf install -y btop",
+    )
+    assert analyse_command("make && sudo make install") == (
+        True,
+        "make && make install",
+    )
+    # a call whose flags carry meaning keeps them
+    assert analyse_command("sudo -u postgres psql") == (
+        True,
+        "sudo -u postgres psql",
+    )
+    assert analyse_command("ls -la") == (False, "ls -la")
+
+
 def test_sudo_happy_path(home_dir, fake_sudo):
     tool = sudo_tool(home_dir, fake_sudo, ["hunter2"])
-    result = tool.execute({"command": "echo sudo-ok-$FAKE_SUDO_OK"})
+    result = tool.execute({"command": "sudo echo sudo-ok-$FAKE_SUDO_OK"})
     assert "sudo-ok-1" in result.output
     assert result.details["sudo"] is True
 
@@ -112,20 +149,29 @@ def test_sudo_happy_path(home_dir, fake_sudo):
 def test_sudo_retries_wrong_password(home_dir, fake_sudo):
     # the first ask fails validation, the second succeeds
     tool = sudo_tool(home_dir, fake_sudo, ["wrong", "hunter2"])
-    result = tool.execute({"command": "echo fine-$FAKE_SUDO_OK"})
+    result = tool.execute({"command": "sudo echo fine-$FAKE_SUDO_OK"})
     assert "fine-1" in result.output
 
 
 def test_sudo_gives_up_without_password(home_dir, fake_sudo):
     tool = sudo_tool(home_dir, fake_sudo, [])
     with pytest.raises(ToolError, match="root authentication failed"):
-        tool.execute({"command": "echo nope"})
+        tool.execute({"command": "sudo echo nope"})
 
 
 def test_sudo_timeout(home_dir, fake_sudo):
     tool = sudo_tool(home_dir, fake_sudo, ["hunter2"], default_timeout=1.0)
     with pytest.raises(ToolError, match="timed out"):
-        tool.execute({"command": "sleep 30"})
+        tool.execute({"command": "sudo sleep 30"})
+
+
+def test_without_a_credential_cache_nothing_escalates(home_dir, fake_sudo):
+    """No credential cache: the command runs as the user, sudo and all."""
+    tool = make_tool(home_dir, sudo_bin=str(fake_sudo))
+    result = tool.execute({"command": "sudo echo plain-$FAKE_SUDO_OK"})
+    # the real sudo would ask for a password on a closed stdin and fail;
+    # what matters here is that the tool did not escalate on its own
+    assert "sudo" not in result.details
 
 
 def test_format_output_truncation():

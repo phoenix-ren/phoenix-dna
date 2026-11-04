@@ -55,6 +55,23 @@ Qt::KeyboardModifiers relevantModifiers(int modifiers)
  * a number; both are read, and anything that is not a size at all
  * comes out as zero — "the size the window would give the answer
  * anyway". */
+/*! \brief The playback speed stored under \a field in keys.json.
+ *
+ * The window writes strings; a hand-edited file may carry a real
+ * number, and both are honoured (the same arrangement as fontSize).
+ * A speed that cannot be read keeps the voice's own: 1.0. Anything
+ * readable is clamped to the window the daemon's player stretches
+ * within (atempo chaining, see speech/player.py there). */
+qreal playbackSpeed(const QJsonObject &keys, const QString &field)
+{
+    const QJsonValue value = keys.value(field);
+    bool isNumber = value.isDouble();
+    const qreal speed = value.isDouble()
+        ? value.toDouble()
+        : value.toString().toDouble(&isNumber);
+    return isNumber ? qBound(0.25, speed, 4.0) : 1.0;
+}
+
 int fontSize(const QJsonObject &keys, const QString &field)
 {
     const QJsonValue value = keys.value(field);
@@ -239,6 +256,8 @@ void SettingsStore::refresh()
     if (speechVoice.isEmpty()) {
         speechVoice = QStringLiteral("English_expressive_narrator");
     }
+    const qreal speechPlaybackSpeed =
+        playbackSpeed(keys, QStringLiteral("tts_playback_speed"));
 
     if (llmKey != m_llmApiKey) {
         m_llmApiKey = llmKey;
@@ -283,6 +302,10 @@ void SettingsStore::refresh()
     if (speechVoice != m_speechVoice) {
         m_speechVoice = speechVoice;
         Q_EMIT speechVoiceChanged();
+    }
+    if (speechPlaybackSpeed != m_speechPlaybackSpeed) {
+        m_speechPlaybackSpeed = speechPlaybackSpeed;
+        Q_EMIT speechPlaybackSpeedChanged();
     }
     refreshEnvironmentFlags();
 }
@@ -614,6 +637,24 @@ bool SettingsStore::saveSpeechVoice(const QString &voice)
     }
     setStatus(i18n("Read-aloud voice set to %1.",
                    trimmed.isEmpty() ? i18n("the default") : trimmed),
+              false);
+    return true;
+}
+
+bool SettingsStore::saveSpeechPlaybackSpeed(qreal speed)
+{
+    // The same window the daemon's player stretches within (see
+    // speech/player.py there): the ends are reached by chaining atempo
+    // filters, the middle by one.
+    const qreal clamped = qBound(0.25, speed, 4.0);
+    if (!writeKeyField(QStringLiteral("tts_playback_speed"),
+                       QString::number(clamped))) {
+        return false;
+    }
+    setStatus(clamped == 1.0
+                  ? i18n("The answers play at the speed they were spoken at.")
+                  : i18n("The answers play at %1x the speed they were spoken at.",
+                         QString::number(clamped)),
               false);
     return true;
 }

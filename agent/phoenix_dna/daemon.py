@@ -4,12 +4,13 @@
 """AgentDaemon: transport-independent core behind the D-Bus service.
 
 Responsibilities:
-* accept submitted prompts (mode + optional session id) and run them
+* accept submitted prompts (with an optional session id) and run them
   sequentially on a worker thread;
 * keep a follow-up queue (prompts spoken while the agent is busy are run,
   not rejected);
-* own the root-mode sudo credential cache so authentication carries over
-  across prompts ("multi-prompt root session");
+* own the sudo credential cache so a command that needs administrator
+  rights asks for the password once and the credential carries over
+  across prompts;
 * clean up voice transcripts with a single LLM call on a separate auxiliary
   pool, so a slow cleanup never delays the prompt queue;
 * (re)name every session with a single LLM call after a completed run, so
@@ -40,7 +41,6 @@ from .attachments import (
 )
 from .config import Config, load_config
 from .loop import AgentLoop
-from .modes import MODE_PROFILES, Mode, ModeProfile, build_toolset
 from .privileges import KDialogPasswordProvider, SudoCredentialCache
 from .prompts import (
     build_cleanup_messages,
@@ -52,6 +52,7 @@ from .provider import LLMProvider, build_provider
 from .search import match_sessions
 from .sessions import SessionManager, SessionStore
 from .speech.speaker import Speaker, build_speaker
+from .toolset import build_toolset
 from .tools.ask import AskCoordinator
 
 log = logging.getLogger("phoenix.daemon")
@@ -90,7 +91,6 @@ def _close_speaker(speaker) -> None:
 class PendingPrompt:
     run_id: str
     prompt: str
-    mode: Mode
     session_id: str
     #: The files the user attached to the prompt: the payload as the
     #: widget sent it (a JSON array, or the JSON text of one). They are
@@ -139,13 +139,14 @@ class AgentDaemon:
         # answer comes in over D-Bus (answer_question). One coordinator
         # serves every run - runs are sequential, one question at a time.
         self._asks = AskCoordinator(emit=self._emit)
-        # One SQLite database per user (root / the local login name). The
+        # One SQLite database per user (the local login name). The
         # legacy JSONL store, if present, is imported into it once.
         self._sessions = SessionManager(
             SessionStore(config.data_dir / "users", config.data_dir / "sessions")
         )
-        self._root_cache: SudoCredentialCache | None = None
-        self._mode: Mode = Mode.USER
+        # The sudo credential cache: what lets a command that needs
+        # administrator rights ask the user for their password.
+        self._credential_cache: SudoCredentialCache | None = None
 
         self._lock = threading.Lock()
         self._cond = threading.Condition(self._lock)
@@ -206,56 +207,18 @@ class AgentDaemon:
             # kill the playback chain (bounded, but not instant).
             self._aux_pool.submit(_close_speaker, old)
 
-    def modes(self) -> list[ModeProfile]:
-        return list(MODE_PROFILES.values())
-
-    def mode(self) -> Mode:
-        """The mode the widget currently has selected."""
-        return self._mode
-
-    def set_mode(self, mode_name: str) -> str:
-        """Record the widget's mode selection; returns the normalized name.
-
-        Selecting root pre-authenticates straight away: the KDE password
-        dialog appears when the mode button is pressed, not later in the
-        middle of the first root prompt, and the validated credential is
-        cached for the prompts that follow. Leaving root drops the cached
-        password.
-        """
-        try:
-            mode = Mode(mode_name.strip().lower())
-        except ValueError:
-            valid = ", ".join(m.value for m in Mode)
-            raise ValueError(f"unknown mode '{mode_name}' (valid: {valid})") from None
-
-        with self._lock:
-            previous, self._mode = self._mode, mode
-
-        if mode is Mode.ROOT:
-            self._preauthenticate_root()
-        elif previous is Mode.ROOT and self._root_cache is not None:
-            self._root_cache.invalidate()
-        return mode.value
-
     def submit(
         self,
         prompt: str,
-        mode_name: str,
         session_id: str = "",
         attachments=None,
     ) -> str:
-        try:
-            mode = Mode(mode_name.strip().lower())
-        except ValueError:
-            valid = ", ".join(m.value for m in Mode)
-            raise ValueError(f"unknown mode '{mode_name}' (valid: {valid})") from None
         prompt = (prompt or "").strip()
         if not prompt:
             raise ValueError("prompt must not be empty")
         job = PendingPrompt(
             run_id="run_" + uuid4().hex[:12],
             prompt=prompt,
-            mode=mode,
             session_id=session_id.strip(),
             attachments=attachments,
         )
@@ -342,7 +305,7 @@ class AgentDaemon:
             )
         )
 
-    def _update_title(self, mode_name: str, session_id: str) -> None:
+    def _update_title(self, session_id: str) -> None:
         """(Re)name a session from its conversation so far.
 
         Runs after every completed run, so a follow-on that pulls the
@@ -354,7 +317,7 @@ class AgentDaemon:
         if self._title_provider is None or not session_id:
             return
         try:
-            conversation = self._sessions.get(mode_name, session_id)
+            conversation = self._sessions.get(session_id)
             exchanges = [
                 (
                     str(message.get("role") or ""),
@@ -384,7 +347,6 @@ class AgentDaemon:
                 events.make(
                     events.SESSION_TITLE_CHANGED,
                     session_id=session_id,
-                    mode=mode_name,
                     title=title,
                 )
             )
@@ -472,33 +434,32 @@ class AgentDaemon:
         )
 
     def _execute(self, job: PendingPrompt) -> None:
-        profile = MODE_PROFILES[job.mode]
         cancel = self._current_cancel
 
-        credential_cache = None
-        if profile.use_sudo:
-            credential_cache = self._root_credential_cache()
-            credential_cache.notifier.on_started = lambda: self._emitter(
-                events.make(
-                    events.AUTH_REQUESTED,
-                    run_id=job.run_id,
-                    message="Administrator password required",
-                )
+        # The credential cache: a command that needs administrator rights
+        # asks the user for their password through it (the KDE dialog),
+        # and the validated password is reused for the commands that
+        # follow.
+        credential_cache = self._sudo_credential_cache()
+        credential_cache.notifier.on_started = lambda: self._emit(
+            events.make(
+                events.AUTH_REQUESTED,
+                run_id=job.run_id,
+                message="Administrator password required",
             )
-            credential_cache.notifier.on_finished = lambda ok: self._emitter(
-                events.make(events.AUTH_FINISHED, run_id=job.run_id, success=bool(ok))
-            )
+        )
+        credential_cache.notifier.on_finished = lambda ok: self._emit(
+            events.make(events.AUTH_FINISHED, run_id=job.run_id, success=bool(ok))
+        )
 
         tools = build_toolset(
-            profile,
             self.config,
             credential_cache=credential_cache,
             run_id=job.run_id,
             ask_coordinator=self._asks,
         )
-        conversation = self._sessions.get(job.mode.value, job.session_id)
+        conversation = self._sessions.get(job.session_id)
         system_prompt = build_system_prompt(
-            profile,
             tool_names=tuple(tools),
             extra_context=load_context_file(self.config),
         )
@@ -513,7 +474,6 @@ class AgentDaemon:
 
         loop = AgentLoop(
             run_id=job.run_id,
-            mode_name=job.mode.value,
             provider=self._provider,
             tools=tools,
             system_prompt=system_prompt,
@@ -536,44 +496,20 @@ class AgentDaemon:
         if summary.get("status") in ("completed", "max_turns") and summary.get(
             "final_text"
         ):
-            self._aux_pool.submit(self._update_title, job.mode.value, conversation.id)
+            self._aux_pool.submit(self._update_title, conversation.id)
 
-    def _preauthenticate_root(self) -> None:
-        """Show the password dialog now, off the D-Bus main loop.
-
-        Runs on its own thread because kdialog blocks for up to its timeout,
-        and the GLib loop must keep serving D-Bus while the dialog is open.
-        The events reuse the auth_requested/auth_finished kinds with an
-        empty run_id (no run is in flight). The notifier callbacks are the
-        cache's shared ones: a root prompt starting while this dialog is
-        open re-wires them, so the events may be attributed to that run.
-        """
-        cache = self._root_credential_cache()
-        cache.notifier.on_started = lambda: self._emit(
-            events.make(
-                events.AUTH_REQUESTED,
-                run_id="",
-                message="Administrator password required to enable root mode",
-            )
-        )
-        cache.notifier.on_finished = lambda ok: self._emit(
-            events.make(events.AUTH_FINISHED, run_id="", success=bool(ok))
-        )
-        threading.Thread(
-            target=cache.get_password, name="phoenix-preauth", daemon=True
-        ).start()
-
-    def _root_credential_cache(self) -> SudoCredentialCache:
-        # Created once and shared across runs: this is what makes a root
-        # session "multi-prompt" - the password is asked for once.
+    def _sudo_credential_cache(self) -> SudoCredentialCache:
+        # Created once and shared across runs: this is what makes a
+        # privileged session "multi-prompt" - the password is asked for
+        # once.
         with self._lock:
-            if self._root_cache is None:
+            if self._credential_cache is None:
                 provider = self._password_provider or KDialogPasswordProvider(
                     kdialog_bin=self.config.kdialog_bin
                 )
-                self._root_cache = SudoCredentialCache(
+                self._credential_cache = SudoCredentialCache(
                     provider,
                     sudo_bin=self.config.sudo_bin,
                     ttl_seconds=self.config.credential_ttl_seconds,
                 )
-            return self._root_cache
+            return self._credential_cache

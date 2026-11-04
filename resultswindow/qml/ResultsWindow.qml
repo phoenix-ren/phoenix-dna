@@ -50,12 +50,18 @@ import org.phoenixdna.theme
  * purely presentational.
  *
  * What the window shows is ordered by time and weighted by size: the
- * trail streams in first — the notes the agent wrote while it worked,
- * then the log of the tools it called — dimmed, set in a smaller type
- * and folded away by default, one click each away; the answer lands
- * last, the one part rendered at full size, in a card of its own. An
- * answer the user has to dig for is an answer they miss, and a trail
- * that claims the answer's place buries it.
+ * trail streams in first — what the agent did, in the order it did it:
+ * the notes it thinks in, the words it says, the tools it calls — and
+ * every step of it is folded away by default, one click each away; the
+ * answer lands last, the one part rendered at full size, in a card of
+ * its own. An answer the user has to dig for is an answer they miss,
+ * and a trail that claims the answer's place buries it.
+ *
+ * The trail is one stream, not three piles: the agent's work is shown
+ * as it happens, in the order it happens, so a run can be followed
+ * while it is going on. A step that is still running says so, and says
+ * for how long — the difference between an agent at work and an agent
+ * that hung.
  *
  * The answer's math takes a two-stage path: while the run streams, the
  * Markdown view shows the LaTeX verbatim; when the run finishes and the
@@ -69,7 +75,7 @@ Window {
     id: resultsWindow
 
     // The conversation history: one row per prompt/answer pair, with the
-    // roles prompt / result / toolLog / running (see ConversationModel).
+    // roles prompt / result / running / steps (see ConversationModel).
     // Bound by the shell to the agent bridge's model.
     property var conversation: null
 
@@ -186,18 +192,57 @@ Window {
         return ++formulaTokens
     }
 
-    // The header of a folded-away section: the thinking notes and the
-    // tool log are context, not the answer, and they start folded —
-    // the title and the arrow that opens the section are always there,
-    // the content only when the user asks for it.
+    // The clock the running steps read their elapsed time from. It
+    // ticks once a second, so a step that takes long says how long it
+    // has been running — the difference between an agent at work and an
+    // agent that hung.
+    property var now: Date.now()
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: resultsWindow.visible
+        onTriggered: resultsWindow.now = Date.now()
+    }
+
+    // A duration, the way a stopwatch reads it: seconds, then minutes
+    // and seconds, then hours and minutes.
+    function formatElapsed(milliseconds) {
+        const total = Math.max(0, Math.round(milliseconds / 1000))
+        if (total < 60) {
+            return i18n("%1s", total)
+        }
+        const minutes = Math.floor(total / 60)
+        if (minutes < 60) {
+            return i18n("%1m %2s", minutes, total % 60)
+        }
+        return i18n("%1h %2m", Math.floor(minutes / 60), minutes % 60)
+    }
+
+    // The header of a folded-away step: the notes the agent thinks in
+    // and the tools it calls are context, not the answer, and they
+    // start folded — the title, the arrow that opens the step and the
+    // time it took are always there, the content only when the user
+    // asks for it.
     component SectionHeader: Item {
         id: sectionHeader
 
-        // The section's name.
+        // The step's name.
         property string title: ""
 
-        // Whether the section's content is shown.
+        // Whether the step's content is shown.
         property bool expanded: false
+
+        // Whether the step is still running: a spinner joins the title,
+        // so a run that hangs is visible as such.
+        property bool busy: false
+
+        // Whether the step failed: its title carries the error tint.
+        property bool failed: false
+
+        // How long the step took — or, while it runs, how long it has
+        // been running.
+        property string detail: ""
 
         // Whether the pointer is on the header: the title brightens
         // then, to show that the section opens on a click.
@@ -231,8 +276,27 @@ Window {
                 // KF6 6.31 has no Kirigami.Heading.Level enum; levels are plain ints.
                 level: 6
                 text: sectionHeader.title
-                color: sectionHeader.hovered ? PhoenixTheme.hoveredTextColor
-                                             : PhoenixTheme.secondaryTextColor
+                color: sectionHeader.failed ? PhoenixTheme.errorColor
+                     : (sectionHeader.hovered ? PhoenixTheme.hoveredTextColor
+                                             : PhoenixTheme.secondaryTextColor)
+            }
+
+            // The spinner of a step that is still running.
+            PC3.BusyIndicator {
+                Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                visible: sectionHeader.busy
+                running: sectionHeader.busy
+            }
+
+            // How long the step took.
+            PC3.Label {
+                visible: sectionHeader.detail.length > 0
+
+                text: sectionHeader.detail
+                color: PhoenixTheme.secondaryTextColor
+                font.pixelSize: Math.max(
+                    9, Math.round(Qt.application.font.pixelSize * 0.8))
             }
         }
 
@@ -463,10 +527,14 @@ Window {
                             required property string prompt
                             required property string sender
                             required property string result
-                            required property string toolLog
                             required property bool running
-                            required property string thinking
-                            required property int toolCount
+                            required property var steps
+
+                            // Which steps of the trail are open, keyed by
+                            // the step's own id: the trail grows while
+                            // the run goes on, and the steps that were
+                            // opened stay open.
+                            property var openSteps: ({})
 
                             // ---- The answer's math, rendered -------------
                             // While the run streams, the answer shows as
@@ -613,7 +681,7 @@ Window {
                             // down-right and the sender's name underneath
                             // it — the bubble points at whoever issued it
                             // ("root" or the login name, per the
-                            // mode the prompt was submitted in). Plain
+                            // session the prompt belongs to). Plain
                             // text — it is dictated, not authored
                             // Markdown. Hidden for runs not started from
                             // this widget.
@@ -729,101 +797,196 @@ Window {
                                 }
                             }
 
-                            // What the agent said while it worked: the
-                            // notes it wrote before it reached for a
-                            // tool. The trail of the run, not its
-                            // outcome — dimmed, in a smaller type and
-                            // folded away, one click from view. It
-                            // streams in above the answer it produced.
+                            // The trail of the run: what the agent
+                            // did, in the order it did it. The notes it
+                            // thinks in, the words it says and the
+                            // tools it calls are one stream of steps,
+                            // not three piles — so the run can be
+                            // followed while it happens, and a step
+                            // that hangs says so (and says for how
+                            // long).
                             ColumnLayout {
-                                id: thinkingSection
-                                objectName: "thinkingSection"
+                                id: trailSection
+                                objectName: "trailSection"
 
-                                // Whether the notes are shown: folded by
-                                // default, for the answer's sake.
-                                property bool expanded: false
-
-                                visible: exchange.thinking.length > 0
+                                visible: exchange.steps.length > 0
                                 Layout.fillWidth: true
                                 spacing: Kirigami.Units.smallSpacing
 
-                                SectionHeader {
-                                    Layout.fillWidth: true
-                                    title: i18n("Thinking")
-                                    expanded: thinkingSection.expanded
-                                    onToggled: thinkingSection.expanded = !thinkingSection.expanded
-                                }
+                                Repeater {
+                                    id: trailRepeater
+                                    objectName: "trailRepeater"
 
-                                Kirigami.SelectableLabel {
-                                    id: thinkingLabel
-                                    objectName: "thinkingLabel"
+                                    model: exchange.steps
 
-                                    Layout.fillWidth: true
-                                    visible: thinkingSection.expanded
+                                    delegate: ColumnLayout {
+                                        id: trailItem
+                                        objectName: "trailItem"
 
-                                    text: exchange.thinking
-                                    textFormat: TextEdit.MarkdownText
-                                    wrapMode: Text.WordWrap
-                                    color: PhoenixTheme.secondaryTextColor
-                                    // The agent's own words, in the
-                                    // family's voice as well — the
-                                    // notes are prose, not chrome.
-                                    font.family: PhoenixTheme.answerFontFamily
-                                    // Smaller than the answer: context,
-                                    // not the result.
-                                    font.pixelSize: PhoenixTheme.notesFontSize
-                                    onTextChanged: Qt.callLater(
-                                        MarkdownDocument.spaceParagraphs,
-                                        textDocument, resultsWindow.paragraphSpacing)
-                                }
-                            }
+                                        required property var modelData
+                                        required property int index
 
-                            // What the agent actually did in this run:
-                            // every tool call with its command and output.
-                            // The evidence for the answer, not the answer
-                            // itself — so it is dimmed and folded away
-                            // like the notes above, and streams in above
-                            // the answer it produced. Only present when
-                            // something ran (plain answers often have no
-                            // tool calls at all).
-                            ColumnLayout {
-                                id: toolSection
-                                objectName: "toolSection"
+                                        Layout.fillWidth: true
+                                        spacing: 0
 
-                                // Whether the log is shown: folded by
-                                // default, for the answer's sake.
-                                property bool expanded: false
+                                        // Whether this step is open. The
+                                        // state is kept by the exchange
+                                        // and keyed by the step's own
+                                        // id, so it survives the trail
+                                        // growing under it.
+                                        readonly property bool open:
+                                            exchange.openSteps[trailItem.modelData.id] === true
 
-                                visible: exchange.toolLog.length > 0
-                                Layout.fillWidth: true
-                                spacing: Kirigami.Units.smallSpacing
+                                        function toggle() {
+                                            const steps = Object.assign({}, exchange.openSteps)
+                                            const id = trailItem.modelData.id
+                                            if (steps[id]) {
+                                                delete steps[id]
+                                            } else {
+                                                steps[id] = true
+                                            }
+                                            exchange.openSteps = steps
+                                        }
 
-                                SectionHeader {
-                                    Layout.fillWidth: true
-                                    title: i18n("Tool activity (%1)", exchange.toolCount)
-                                    expanded: toolSection.expanded
-                                    onToggled: toolSection.expanded = !toolSection.expanded
-                                }
+                                        // How long the step took — and,
+                                        // while it runs, how long it has
+                                        // been running. A step that took
+                                        // less than a second says
+                                        // nothing: it is over, and it
+                                        // was quick.
+                                        readonly property string elapsed: {
+                                            const step = trailItem.modelData
+                                            if (step.running) {
+                                                return resultsWindow.formatElapsed(
+                                                    resultsWindow.now - step.startedAt)
+                                            }
+                                            if (!step.startedAt || !step.endedAt) {
+                                                return ""
+                                            }
+                                            const spent = step.endedAt - step.startedAt
+                                            return spent < 1000
+                                                ? ""
+                                                : resultsWindow.formatElapsed(spent)
+                                        }
 
-                                Kirigami.SelectableLabel {
-                                    id: toolLabel
-                                    objectName: "toolLabel"
+                                        // ---- The words the agent says --
+                                        // The preamble of a stretch that
+                                        // turned out to be work: shown
+                                        // as it was said, in the place it
+                                        // was said — and in the same
+                                        // style as the answer below it.
+                                        // The words the agent says are
+                                        // the agent's words, whether they
+                                        // are the answer or the words
+                                        // before the work; only the
+                                        // step titles around them are
+                                        // dimmed.
+                                        Kirigami.SelectableLabel {
+                                            id: trailText
+                                            objectName: "trailText"
 
-                                    Layout.fillWidth: true
-                                    visible: toolSection.expanded
+                                            Layout.fillWidth: true
+                                            visible: trailItem.modelData.kind === "text"
 
-                                    text: exchange.toolLog
-                                    textFormat: TextEdit.MarkdownText
-                                    wrapMode: Text.WordWrap
-                                    color: PhoenixTheme.secondaryTextColor
-                                    // Smaller than the answer, and in the
-                                    // plain type: a log to read when
-                                    // wanted, not text to read past.
-                                    font.pixelSize: Math.round(
-                                        Qt.application.font.pixelSize * 0.85)
-                                    onTextChanged: Qt.callLater(
-                                        MarkdownDocument.spaceParagraphs,
-                                        textDocument, resultsWindow.paragraphSpacing)
+                                            text: trailItem.modelData.body
+                                            textFormat: TextEdit.MarkdownText
+                                            wrapMode: Text.WordWrap
+                                            // The same ink as the answer:
+                                            // these are the agent's words
+                                            // too.
+                                            color: PhoenixTheme.primaryTextColor
+                                            font.family: PhoenixTheme.answerFontFamily
+                                            font.pixelSize: PhoenixTheme.answerFontSize
+                                            onTextChanged: Qt.callLater(
+                                                MarkdownDocument.spaceParagraphs,
+                                                textDocument, resultsWindow.paragraphSpacing)
+                                        }
+
+                                        // ---- The notes it thinks in ----
+                                        // The model's reasoning: not
+                                        // words it says to the user, but
+                                        // the thoughts it thinks in — so
+                                        // it keeps the context style (as
+                                        // OpenCode greys its reasoning
+                                        // out), behind a title.
+                                        SectionHeader {
+                                            Layout.fillWidth: true
+                                            visible: trailItem.modelData.kind === "thought"
+
+                                            title: i18n("Used %1 Thought",
+                                                       trailItem.modelData.count)
+                                            expanded: trailItem.open
+                                            busy: trailItem.modelData.running
+                                            detail: trailItem.elapsed
+                                            onToggled: trailItem.toggle()
+                                        }
+
+                                        Kirigami.SelectableLabel {
+                                            id: trailThought
+                                            objectName: "trailThought"
+
+                                            Layout.fillWidth: true
+                                            visible: trailItem.open
+                                                    && trailItem.modelData.kind === "thought"
+
+                                            text: trailItem.modelData.body
+                                            textFormat: TextEdit.MarkdownText
+                                            wrapMode: Text.WordWrap
+                                            color: PhoenixTheme.secondaryTextColor
+                                            // The agent's own words, in the
+                                            // family's voice as well — the
+                                            // notes are prose, not chrome.
+                                            font.family: PhoenixTheme.answerFontFamily
+                                            font.pixelSize: PhoenixTheme.notesFontSize
+                                            onTextChanged: Qt.callLater(
+                                                MarkdownDocument.spaceParagraphs,
+                                                textDocument, resultsWindow.paragraphSpacing)
+                                        }
+
+                                        // ---- The tools it calls -------
+                                        // What it actually did: every
+                                        // call with its arguments and
+                                        // its output. The evidence for
+                                        // the answer, not the answer
+                                        // itself — so it is dimmed and
+                                        // folded away, one click away.
+                                        SectionHeader {
+                                            Layout.fillWidth: true
+                                            visible: trailItem.modelData.kind === "tool"
+
+                                            title: i18n("Used %1 %2",
+                                                       trailItem.modelData.count,
+                                                       trailItem.modelData.tools.join(", "))
+                                            expanded: trailItem.open
+                                            busy: trailItem.modelData.running
+                                            failed: trailItem.modelData.status === "error"
+                                            detail: trailItem.elapsed
+                                            onToggled: trailItem.toggle()
+                                        }
+
+                                        Kirigami.SelectableLabel {
+                                            id: trailTool
+                                            objectName: "trailTool"
+
+                                            Layout.fillWidth: true
+                                            visible: trailItem.open
+                                                    && trailItem.modelData.kind === "tool"
+
+                                            text: trailItem.modelData.body
+                                            textFormat: TextEdit.MarkdownText
+                                            wrapMode: Text.WordWrap
+                                            color: PhoenixTheme.secondaryTextColor
+                                            // Smaller than the answer, and
+                                            // in the plain type: a log to
+                                            // read when wanted, not text
+                                            // to read past.
+                                            font.pixelSize: Math.round(
+                                                Qt.application.font.pixelSize * 0.85)
+                                            onTextChanged: Qt.callLater(
+                                                MarkdownDocument.spaceParagraphs,
+                                                textDocument, resultsWindow.paragraphSpacing)
+                                        }
+                                    }
                                 }
                             }
 
@@ -964,6 +1127,14 @@ Window {
                                     // the speaking (and the math, and
                                     // the interrupting); hidden unless
                                     // the daemon's speech is configured.
+                                    //
+                                    // It reads the answer and nothing
+                                    // else: the trail's words are the
+                                    // agent's working notes, and they
+                                    // are never spoken. The button only
+                                    // exists once the run is over, and
+                                    // by then the model's role holds the
+                                    // answer alone.
                                     PC3.ToolButton {
                                         id: readAloudButton
                                         objectName: "readAloudButton"

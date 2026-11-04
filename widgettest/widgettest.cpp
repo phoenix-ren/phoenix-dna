@@ -69,9 +69,9 @@ int main(int argc, char **argv)
     }
 
     // Load the applet plugin straight from the build tree: this registers the
-    // QML module (controller singleton, mode enum, both representations)
-    // exactly as plasmashell does, without installing anything. The widget
-    // therefore runs its real capture path — record button included.
+    // QML module (controller singleton, both representations) exactly as
+    // plasmashell does, without installing anything. The widget therefore
+    // runs its real capture path — record button included.
     QPluginLoader loader(QStringLiteral(PHOENIX_APPLET_PLUGIN));
     if (!loader.load()) {
         qWarning("cannot load applet plugin %s:\n  %s", PHOENIX_APPLET_PLUGIN,

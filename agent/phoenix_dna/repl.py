@@ -13,9 +13,8 @@ Two ways to run it:
   # plasmoid will (same methods and signals)
   python -m phoenix_dna.repl --dbus
 
-Anything you type is submitted as a prompt in the current mode; slash
-commands control the REPL (see /help). While a run is in flight, Ctrl+C
-cancels it.
+Anything you type is submitted as a prompt; slash commands control the
+REPL (see /help). While a run is in flight, Ctrl+C cancels it.
 """
 
 from __future__ import annotations
@@ -45,17 +44,14 @@ SLASH_COMMANDS = (
     "/help",
     "/h",
     "?",
-    "/mode",
     "/new",
     "/session",
-    "/modes",
     "/state",
     "/cancel",
     "/quit",
     "/exit",
     "/q",
 )
-MODE_NAMES = ("root", "user")
 
 
 def _complete_path(text: str) -> list[str]:
@@ -84,11 +80,10 @@ def _complete_path(text: str) -> list[str]:
 
 
 class Completer:
-    """Tab completion: slash commands, /mode arguments, and file paths."""
+    """Tab completion: slash commands and file paths."""
 
-    def __init__(self, commands=SLASH_COMMANDS, modes=MODE_NAMES):
+    def __init__(self, commands=SLASH_COMMANDS):
         self.commands = list(commands)
-        self.modes = list(modes)
 
     def matches(self, text: str, buf: str | None = None) -> list[str]:
         if buf is None:
@@ -101,8 +96,6 @@ class Completer:
         before = buf[: len(buf) - len(text)] if text else buf
         stripped_before = before.rstrip()
 
-        if stripped_before == "/mode":
-            return [m for m in self.modes if m.startswith(text)]
         if text.startswith("/") and not stripped_before:
             return [c for c in self.commands if c.startswith(text)]
         return _complete_path(text)
@@ -238,7 +231,7 @@ class EventPrinter:
                 self._c(
                     "2",
                     f"── run {event.get('run_id', '')} · "
-                    f"{event.get('mode', '')} · session {event.get('session_id', '')}",
+                    f"session {event.get('session_id', '')}",
                 )
             )
         elif kind == "text_delta":
@@ -430,8 +423,7 @@ def dbus_signal_to_event(name: str, *args) -> dict | None:
         return {
             "kind": "run_started",
             "run_id": str(args[0]),
-            "mode": str(args[1]),
-            "session_id": str(args[2]),
+            "session_id": str(args[1]),
         }
     if name == "TextDelta":
         return {"kind": "text_delta", "run_id": str(args[0]), "text": str(args[1])}
@@ -505,16 +497,14 @@ def dbus_signal_to_event(name: str, *args) -> dict | None:
 
 
 HELP = """\
-Commands (Tab completes commands, /mode arguments and file paths):
-  /mode <root|user>      switch operating mode
-  /new                   start a fresh session in the current mode
+Commands (Tab completes commands and file paths):
+  /new                   start a fresh session
   /session               show the current session id
-  /modes                 list operating modes
   /state                 show daemon state
   /cancel                cancel the running prompt (also Ctrl+C while waiting)
   /help                  this help
   /quit                  exit (also Ctrl+D)
-Anything else is submitted as a prompt in the current mode.
+Anything else is submitted as a prompt.
 When the agent asks a question, answer with a number (or several,
 comma-separated), an option's label, or your own words; Ctrl+C cancels
 the run instead of answering.
@@ -528,20 +518,15 @@ History: ↑/↓ recalls earlier prompts and persists between sessions."""
 
 def repl_loop(
     *,
-    submit,  # (prompt, mode, session_id) -> run_id
+    submit,  # (prompt, session_id) -> run_id
     cancel_run,  # (run_id) -> bool
     state_fn=None,  # () -> str description, or None
-    modes_fn=None,  # () -> [(name, description, dir)]
     events: queue.Queue,  # event source consumed while waiting
     printer: EventPrinter,
-    initial_mode: str = "user",
     initial_session: str = "",
     history: HistoryTracker | None = None,
 ):
-    sessions: dict[str, str] = {}
-    if initial_session:
-        sessions[initial_mode] = initial_session
-    mode = initial_mode
+    session_id = initial_session
     bold = "\x1b[1m" if printer.color else ""
     reset = "\x1b[0m" if printer.color else ""
     printer.line(
@@ -550,7 +535,7 @@ def repl_loop(
 
     while True:
         try:
-            raw = input(f"{bold}phoenix:{mode}{reset}> ")
+            raw = input(f"{bold}phoenix{reset}> ")
         except EOFError:
             printer.line()
             return
@@ -572,19 +557,11 @@ def repl_loop(
             printer.line(HELP)
             continue
         if line == "/new":
-            sessions.pop(mode, None)
-            printer.line(f"new session for mode {mode}")
+            session_id = ""
+            printer.line("new session")
             continue
         if line == "/session":
-            printer.line(f"session: {sessions.get(mode, '(new each run)')}")
-            continue
-        if line == "/modes":
-            if modes_fn:
-                for name, description, workdir in modes_fn():
-                    mark = "*" if name == mode else " "
-                    printer.line(f"{mark} {name:5} {workdir:12} {description}")
-            else:
-                printer.line("root / user (built-in)")
+            printer.line(f"session: {session_id or '(new each run)'}")
             continue
         if line == "/state":
             printer.line(state_fn() if state_fn else "state not available")
@@ -593,22 +570,14 @@ def repl_loop(
             # without a known active run this is a no-op hint
             printer.line("use Ctrl+C while a prompt is running to cancel it")
             continue
-        if line.startswith("/mode"):
-            parts = line.split()
-            if len(parts) != 2 or parts[1] not in MODE_NAMES:
-                printer.line(f"usage: /mode <{'|'.join(MODE_NAMES)}>")
-                continue
-            mode = parts[1]
-            printer.line(f"mode → {mode} (session: {sessions.get(mode, 'new')})")
-            continue
         if line.startswith("/"):
             printer.line(f"unknown command {line!r} — /help")
             continue
 
         # -- submit a prompt --------------------------------------------------
         try:
-            run_id = submit(line, mode, sessions.get(mode, ""))
-        except Exception as exc:  # ValueError (bad mode) or D-Bus errors
+            run_id = submit(line, session_id)
+        except Exception as exc:  # D-Bus errors and the like
             printer.line(f"submit failed: {exc}")
             continue
 
@@ -627,10 +596,8 @@ def repl_loop(
                         pass
                 else:
                     printer.line("(already cancelling — waiting for the agent to stop)")
-        # remember the session for follow-ups in this mode
-        session_id = _session_for_run(run_id)
-        if session_id:
-            sessions[mode] = session_id
+        # remember the session for follow-ups
+        session_id = _session_for_run(run_id) or session_id
 
 
 def cancel_notice() -> str:
@@ -679,24 +646,14 @@ def run_embedded(args, history=None) -> int:
 
     state = lambda: json.dumps(daemon.state())  # noqa: E731
 
-    def modes():
-        from .modes import MODE_PROFILES
-
-        return [
-            (p.mode.value, p.description, str(p.working_dir(config)))
-            for p in MODE_PROFILES.values()
-        ]
-
     _patch_printer_for_sessions(printer)
     try:
         repl_loop(
             submit=submit,
             cancel_run=daemon.cancel,
             state_fn=state,
-            modes_fn=modes,
             events=events,
             printer=printer,
-            initial_mode=args.mode,
             initial_session=args.session,
             history=history,
         )
@@ -795,18 +752,13 @@ def run_dbus(args, history=None) -> int:
         state_, current, qlen = iface.GetState()
         return f"state={state_} current={current or '-'} queue={qlen}"
 
-    def modes():
-        return [(str(m[0]), str(m[1]), str(m[2])) for m in iface.GetModes()]
-
     try:
         repl_loop(
-            submit=lambda p, m, s: str(iface.SubmitPrompt(p, m, s)),
+            submit=lambda p, s: str(iface.SubmitPrompt(p, s)),
             cancel_run=lambda run_id: bool(iface.Cancel(run_id)),
             state_fn=state,
-            modes_fn=modes,
             events=events,
             printer=printer,
-            initial_mode=args.mode,
             initial_session=args.session,
             history=history,
         )
@@ -851,7 +803,6 @@ def main(argv: list[str] | None = None) -> int:
         help="connect to a running daemon over D-Bus (like the plasmoid) "
         "instead of embedding the daemon in this process",
     )
-    parser.add_argument("--mode", choices=list(MODE_NAMES), default="user")
     parser.add_argument("--session", default="", help="continue a session id")
     parser.add_argument(
         "--provider", choices=["minimax", "fake"], help="LLM provider (embedded mode)"

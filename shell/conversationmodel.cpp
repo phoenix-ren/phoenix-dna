@@ -3,6 +3,31 @@
 
 #include "conversationmodel.h"
 
+#include <QDateTime>
+
+namespace
+{
+/*! \brief The name of a step's kind, as the pane knows it. */
+QString kindName(ConversationModel::StepKind kind)
+{
+    switch (kind) {
+    case ConversationModel::StepKind::Thought:
+        return QStringLiteral("thought");
+    case ConversationModel::StepKind::Tool:
+        return QStringLiteral("tool");
+    case ConversationModel::StepKind::Text:
+        break;
+    }
+    return QStringLiteral("text");
+}
+
+/*! \brief The current time, in milliseconds since the epoch. */
+qint64 now()
+{
+    return QDateTime::currentMSecsSinceEpoch();
+}
+} // namespace
+
 ConversationModel::ConversationModel(QObject *parent) : QAbstractListModel(parent) {}
 
 int ConversationModel::rowCount(const QModelIndex &parent) const
@@ -23,14 +48,10 @@ QVariant ConversationModel::data(const QModelIndex &index, int role) const
         return exchange.sender;
     case ResultRole:
         return exchange.result;
-    case ThinkingRole:
-        return exchange.thinking;
-    case ToolLogRole:
-        return exchange.toolLog;
-    case ToolCountRole:
-        return exchange.toolCount;
     case RunningRole:
         return exchange.running;
+    case StepsRole:
+        return stepsFor(exchange);
     default:
         return {};
     }
@@ -39,9 +60,8 @@ QVariant ConversationModel::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> ConversationModel::roleNames() const
 {
     return {
-        {PromptRole, "prompt"},   {SenderRole, "sender"},   {ResultRole, "result"},
-        {ToolLogRole, "toolLog"}, {RunningRole, "running"}, {ThinkingRole, "thinking"},
-        {ToolCountRole, "toolCount"},
+        {PromptRole, "prompt"}, {SenderRole, "sender"}, {ResultRole, "result"},
+        {RunningRole, "running"}, {StepsRole, "steps"},
     };
 }
 
@@ -72,54 +92,78 @@ void ConversationModel::appendResult(const QString &delta)
     if (delta.isEmpty() || m_exchanges.isEmpty()) {
         return;
     }
-    m_exchanges.last().result += delta;
-    touchCurrent({ResultRole});
+    Exchange &exchange = m_exchanges.last();
+    // The words the model says: they join the answer's step, or start
+    // one. A step that is not the answer's (the preamble of an earlier
+    // stretch) is left alone: the answer is always its own step.
+    Group *group = lastGroupOfKind(exchange, StepKind::Text);
+    if (!group || !group->answer) {
+        group = &pushGroup(exchange, StepKind::Text);
+        group->answer = true;
+    }
+    group->body += delta;
+    exchange.result += delta;
+    touchCurrent({ResultRole, StepsRole});
 }
 
 void ConversationModel::setResult(const QString &result)
 {
-    if (m_exchanges.isEmpty()) {
+    if (result.isEmpty() || m_exchanges.isEmpty()) {
         return;
     }
-    if (m_exchanges.last().result == result) {
+    Exchange &exchange = m_exchanges.last();
+    if (exchange.result == result) {
         return;
     }
-    m_exchanges.last().result = result;
-    if (dropLastThinkingIf(result)) {
-        touchCurrent({ResultRole, ThinkingRole});
-        return;
+    // The finished text is the answer. The step that carries these words
+    // — the one that was streaming, or the one that already holds
+    // exactly them — becomes the answer; the pane shows it below the
+    // trail, so it leaves the trail and is shown only once.
+    Group *group = nullptr;
+    if (!exchange.groups.isEmpty() && exchange.groups.last().kind == StepKind::Text) {
+        group = &exchange.groups.last();
+    } else {
+        for (int i = exchange.groups.size() - 1; i >= 0; --i) {
+            if (exchange.groups.at(i).kind == StepKind::Text
+                && exchange.groups.at(i).body == result) {
+                group = &exchange.groups[i];
+                break;
+            }
+        }
     }
-    touchCurrent({ResultRole});
+    if (!group) {
+        group = &pushGroup(exchange, StepKind::Text);
+    }
+    for (Group &other : exchange.groups) {
+        other.answer = false;
+    }
+    group->answer = true;
+    group->body = result;
+    exchange.result = result;
+    touchCurrent({ResultRole, StepsRole});
 }
 
-void ConversationModel::demoteResultToThinking()
+void ConversationModel::demoteResult()
 {
     if (m_exchanges.isEmpty()) {
         return;
     }
     Exchange &exchange = m_exchanges.last();
-    if (exchange.result.isEmpty()) {
-        return;
-    }
-    // The notes are one chunk per turn, separated by a blank line.
-    if (!exchange.thinking.isEmpty()) {
-        exchange.thinking += QStringLiteral("\n\n");
-    }
-    exchange.thinking += exchange.result;
+    // The agent reached for a tool: the words so far are not the answer
+    // any more but the preamble to the work. They stay in the trail, in
+    // the order they were said.
+    bool changed = !exchange.result.isEmpty();
     exchange.result.clear();
-    touchCurrent({ThinkingRole, ResultRole});
-}
-
-void ConversationModel::setThinking(const QString &thinking)
-{
-    if (m_exchanges.isEmpty()) {
+    for (Group &group : exchange.groups) {
+        if (group.answer) {
+            group.answer = false;
+            changed = true;
+        }
+    }
+    if (!changed) {
         return;
     }
-    if (m_exchanges.last().thinking == thinking) {
-        return;
-    }
-    m_exchanges.last().thinking = thinking;
-    touchCurrent({ThinkingRole});
+    touchCurrent({ResultRole, StepsRole});
 }
 
 void ConversationModel::appendThinking(const QString &delta)
@@ -127,26 +171,76 @@ void ConversationModel::appendThinking(const QString &delta)
     if (delta.isEmpty() || m_exchanges.isEmpty()) {
         return;
     }
-    m_exchanges.last().thinking += delta;
-    touchCurrent({ThinkingRole});
+    Exchange &exchange = m_exchanges.last();
+    // The notes the model thinks in: they join the thought step that is
+    // running, or start one.
+    Group *group = lastGroupOfKind(exchange, StepKind::Thought);
+    if (!group) {
+        group = &pushGroup(exchange, StepKind::Thought);
+    }
+    group->body += delta;
+    touchCurrent({StepsRole});
 }
 
-void ConversationModel::appendToolLog(const QString &markdown)
+void ConversationModel::appendTrailText(const QString &text)
 {
-    if (markdown.isEmpty() || m_exchanges.isEmpty()) {
+    if (text.isEmpty() || m_exchanges.isEmpty()) {
         return;
     }
-    m_exchanges.last().toolLog += markdown;
-    touchCurrent({ToolLogRole});
+    Exchange &exchange = m_exchanges.last();
+    Group &group = pushGroup(exchange, StepKind::Text);
+    group.body = text;
+    touchCurrent({StepsRole});
 }
 
-void ConversationModel::noteToolCall()
+void ConversationModel::beginToolCall(const QString &tool, const QString &markdown)
 {
     if (m_exchanges.isEmpty()) {
         return;
     }
-    ++m_exchanges.last().toolCount;
-    touchCurrent({ToolCountRole});
+    Exchange &exchange = m_exchanges.last();
+    // The calls of one stretch belong together: they are one step of the
+    // trail, not one step each.
+    Group *group = lastGroupOfKind(exchange, StepKind::Tool);
+    const bool fresh = !group;
+    if (fresh) {
+        group = &pushGroup(exchange, StepKind::Tool);
+    }
+    if (!group->tools.contains(tool)) {
+        group->tools.append(tool);
+    }
+    if (!group->body.isEmpty()) {
+        group->body += QStringLiteral("\n\n");
+    }
+    group->body += markdown;
+    if (!fresh) {
+        ++group->count;
+    }
+    // The call is running: the step is open again, and its clock runs
+    // on until the call comes back.
+    group->running = true;
+    group->endedAt = 0;
+    touchCurrent({StepsRole});
+}
+
+void ConversationModel::endToolCall(const QString &status, const QString &markdown)
+{
+    if (m_exchanges.isEmpty()) {
+        return;
+    }
+    Exchange &exchange = m_exchanges.last();
+    if (exchange.groups.isEmpty()) {
+        return;
+    }
+    Group &group = exchange.groups.last();
+    if (group.kind != StepKind::Tool) {
+        return;
+    }
+    group.body += QStringLiteral("\n\n") + markdown;
+    group.status = status;
+    group.running = false;
+    group.endedAt = now();
+    touchCurrent({StepsRole});
 }
 
 void ConversationModel::finishExchange()
@@ -154,11 +248,19 @@ void ConversationModel::finishExchange()
     if (m_exchanges.isEmpty()) {
         return;
     }
-    if (!m_exchanges.last().running) {
+    Exchange &exchange = m_exchanges.last();
+    if (!exchange.running) {
         return;
     }
-    m_exchanges.last().running = false;
-    touchCurrent({RunningRole});
+    exchange.running = false;
+    if (!exchange.groups.isEmpty()) {
+        Group &group = exchange.groups.last();
+        if (group.running) {
+            group.running = false;
+            group.endedAt = now();
+        }
+    }
+    touchCurrent({RunningRole, StepsRole});
 }
 
 void ConversationModel::touchCurrent(const QList<int> &roles)
@@ -170,25 +272,54 @@ void ConversationModel::touchCurrent(const QList<int> &roles)
     Q_EMIT dataChanged(index, index, roles);
 }
 
-bool ConversationModel::dropLastThinkingIf(const QString &text)
+QVariantList ConversationModel::stepsFor(const Exchange &exchange) const
 {
-    Exchange &exchange = m_exchanges.last();
-    if (exchange.thinking.isEmpty() || text.isEmpty()) {
-        return false;
+    QVariantList trail;
+    for (const Group &group : exchange.groups) {
+        // The answer has its own place in the pane, below the trail.
+        if (group.answer) {
+            continue;
+        }
+        QVariantMap step;
+        step.insert(QStringLiteral("id"), group.id);
+        step.insert(QStringLiteral("kind"), kindName(group.kind));
+        step.insert(QStringLiteral("body"), group.body);
+        step.insert(QStringLiteral("count"), group.count);
+        step.insert(QStringLiteral("tools"), group.tools);
+        step.insert(QStringLiteral("status"), group.status);
+        step.insert(QStringLiteral("running"), group.running);
+        step.insert(QStringLiteral("startedAt"), group.startedAt);
+        step.insert(QStringLiteral("endedAt"), group.endedAt);
+        trail.append(step);
     }
-    // The notes are one chunk per turn, separated by a blank line: only
-    // a whole chunk is dropped, never a part of one.
-    const int separator = exchange.thinking.lastIndexOf(QStringLiteral("\n\n"));
-    const QString lastChunk = separator < 0
-        ? exchange.thinking
-        : exchange.thinking.mid(separator + 2);
-    if (lastChunk != text) {
-        return false;
+    return trail;
+}
+
+ConversationModel::Group *ConversationModel::lastGroupOfKind(Exchange &exchange, StepKind kind)
+{
+    if (exchange.groups.isEmpty()) {
+        return nullptr;
     }
-    if (separator < 0) {
-        exchange.thinking.clear();
-    } else {
-        exchange.thinking.truncate(separator);
+    Group &group = exchange.groups.last();
+    return group.kind == kind ? &group : nullptr;
+}
+
+ConversationModel::Group &ConversationModel::pushGroup(Exchange &exchange, StepKind kind)
+{
+    // Whatever ran until now is over.
+    if (!exchange.groups.isEmpty()) {
+        Group &previous = exchange.groups.last();
+        if (previous.running) {
+            previous.running = false;
+            previous.endedAt = now();
+        }
     }
-    return true;
+    Group group;
+    group.kind = kind;
+    group.id = ++m_groupId;
+    group.count = 1;
+    group.startedAt = now();
+    group.running = true;
+    exchange.groups.append(group);
+    return exchange.groups.last();
 }

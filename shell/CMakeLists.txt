@@ -49,8 +49,6 @@ plasma_add_applet(org.phoenixdna.agent
         transcriber.h
         speaker.cpp
         speaker.h
-        agentmode.cpp
-        agentmode.h
     RESOURCES
         metadata.json
     GENERATE_APPLET_CLASS
@@ -141,3 +139,21 @@ target_link_libraries(screenshottest PRIVATE
     Qt6::DBus
     Qt6::Gui
 )
+
+# The trail of a run — the steps the results window shows while the agent
+# works — checked without a window: the order of the steps, the grouping
+# of the tool calls, the answer's own place and the steps that are still
+# running. Registers with CTest; run `ctest` from the build directory.
+#
+#   conversationmodeltest
+add_executable(conversationmodeltest
+    conversationmodeltest.cpp
+    conversationmodel.cpp
+    conversationmodel.h
+)
+target_include_directories(conversationmodeltest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(conversationmodeltest PRIVATE
+    Qt6::Core
+    Qt6::Qml
+)
+add_test(NAME conversationmodeltest COMMAND conversationmodeltest)
