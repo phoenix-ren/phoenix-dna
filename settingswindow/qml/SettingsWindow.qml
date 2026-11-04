@@ -47,21 +47,24 @@ Window {
     property string theme: "system"
 
     // The families the agent's answers are set in, one per mode ("" —
-    // the system's own font — when nothing is chosen).
+    // the app's own default for the mode — when nothing is chosen;
+    // "system" for the system's own font).
     property string lightFont: ""
     property string darkFont: ""
 
     // The sizes the agent's answers are set in, in pixels, one per mode
-    // (0 — the size the window would give the answer anyway — when
-    // nothing is chosen).
+    // (0 — the app's own size for the mode — when nothing is chosen).
     property int lightFontSize: 0
     property int darkFontSize: 0
 
     // The families on offer, as they are listed: every one this
-    // system has, with the system's own font first. The list is built
-    // when the window opens, so a family installed in the meantime
-    // shows up.
-    property var fontChoices: []
+    // system has, with the two special rows first — the app's own
+    // default for the mode, and the system's own font. One list per
+    // mode, since the app's default differs between them. The lists
+    // are built when the window opens, so a family installed in the
+    // meantime shows up.
+    property var lightFontChoices: []
+    property var darkFontChoices: []
 
     // The live global bindings, in native notation ("" when unbound).
     property string recordShortcut: ""
@@ -156,15 +159,16 @@ Window {
             speechVoiceCombo.editText = window.speechVoice !== ""
                 ? window.speechVoice
                 : window.speechVoiceDefault
-            // The font list is rebuilt on every opening: what this
+            // The font lists are rebuilt on every opening: what this
             // system has may have changed since the last look.
-            window.fontChoices = window.buildFontChoices()
+            window.lightFontChoices = window.buildFontChoices(false)
+            window.darkFontChoices = window.buildFontChoices(true)
             lightFontCombo.currentIndex =
-                window.fontIndex(window.fontChoices, window.lightFont)
+                window.fontIndex(window.lightFontChoices, window.lightFont)
             darkFontCombo.currentIndex =
-                window.fontIndex(window.fontChoices, window.darkFont)
-            // The sizes: the chosen one, or the size the window would
-            // give the answer anyway.
+                window.fontIndex(window.darkFontChoices, window.darkFont)
+            // The sizes: the chosen one, or the app's own size for the
+            // mode.
             lightFontSizeBox.value = window.lightFontSize > 0
                 ? window.lightFontSize
                 : PhoenixTheme.lightAnswerFontSize
@@ -186,9 +190,9 @@ Window {
         : window.speechVoiceDefault
     onThemeChanged: themeCombo.currentIndex = window.themeIndex(window.theme)
     onLightFontChanged: lightFontCombo.currentIndex =
-        window.fontIndex(window.fontChoices, window.lightFont)
+        window.fontIndex(window.lightFontChoices, window.lightFont)
     onDarkFontChanged: darkFontCombo.currentIndex =
-        window.fontIndex(window.fontChoices, window.darkFont)
+        window.fontIndex(window.darkFontChoices, window.darkFont)
     onLightFontSizeChanged: lightFontSizeBox.value = window.lightFontSize > 0
         ? window.lightFontSize
         : PhoenixTheme.lightAnswerFontSize
@@ -202,24 +206,44 @@ Window {
         return theme === "light" ? 1 : theme === "dark" ? 2 : 0
     }
 
-    // The families on offer: every one this system has, sorted by name,
-    // with the system's own font first — it needs nothing installed,
-    // and it is where most people want to be anyway.
-    function buildFontChoices() {
+    // The families on offer for a mode: every one this system has,
+    // sorted by name, with the two special rows first — the app's own
+    // default for the mode, and the system's own font.
+    //
+    // Each row carries the family it is *set* as well as the family it
+    // *names*: the row of the app's default names a face the answers
+    // would be in, but stores the empty string, and the row of the
+    // system's own font stores the word that stands for it.
+    function buildFontChoices(dark) {
         const families = Qt.fontFamilies()
         families.sort(function (a, b) {
             const first = a.toLowerCase()
             const second = b.toLowerCase()
             return first < second ? -1 : (first > second ? 1 : 0)
         })
+        const defaultFamily = dark ? PhoenixTheme.defaultDarkFont
+                                   : PhoenixTheme.defaultLightFont
+        // The app's default, if this system has it; the system's own
+        // font, which every system has, if it does not.
+        const defaultFace = PhoenixTheme.installedFamilies
+            .indexOf(defaultFamily) >= 0
+            ? defaultFamily
+            : PhoenixTheme.systemFontFamily
         const choices = [{
             family: "",
+            face: defaultFace,
+            label: i18n("App default (%1)", defaultFace),
+            note: ""
+        }, {
+            family: PhoenixTheme.systemFontChoice,
+            face: PhoenixTheme.systemFontFamily,
             label: i18n("System default"),
             note: i18n("The system's own font.")
         }]
         for (let i = 0; i < families.length; ++i) {
             choices.push({
                 family: families[i],
+                face: families[i],
                 label: families[i],
                 note: ""
             })
@@ -228,10 +252,20 @@ Window {
     }
 
     // The face a mode's answers are set in — what the preview below
-    // the list is shown in.
+    // the list is shown in. A family that is not on this system falls
+    // back to the system's own font, as the answers themselves do.
+    //
+    // The window's own choice is what is shown, not the theme's: the
+    // window is given the stored values, and the theme is given the
+    // same ones by the shell.
     function previewFamily(dark) {
         const chosen = dark ? darkFont : lightFont
-        return chosen.length > 0 ? chosen : PhoenixTheme.systemFontFamily
+        const fallback = dark ? PhoenixTheme.defaultDarkFont
+                              : PhoenixTheme.defaultLightFont
+        const family = PhoenixTheme.resolveAnswerFont(chosen, fallback)
+        return PhoenixTheme.installedFamilies.indexOf(family) >= 0
+            ? family
+            : PhoenixTheme.systemFontFamily
     }
 
     // The size the preview is shown in: the one chosen for the mode,
@@ -242,12 +276,17 @@ Window {
         return Math.max(9, Math.min(size, 28))
     }
 
-    // The row of a family in the list. A family that is not on this
+    // The row a family is on in the list. A family that is not on this
     // system — or one that is no longer offered — has no row of its
     // own and falls back to the system's font.
     function fontIndex(choices, family) {
         for (let i = 0; i < choices.length; ++i) {
             if (choices[i].family === family) {
+                return i
+            }
+        }
+        for (let i = 0; i < choices.length; ++i) {
+            if (choices[i].family === PhoenixTheme.systemFontChoice) {
                 return i
             }
         }
@@ -392,7 +431,7 @@ Window {
                             // are as wide as each other.
                             Layout.preferredWidth: Kirigami.Units.gridUnit * 14
 
-                            model: window.fontChoices
+                            model: window.lightFontChoices
                             textRole: "label"
 
                             // Every entry is shown in its own face: a
@@ -406,14 +445,12 @@ Window {
                                 text: model.label
                                 highlighted: lightFontCombo.highlightedIndex
                                     === index
-                                font.family: model.family.length > 0
-                                    ? model.family
-                                    : PhoenixTheme.systemFontFamily
+                                font.family: model.face
                             }
 
                             onActivated: (index) =>
                                 window.lightFontChangeRequested(
-                                    window.fontChoices[index].family)
+                                    window.lightFontChoices[index].family)
                         }
 
                         // The Plasma popup grows to the height of the
@@ -485,7 +522,7 @@ Window {
                             // are as wide as each other.
                             Layout.preferredWidth: Kirigami.Units.gridUnit * 14
 
-                            model: window.fontChoices
+                            model: window.darkFontChoices
                             textRole: "label"
 
                             // The same preview as the light mode's
@@ -499,14 +536,12 @@ Window {
                                 text: model.label
                                 highlighted: darkFontCombo.highlightedIndex
                                     === index
-                                font.family: model.family.length > 0
-                                    ? model.family
-                                    : PhoenixTheme.systemFontFamily
+                                font.family: model.face
                             }
 
                             onActivated: (index) =>
                                 window.darkFontChangeRequested(
-                                    window.fontChoices[index].family)
+                                    window.darkFontChoices[index].family)
                         }
 
                         // The same two corrections as the light mode's
@@ -559,11 +594,13 @@ Window {
                         text: i18n("These set the font of the agent's answers "
                             + "alone; the rest of the window keeps the system's "
                             + "font. Whichever mode the window is in decides "
-                            + "which of the two applies. In the light mode a "
-                            + "serif belongs there — Newsreader was drawn for "
-                            + "news articles, and Noto Serif is on every "
-                            + "system; on a dark ground a serif is tiring, so a "
-                            + "sans does.")
+                            + "which of the two applies. The light mode is set "
+                            + "in Literata by default, a face drawn for long "
+                            + "reading on a screen, and the dark one in Inter, "
+                            + "a screen face; a system that has neither keeps "
+                            + "its own font. In the light mode a serif belongs "
+                            + "there — Noto Serif is on every system; on a dark "
+                            + "ground a serif is tiring, so a sans does.")
                     }
 
                     Kirigami.Separator {

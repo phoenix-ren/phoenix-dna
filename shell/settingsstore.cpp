@@ -37,6 +37,11 @@ const QString kThemeSystem = QStringLiteral("system");
 const QString kThemeLight = QStringLiteral("light");
 const QString kThemeDark = QStringLiteral("dark");
 
+// The word that stands for the system's own font among the three a
+// family can be: nothing at all (the app's own default for the mode),
+// this word, or a family by name.
+const QString kSystemFontChoice = QStringLiteral("system");
+
 /*! \brief The modifier bits that can make up a shortcut's modifier part. */
 Qt::KeyboardModifiers relevantModifiers(int modifiers)
 {
@@ -59,6 +64,20 @@ int fontSize(const QJsonObject &keys, const QString &field)
     bool isNumber = false;
     const int size = value.toString().toInt(&isNumber);
     return isNumber ? size : 0;
+}
+
+/*! \brief The family stored under \a field in keys.json.
+ *
+ * No entry at all: nothing was chosen, and the app's own default for
+ * the mode applies. The word "system": the system's own font.
+ * Anything else: a family by name. */
+QString answerFont(const QJsonObject &keys, const QString &field)
+{
+    if (!keys.contains(field)) {
+        return QString();
+    }
+    const QString value = keys.value(field).toString();
+    return value.isEmpty() ? kSystemFontChoice : value;
 }
 
 /*! \brief Whether \a key is itself a modifier key. */
@@ -190,17 +209,18 @@ void SettingsStore::refresh()
                 ? kThemeDark
                 : kThemeSystem;
 
-    // The fonts of the answers: a family name, or nothing at all (the
-    // system's own font). A hand-edited file with a family that is not
-    // installed is kept as it is — the settings window falls back to
-    // the system's font for it, and the choice becomes selectable again
-    // once the family is there.
-    const QString lightFont = keys.value(QStringLiteral("ui_font_light")).toString();
-    const QString darkFont = keys.value(QStringLiteral("ui_font_dark")).toString();
+    // The fonts of the answers: a family name, the word "system" for
+    // the system's own font, or nothing at all — no entry — for the
+    // app's own default for the mode. A hand-edited file with a family
+    // that is not installed is kept as it is — the settings window
+    // falls back to the system's font for it, and the choice becomes
+    // selectable again once the family is there.
+    const QString lightFont = answerFont(keys, QStringLiteral("ui_font_light"));
+    const QString darkFont = answerFont(keys, QStringLiteral("ui_font_dark"));
 
-    // The sizes of the answers, in pixels; zero means "the size the
-    // window would give the answer anyway". A size that makes no
-    // sense is read as that zero rather than as a size of nothing.
+    // The sizes of the answers, in pixels; zero means "the app's own
+    // size for the mode". A size that makes no sense is read as that
+    // zero rather than as a size of nothing.
     // The file keeps every value as a string, but a hand-edited one
     // may well be a number.
     const int lightFontSize = qMax(0, fontSize(keys, QStringLiteral("ui_font_size_light")));
@@ -602,14 +622,18 @@ bool SettingsStore::saveAnswerFont(const QString &field,
                                    const QString &family,
                                    const QString &mode)
 {
-    // An empty family means "the system's own font" and is stored by
-    // removing the field — the same way an emptied API key is stored
-    // by removing its field.
+    // An empty family means "the app's own default for the mode" and
+    // is stored by removing the field — the same way an emptied API
+    // key is stored by removing its field. The word "system" stands
+    // for the system's own font and is stored as it is.
     if (!writeKeyField(field, family)) {
         return false;
     }
 
     setStatus(family.isEmpty()
+                  ? i18n("The answers are set in the app's own face in %1 mode.",
+                         mode == kThemeLight ? i18n("light") : i18n("dark"))
+                  : family == kSystemFontChoice
                   ? i18n("The answers are set in the system's font in %1 mode.",
                          mode == kThemeLight ? i18n("light") : i18n("dark"))
                   : i18n("The answers are set in %1 in %2 mode.",
@@ -622,9 +646,8 @@ bool SettingsStore::saveAnswerFont(const QString &field,
 bool SettingsStore::saveAnswerFontSize(const QString &field, int size,
                                         const QString &mode)
 {
-    // A size of zero means "the size the window would give the answer
-    // anyway" and is stored by removing the field, like an emptied
-    // API key.
+    // A size of zero means "the app's own size for the mode" and is
+    // stored by removing the field, like an emptied API key.
     if (!writeKeyField(field, size > 0 ? QString::number(size) : QString())) {
         return false;
     }
