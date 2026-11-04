@@ -1009,6 +1009,14 @@ Window {
                                         CpuMeterView {
                                             Layout.fillWidth: true
                                             Layout.topMargin: Kirigami.Units.smallSpacing
+                                            // The whole meter — caption, bar and
+                                            // readouts together — never grows past
+                                            // a third of the window, nor 300 px:
+                                            // a level meter of this shape reads
+                                            // best compact, and the trail's text
+                                            // keeps the room it needs.
+                                            Layout.maximumWidth: Math.min(
+                                                resultsWindow.width * 0.33, 300)
 
                                             readonly property var meter:
                                                 resultsWindow.cpuMeter
