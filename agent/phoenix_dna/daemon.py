@@ -153,6 +153,11 @@ class AgentDaemon:
         self._pending: list[PendingPrompt] = []
         self._current: PendingPrompt | None = None
         self._current_cancel: threading.Event | None = None
+        # The tool call the worker is executing right now (empty between
+        # calls). Tool execution is sequential, so the bash tool's process
+        # events can name their call by reading this - the tool itself
+        # never learns its call id.
+        self._current_call_id = ""
         self._stop = False
         self._thread = threading.Thread(
             target=self._work, name="phoenix-dna-agent-worker", daemon=True
@@ -169,6 +174,14 @@ class AgentDaemon:
         # before the UI renders it, and it never blocks (buffer + queue).
         # speech_state_changed comes back in here too and is ignored.
         self._speaker.handle_event(event)
+        # Remember which tool call is in flight: the bash tool reports its
+        # process through a notifier that only knows the pid, and the call
+        # id is attached here (events flow through this funnel in order,
+        # tool_call_started always preceding the process it announces).
+        if event.get("kind") == events.TOOL_CALL_STARTED:
+            self._current_call_id = event.get("call_id", "")
+        elif event.get("kind") == events.TOOL_CALL_FINISHED:
+            self._current_call_id = ""
         self._emitter(event)
 
     def speak_text(self, text: str) -> None:
@@ -433,6 +446,35 @@ class AgentDaemon:
             )
         )
 
+    def _bash_process_notifier(self, run_id: str):
+        """The callback the bash tool reports its processes through.
+
+        Runs on the worker thread (inside the tool, around the
+        subprocess); the event rides the same queue to D-Bus as
+        everything else. The pid is the command's session leader, so the
+        UI can meter the whole process group from /proc. The call id is
+        whatever call is in flight - tool calls are sequential, so it is
+        exactly this command's.
+        """
+
+        def notify(state: str, pid: int, command: str) -> None:
+            kind = (
+                events.TOOL_PROCESS_STARTED
+                if state == "started"
+                else events.TOOL_PROCESS_FINISHED
+            )
+            self._emit(
+                events.make(
+                    kind,
+                    run_id=run_id,
+                    call_id=self._current_call_id,
+                    pid=int(pid),
+                    command=command,
+                )
+            )
+
+        return notify
+
     def _execute(self, job: PendingPrompt) -> None:
         cancel = self._current_cancel
 
@@ -457,6 +499,7 @@ class AgentDaemon:
             credential_cache=credential_cache,
             run_id=job.run_id,
             ask_coordinator=self._asks,
+            process_notifier=self._bash_process_notifier(job.run_id),
         )
         conversation = self._sessions.get(job.session_id)
         system_prompt = build_system_prompt(

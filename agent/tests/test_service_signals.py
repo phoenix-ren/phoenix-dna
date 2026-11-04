@@ -27,6 +27,12 @@ class FakeService:
     def SessionTitleChanged(self, *args):
         self.calls.append(("SessionTitleChanged", args))
 
+    def ToolProcessStarted(self, *args):
+        self.calls.append(("ToolProcessStarted", args))
+
+    def ToolProcessFinished(self, *args):
+        self.calls.append(("ToolProcessFinished", args))
+
 
 def test_cleanup_event_maps_to_transcript_cleaned():
     service = FakeService()
@@ -74,6 +80,46 @@ def test_unknown_event_kind_is_ignored():
     bridge = SignalBridge({"transcript_cleaned": service.TranscriptCleaned})
     bridge.dispatch({"kind": "mystery"})
     assert service.calls == []
+
+
+def test_tool_process_started_maps_with_pid():
+    service = FakeService()
+    bridge = SignalBridge({"tool_process_started": service.ToolProcessStarted})
+    bridge.dispatch(
+        events.make(
+            events.TOOL_PROCESS_STARTED,
+            run_id="run_1",
+            call_id="call_2",
+            command="make -j4",
+            pid=4242,
+        )
+    )
+    assert service.calls == [
+        ("ToolProcessStarted", ("run_1", "call_2", "make -j4", 4242))
+    ]
+
+
+def test_tool_process_finished_maps_without_command():
+    service = FakeService()
+    bridge = SignalBridge({"tool_process_finished": service.ToolProcessFinished})
+    bridge.dispatch(
+        events.make(
+            events.TOOL_PROCESS_FINISHED,
+            run_id="run_1",
+            call_id="call_2",
+            pid=4242,
+        )
+    )
+    assert service.calls == [("ToolProcessFinished", ("run_1", "call_2", 4242))]
+
+
+def test_tool_process_defaults_blank_command_and_zero_pid():
+    service = FakeService()
+    bridge = SignalBridge({"tool_process_started": service.ToolProcessStarted})
+    bridge.dispatch(
+        events.make(events.TOOL_PROCESS_STARTED, run_id="run_1", call_id="call_2")
+    )
+    assert service.calls == [("ToolProcessStarted", ("run_1", "call_2", "", 0))]
 
 
 def test_title_event_maps_to_session_title_changed():

@@ -114,6 +114,15 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
     QDBusConnection::sessionBus().connect(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("ToolCallFinished"), this,
         SLOT(onToolCallFinished(QString, QString, QString, QString, QString)));
+    // The bash tool's command process: its pid (the session leader of
+    // the command's process group) is what the CPU meter follows through
+    // /proc while the call runs, and the process's end lets it go.
+    QDBusConnection::sessionBus().connect(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("ToolProcessStarted"), this,
+        SLOT(onToolProcessStarted(QString, QString, QString, uint)));
+    QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
+                                          QStringLiteral("ToolProcessFinished"), this,
+                                          SLOT(onToolProcessFinished(QString, QString, uint)));
     QDBusConnection::sessionBus().connect(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("TranscriptCleaned"), this,
         SLOT(onTranscriptCleaned(QString, QString, QString, QString)));
@@ -818,6 +827,29 @@ void AgentBridge::onToolCallFinished(const QString &runId,
         status,
         QStringLiteral("%1\n\n%2")
             .arg(mark, fencedBlock(elideOutput(output, kToolLogOutputLimit), QString())));
+}
+
+void AgentBridge::onToolProcessStarted(const QString &runId,
+                                       const QString &callId,
+                                       const QString &command,
+                                       uint pid)
+{
+    Q_UNUSED(runId)
+    Q_UNUSED(callId)
+
+    // Tools run one at a time, so the one meter this bridge owns serves
+    // whoever is running; track() also restarts cleanly should a second
+    // command ever overlap.
+    m_cpuMeter.track(int(pid), command);
+}
+
+void AgentBridge::onToolProcessFinished(const QString &runId, const QString &callId, uint pid)
+{
+    Q_UNUSED(runId)
+    Q_UNUSED(callId)
+    Q_UNUSED(pid)
+
+    m_cpuMeter.release();
 }
 
 QString AgentBridge::senderNameForMode(const QString &mode)

@@ -79,6 +79,13 @@ Window {
     // Bound by the shell to the agent bridge's model.
     property var conversation: null
 
+    // The CPU meter of the command the agent is running (see AgentBridge):
+    // while a bash tool call runs, its step shows the meter as an audio
+    // level meter — the level, its held peak, the share of the machine.
+    // Bound by the shell to the agent bridge's meter; null leaves the
+    // meter out (no meter to follow).
+    property var cpuMeter: null
+
     // ---- Follow-on input, mirroring the dictation overlay ---------------
     // The transcript of a follow-on being dictated into the window, and the
     // dictation state. Bound by the shell exactly like the overlay's; the
@@ -988,6 +995,29 @@ Window {
                                             failed: trailItem.modelData.status === "error"
                                             detail: trailItem.elapsed
                                             onToggled: trailItem.toggle()
+                                        }
+
+                                        // ---- The meter under the work ----
+                                        // While this step's command runs, its
+                                        // CPU usage as an audio level meter:
+                                        // the agent at work, visible from
+                                        // across the room. The meter is the
+                                        // bridge's one live meter (the run's
+                                        // tools execute one at a time), and it
+                                        // shows exactly while a command of
+                                        // this step is in flight.
+                                        CpuMeterView {
+                                            Layout.fillWidth: true
+                                            Layout.topMargin: Kirigami.Units.smallSpacing
+
+                                            readonly property var meter:
+                                                resultsWindow.cpuMeter
+
+                                            showing: Boolean(meter && meter.active
+                                                && trailItem.modelData.running)
+                                            fraction: meter ? meter.fraction : 0.0
+                                            peak: meter ? meter.peak : 0.0
+                                            cores: meter ? meter.cores : 0.0
                                         }
 
                                         Kirigami.SelectableLabel {

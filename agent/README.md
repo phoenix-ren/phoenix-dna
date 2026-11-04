@@ -199,6 +199,8 @@ interface `dna.phoenix.Agent`.
 | `TextDelta` | `ss` | streamed answer text (concatenate for partial replies) |
 | `ToolCallStarted` | `ssss` | run_id, call_id, tool name, JSON args |
 | `ToolCallFinished` | `sssss` | run_id, call_id, tool, `success|error`, output text |
+| `ToolProcessStarted` | `sssu` | run_id, call_id, command, pid — a bash tool call's process began. The pid is the command's session leader (commands are spawned with `start_new_session`), so it doubles as the process-group id: the UI meters the command's CPU usage by reading `/proc` for that group while the call runs. |
+| `ToolProcessFinished` | `ssu` | run_id, call_id, pid — that process ended (normally, by timeout or by cancellation; the report is emitted from a `finally` block, so it is reliable) |
 | `AuthRequested` / `AuthFinished` | `ss` / `sb` | the administrator password dialog opened / closed |
 | `QuestionAsked` | `sss` | run_id, ask_id, JSON of the form: `questions` (`[{question, header, options: [{label, description}], multiple}]`), an optional `goal`, and `harness: true` for daemon-authored confirmations. The run blocks until answered, cancelled or timed out. |
 | `QuestionAnswered` | `ssss` | run_id, ask_id, status (`answered\|timeout\|cancelled`), JSON of the normalized answers (`{"answers": [{"selected": [labels], "text": "…"}, …]}`) |

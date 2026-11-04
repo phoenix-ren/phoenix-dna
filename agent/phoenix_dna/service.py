@@ -49,6 +49,14 @@ _SIGNAL_MAP = {
         "tool_call_finished",
         ("run_id", "call_id", "tool", "status", "output"),
     ),
+    "tool_process_started": (
+        "tool_process_started",
+        ("run_id", "call_id", "command", "pid"),
+    ),
+    "tool_process_finished": (
+        "tool_process_finished",
+        ("run_id", "call_id", "pid"),
+    ),
     "auth_requested": ("auth_requested", ("run_id", "message")),
     "auth_finished": ("auth_finished", ("run_id", "success")),
     "question_asked": ("question_asked", ("run_id", "ask_id", "question_json")),
@@ -80,6 +88,8 @@ _DEFAULTS = {
     "tool": "",
     "status": "",
     "output": "",
+    "command": "",
+    "pid": 0,
     "text": "",
     "final_text": "",
     "message": "",
@@ -143,6 +153,8 @@ def build_bridge(service) -> SignalBridge:
             "thinking_delta": service.ThinkingDelta,
             "tool_call_started": service.ToolCallStarted,
             "tool_call_finished": service.ToolCallFinished,
+            "tool_process_started": service.ToolProcessStarted,
+            "tool_process_finished": service.ToolProcessFinished,
             "auth_requested": service.AuthRequested,
             "auth_finished": service.AuthFinished,
             "question_asked": service.QuestionAsked,
@@ -196,6 +208,16 @@ if dbus is not None:
 
         @dbus.service.signal(INTERFACE, signature="sssss")
         def ToolCallFinished(self, run_id, call_id, tool, status, output): ...
+
+        # The bash tool's process began: pid is the command's session
+        # leader (= process-group id), which the UI meters via /proc
+        # while the call runs.
+        @dbus.service.signal(INTERFACE, signature="sssu")
+        def ToolProcessStarted(self, run_id, call_id, command, pid): ...
+
+        # That process ended — normally, by timeout or by cancellation.
+        @dbus.service.signal(INTERFACE, signature="ssu")
+        def ToolProcessFinished(self, run_id, call_id, pid): ...
 
         @dbus.service.signal(INTERFACE, signature="ss")
         def AuthRequested(self, run_id, message): ...

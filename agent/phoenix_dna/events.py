@@ -20,6 +20,14 @@ TEXT_DELTA = "text_delta"
 THINKING_DELTA = "thinking_delta"
 TOOL_CALL_STARTED = "tool_call_started"
 TOOL_CALL_FINISHED = "tool_call_finished"
+#: A bash tool call's process began. ``pid`` is the command's session
+#: leader (the daemon spawns commands with start_new_session=True), so
+#: it doubles as the process-group id: the UI meters the whole command
+#: by reading /proc for that group.
+TOOL_PROCESS_STARTED = "tool_process_started"
+#: The process of a bash tool call ended — normally, by timeout or by
+#: cancellation. Emitted from a finally block, so it is reliable.
+TOOL_PROCESS_FINISHED = "tool_process_finished"
 #: The ask_user tool is showing the user a question; the run blocks until
 #: the answer arrives (answer_question), the run is cancelled or it times out.
 QUESTION_ASKED = "question_asked"

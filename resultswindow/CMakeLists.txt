@@ -25,6 +25,7 @@ ecm_add_qml_module(org.phoenixdna.resultswindow
 ecm_target_qml_sources(org.phoenixdna.resultswindow
     SOURCES
         qml/ResultsWindow.qml
+        qml/CpuMeterView.qml
         qml/WizardView.qml
         qml/QuestionInputs.qml
 )

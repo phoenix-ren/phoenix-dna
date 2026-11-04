@@ -48,6 +48,16 @@ Because the trail is written as the run goes on, the window can be followed
 while the agent works. A step that is still running says so, and says for
 how long — the difference between an agent at work and an agent that hung.
 
+While a command runs, its step also shows a CPU meter in the style of an
+audio level meter: a row of LED segments — green, then yellow, then red —
+that light with the command's share of the machine, and a peak-hold segment
+that lingers above the level before it, too, decays. The daemon reports the
+command's process id over D-Bus as it starts; the widget follows the whole
+process group through `/proc` (children where they are visible, the group
+itself when they are not), so a `make -j` reads as busy and a hung command
+as the silence it is. The share is of all cores together — the readout
+beside the bar restates it in cores ("×2.4").
+
 None of it is read aloud. The read-aloud speaks the answer — the words after
 the last tool call — and never a working note; the same is true of the
 daemon's own speech (see *Reading the answers aloud* below).

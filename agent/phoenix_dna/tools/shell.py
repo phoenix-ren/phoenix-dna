@@ -14,6 +14,12 @@ command is confirmed by the user first (see :mod:`phoenix_dna.confirm`).
 
 Subprocesses start in their own session so that cancellation and timeouts
 kill the whole process group, not just bash.
+
+While a command runs, its process id is reported through an optional
+``process_notifier`` callback (state "started"/"finished", the pid and the
+command): the daemon turns that into D-Bus signals, and the UI meters the
+command's CPU usage from /proc (the pid is the session leader, so the
+process group can be followed as a whole).
 """
 
 from __future__ import annotations
@@ -213,6 +219,7 @@ class BashTool:
         max_output_chars: int = 20_000,
         extra_env: dict | None = None,
         confirm=None,
+        process_notifier=None,
     ):
         self.cwd = Path(cwd)
         self.credential_cache = credential_cache
@@ -226,6 +233,13 @@ class BashTool:
         # (no credential cache, or the feature disabled) runs everything as
         # the user, as before.
         self.confirm = confirm
+        # Optional process reporting for the UI: called with
+        # ("started", pid, command) right after the subprocess exists and
+        # ("finished", pid, command) when it ends — normally, by timeout or
+        # by cancellation (it runs in a finally block, so it is reliable).
+        # Failures in the notifier are swallowed: metering must never
+        # disturb the command it meters.
+        self.process_notifier = process_notifier
 
     # -- public API ---------------------------------------------------------
 
@@ -246,7 +260,11 @@ class BashTool:
         if asks_for_root and self.credential_cache is not None:
             return self._execute_privileged(privileged, command, timeout, cancel)
         rc, out, err = self._run(
-            ["bash", "-c", command], input_bytes=None, timeout=timeout, cancel=cancel
+            ["bash", "-c", command],
+            input_bytes=None,
+            timeout=timeout,
+            cancel=cancel,
+            label=command,
         )
         return ToolResult(
             output=self._compose_output(out, err, rc),
@@ -303,6 +321,7 @@ class BashTool:
                 input_bytes=(password + "\n").encode(),
                 timeout=timeout,
                 cancel=cancel,
+                label=original,
             )
             if rc != 0 and _is_auth_failure(err, rc) and cycle == 0:
                 self.credential_cache.invalidate()
@@ -320,8 +339,21 @@ class BashTool:
         env.update(self.extra_env)
         return env
 
+    def _notify(self, state: str, pid: int, label: str) -> None:
+        """Report a process event; metering must never disturb the run."""
+        try:
+            self.process_notifier(state, pid, label)
+        except Exception:  # noqa: BLE001 - the UI must not break the tool
+            pass
+
     def _run(
-        self, argv: list[str], *, input_bytes: bytes | None, timeout: float, cancel
+        self,
+        argv: list[str],
+        *,
+        input_bytes: bytes | None,
+        timeout: float,
+        cancel,
+        label: str = "",
     ):
         try:
             proc = subprocess.Popen(
@@ -340,25 +372,33 @@ class BashTool:
         except OSError as exc:
             raise ToolError(f"cannot execute command: {exc}") from exc
 
-        deadline = time.monotonic() + timeout
-        first = True
-        out = err = b""
-        while True:
-            try:
-                out, err = proc.communicate(
-                    input_bytes if first else None, timeout=0.25
-                )
-                break
-            except subprocess.TimeoutExpired:
-                first = False
-                if cancel is not None and cancel.is_set():
-                    self._kill_group(proc)
-                    proc.communicate()
-                    raise ToolError("command cancelled") from None
-                if time.monotonic() >= deadline:
-                    self._kill_group(proc)
-                    proc.communicate()
-                    raise ToolError(f"command timed out after {timeout:.0f}s") from None
+        if self.process_notifier is not None:
+            self._notify("started", proc.pid, label)
+        try:
+            deadline = time.monotonic() + timeout
+            first = True
+            out = err = b""
+            while True:
+                try:
+                    out, err = proc.communicate(
+                        input_bytes if first else None, timeout=0.25
+                    )
+                    break
+                except subprocess.TimeoutExpired:
+                    first = False
+                    if cancel is not None and cancel.is_set():
+                        self._kill_group(proc)
+                        proc.communicate()
+                        raise ToolError("command cancelled") from None
+                    if time.monotonic() >= deadline:
+                        self._kill_group(proc)
+                        proc.communicate()
+                        raise ToolError(f"command timed out after {timeout:.0f}s") from None
+        finally:
+            # Also reached on the cancel and timeout paths above, so the
+            # UI never waits for a process that is already gone.
+            if self.process_notifier is not None:
+                self._notify("finished", proc.pid, label)
 
         return (
             proc.returncode,
