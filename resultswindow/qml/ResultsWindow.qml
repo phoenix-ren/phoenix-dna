@@ -443,6 +443,11 @@ Window {
         AppIcon.showWindow(resultsWindow)
         raise()
         requestActivate()
+        // The pin alone does not move the view: a window that was
+        // reopened (or one whose content was already there) sits
+        // wherever the last read left it, and the newest exchange must
+        // be the thing in view.
+        scroller.followToBottom()
         Qt.callLater(focusInput)
     }
 
@@ -453,6 +458,7 @@ Window {
         AppIcon.showWindow(resultsWindow)
         raise()
         requestActivate()
+        scroller.followToBottom()
         Qt.callLater(focusInput)
     }
 
@@ -536,7 +542,15 @@ Window {
 
 
                 contentWidth: width
-                contentHeight: column.implicitHeight
+                // The content's height is the column's *laid-out* height,
+                // not its implicit one: a Repeater's delegates are not
+                // counted in the implicit height of the layout they
+                // live in, so the implicit height reported what the
+                // conversation had been a layout pass ago — a value
+                // that lagged behind every arrival, and that the
+                // follow then chased. The laid-out height is the real
+                // one.
+                contentHeight: column.height
                 clip: true
 
                 // The scrollbar for a conversation longer than the pane.
@@ -546,25 +560,212 @@ Window {
                 }
 
                 // The scrollbar lies over the content, so the text must
-                // not run under it: the conversation is inset by its
-                // width while it is there.
+                // not run under it. Its width is reserved *always*, not
+                // only while it is visible: a column that changes width
+                // with the scrollbar re-wraps the whole conversation,
+                // which changes the content's height and jumps the
+                // scroll — the "jagged" descent, seen afresh every time
+                // the scrollbar appeared or vanished.
                 readonly property real scrollbarInset:
-                    verticalBar.visible ? verticalBar.width : 0
+                    verticalBar.width
 
                 // Terminal behaviour: keep the newest exchange in view —
                 // the conversation flows downwards. Scrolling up to read
                 // older results unpins; showLive()/showResult() re-pin.
                 property bool pinnedToBottom: false
 
-                readonly property bool atEnd:
-                    contentY >= contentHeight - height - Kirigami.Units.smallSpacing
+                // How close to the bottom the user has to be for the
+                // conversation to keep following itself. Generous on
+                // purpose: the content is polished in several passes
+                // (the Markdown import, the paragraph spacing, the
+                // link pass, the formula swap), each of which changes
+                // the height a little, so a tight threshold would drop
+                // the pin on the first of them and leave the answer
+                // stranded mid-window. A line of slack is enough to
+                // absorb the passes and still short enough that a
+                // deliberate scroll upward unpins.
+                readonly property real followTolerance:
+                    Math.max(Kirigami.Units.smallSpacing * 2,
+                             Kirigami.Units.gridUnit)
 
-                onContentYChanged: pinnedToBottom = atEnd
-                onContentHeightChanged: {
-                    if (pinnedToBottom) {
-                        Qt.callLater(function() {
-                            contentY = Math.max(0, contentHeight - height)
-                        })
+                // The scroll position that shows the newest content.
+                //
+                // A function, not a binding: the binding's value is
+                // stale at the very moment it is needed — the height
+                // changes, and the handler that follows it reads the
+                // bound value *before* the dependency has been
+                // re-evaluated, so the follow aimed at the bottom as it
+                // was a moment ago. That is how the view came to rest a
+                // screenful short of the newest content.
+                function bottomPosition() {
+                    return Math.max(0, contentHeight - height)
+                }
+
+                // Whether the user is at the bottom right now.
+                readonly property bool userAtEnd:
+                    contentY >= bottomPosition() - followTolerance
+
+                // Follows the newest content, if the conversation is
+                // following itself. Called whenever the content's height
+                // changes — which happens several times per arrival, as
+                // the document is polished — and after the formula swap
+                // rewrites the document wholesale.
+                function followToBottom() {
+                    if (!pinnedToBottom) {
+                        return
+                    }
+                    // The height may still be settling (the polish
+                    // passes are queued), so the scroll is applied
+                    // again on the next turn of the loop rather than
+                    // only once — otherwise the last pass wins and the
+                    // view rests a few pixels short of the bottom.
+                    scrollToBottom()
+                    followPending = true
+                    // A new change: the quiet period starts afresh.
+                    settlePending = false
+                    settleCount = 0
+                }
+
+                // Moves the view to the newest content.
+                function scrollToBottom() {
+                    contentY = bottomPosition()
+                }
+
+                // Whether another scroll-to-bottom is owed: the polish
+                // passes change the height after the fact, so the
+                // position is re-applied until the height stops
+                // moving.
+                property bool followPending: false
+
+                // The scroll position of the newest content, captured
+                // across a document rewrite. The formula swap replaces
+                // the whole document (setMarkdown), and the view's
+                // position does not survive that — it snaps back to the
+                // top, and the answer the user was reading is gone from
+                // the window. The exchange asks for this before its
+                // rewrite and restores the position after it.
+                property real savedBottomY: 0
+                property bool hasSavedBottom: false
+
+                // Saves the position across a document rewrite that will
+                // invalidate it.
+                function saveBottom() {
+                    savedBottomY = bottomPosition()
+                    hasSavedBottom = true
+                }
+
+                // Restores the position after such a rewrite, if the
+                // conversation was following itself when it was saved.
+                function restoreBottom() {
+                    if (!hasSavedBottom) {
+                        return
+                    }
+                    hasSavedBottom = false
+                    if (!pinnedToBottom) {
+                        return
+                    }
+                    contentY = Math.max(0, savedBottomY)
+                    followPending = true
+                }
+
+                // The user took hold of the content: the conversation
+                // stops following itself — unless they stopped within
+                // the tolerance of the bottom, which is the follow
+                // resuming rather than the user reading further up.
+                //
+                // The Flickable's own movement signals are the honest
+                // signal here: they begin when the *user* takes hold of
+                // the content, never when the window moves it. Inferring
+                // the user's scroll from the position alone could not
+                // work — the window's own move to the bottom looks
+                // exactly like the user scrolling away, and the two
+                // raced with the content's height changing underneath
+                // (which is how the view came to rest a screenful
+                // short of the newest content).
+                function onUserScroll() {
+                    if (userAtEnd) {
+                        pinnedToBottom = true
+                    } else {
+                        pinnedToBottom = false
+                    }
+                }
+
+                // The user dragging the content.
+                onMovementStarted: onUserScroll()
+                // The user flicking it.
+                onFlickStarted: onUserScroll()
+
+                onContentHeightChanged: followToBottom()
+
+                // The content's height settles over a few frames: the
+                // Markdown import, the paragraph spacing and the link
+                // pass are queued, and each of them measures the
+                // document again. The scroll is re-applied until the
+                // height stops moving, so the conversation descends in
+                // one smooth run instead of lurching once per pass.
+                //
+                // The follow stays armed for a few frames after the last
+                // change: the passes land in *later* frames, not within
+                // the one the height change was noticed in, so a follow
+                // that gave up at the first quiet moment would rest a
+                // whole screenful short of the bottom.
+                Timer {
+                    id: followTimer
+
+                    interval: 0
+                    repeat: true
+                    running: scroller.followPending
+
+                    onTriggered: {
+                        // The height the last scroll was made for.
+                        const settled = scroller.contentHeight
+
+                        scroller.scrollToBottom()
+
+                        // The height moved while we scrolled: another
+                        // pass has landed, and the scroll is owed again.
+                        if (scroller.contentHeight !== settled) {
+                            scroller.followPending = true
+                            return
+                        }
+
+                        // The height held still. The passes are over —
+                        // or the next one is a frame away. Either way,
+                        // the follow rests for a moment and is re-armed
+                        // by the next height change, which starts it
+                        // again.
+                        scroller.followPending = false
+                        scroller.settlePending = true
+                    }
+                }
+
+                // Whether the content's height is still settling. The
+                // window keeps following while it is.
+                property bool settlePending: false
+
+                // The grace period: how long the follow rests after the
+                // height held still, waiting for the next pass.
+                readonly property int settleFrames: 3
+
+                // Counts the quiet frames.
+                property int settleCount: 0
+
+                Timer {
+                    id: settleTimer
+
+                    interval: 0
+                    repeat: true
+                    running: scroller.settlePending
+
+                    onTriggered: {
+                        scroller.settleCount += 1
+                        if (scroller.settleCount >= scroller.settleFrames) {
+                            scroller.settlePending = false
+                            scroller.settleCount = 0
+                            return
+                        }
+                        // Still settling: keep the view at the bottom.
+                        scroller.scrollToBottom()
                     }
                 }
 
@@ -653,6 +854,12 @@ Window {
                                 }
                                 formulaToken = resultsWindow.nextFormulaToken()
                                 renderProgress = 0
+                                // The embed replaces the whole document
+                                // (setMarkdown), which leaves the view's
+                                // scroll position behind: the position is
+                                // saved now and restored when the embed
+                                // reports back.
+                                scroller.saveBottom()
                                 LatexRenderer.embedFormulas(
                                     formulaToken, resultLabel.textDocument,
                                     result, PhoenixTheme.primaryTextColor,
@@ -676,6 +883,10 @@ Window {
                                 }
                                 formulaToken = resultsWindow.nextFormulaToken()
                                 renderProgress = 0
+                                // The re-embed replaces the document too:
+                                // the position is saved and restored the
+                                // same way.
+                                scroller.saveBottom()
                                 LatexRenderer.embedFormulas(
                                     formulaToken, resultLabel.textDocument,
                                     result, PhoenixTheme.primaryTextColor,
@@ -719,6 +930,13 @@ Window {
                                             MarkdownDocument.linkify,
                                             resultLabel.textDocument,
                                             PhoenixTheme.linkColor)
+                                        // The rebuild left the scroll
+                                        // position behind; it is put
+                                        // back, so the answer stays where
+                                        // the user was reading it —
+                                        // and where the following
+                                        // content will continue from.
+                                        scroller.restoreBottom()
                                     }
                                 }
 
@@ -737,6 +955,11 @@ Window {
                                         exchange.formulaToken = -2
                                         exchange.formulaFailedReason = reason
                                         exchange.renderProgress = -1
+                                        // No rebuild happened, so the
+                                        // position was never lost — but
+                                        // the save must not be left
+                                        // dangling.
+                                        scroller.restoreBottom()
                                     }
                                 }
                             }

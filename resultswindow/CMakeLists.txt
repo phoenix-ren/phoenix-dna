@@ -34,3 +34,28 @@ ecm_target_qml_sources(org.phoenixdna.resultswindow
 )
 
 ecm_finalize_qml_module(org.phoenixdna.resultswindow)
+
+# Headless check of the window's scroll-follow behaviour: the conversation
+# is polished in several passes after every arrival (the Markdown import,
+# the paragraph spacing, the link pass, the formula swap), and each pass
+# changes the content's height — so the follow has to survive them, and
+# the position has to come back after the formula swap's wholesale
+# rewrite of the document.
+#
+# The test loads the real window from the module above, not a copy.
+#
+#   scrollfollowtest
+add_executable(scrollfollowtest scrollfollowtest.cpp)
+target_compile_definitions(scrollfollowtest PRIVATE
+    PHOENIX_SCROLLFOLLOW_TEST="${CMAKE_CURRENT_SOURCE_DIR}/qml/ScrollFollowTest.qml")
+target_link_libraries(scrollfollowtest PRIVATE
+    Qt6::Gui
+    Qt6::Qml
+    Qt6::Quick
+)
+# The module is loaded by the QML engine from the import path (the build
+# tree's bin directory), the way the app loads it.
+add_dependencies(scrollfollowtest org.phoenixdna.resultswindow)
+add_test(NAME scrollfollowtest COMMAND scrollfollowtest)
+set_tests_properties(scrollfollowtest PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}/bin")
