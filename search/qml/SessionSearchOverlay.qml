@@ -194,6 +194,11 @@ PlasmaCore.Dialog {
         ? i18n("%1 of %2 formulas", mathDone, mathTotal)
         : i18n("No math")
 
+    // The width of the progress bars: the same for both of them, so
+    // they can be read against each other, and narrow enough that they
+    // stay a quiet line above the conversation.
+    readonly property int progressBarWidth: 300
+
     // While the query field is cleared on opening, its text change must
     // not trigger a second search.
     property bool clearingQuery: false
@@ -450,65 +455,71 @@ PlasmaCore.Dialog {
             spacing: Kirigami.Units.smallSpacing
 
             // ---- The progress of what is being loaded -------------------
-            // Two bars, always there: the messages on their way from the
-            // daemon, and the math on its way from the LaTeX engine.
-            // The conversation is below them and fills while they move —
-            // the window says what it is doing instead of freezing
-            // without a word.
-            ColumnLayout {
+            // Two bars, side by side and always there: the messages on
+            // their way from the daemon, and the math on its way from
+            // the LaTeX engine. The conversation is below them and fills
+            // while they move — the window says what it is doing
+            // instead of freezing without a word.
+            //
+            // The bars are the same width, so the two of them can be
+            // read against each other; a bar that grows with the window
+            // would only say "something is happening".
+            RowLayout {
                 Layout.fillWidth: true
-                spacing: 2
+                spacing: Kirigami.Units.smallSpacing
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
-
-                    PC3.Label {
-                        text: i18n("Messages:")
-                        color: PhoenixTheme.secondaryTextColor
-                    }
-
-                    PC3.ProgressBar {
-                        Layout.fillWidth: true
-                        from: 0
-                        to: 100
-                        value: searchOverlay.transcriptProgress
-                        // Until the first message arrives the daemon is
-                        // still answering, and there is nothing to count.
-                        indeterminate: searchOverlay.transcriptLoading
-                            && searchOverlay.transcriptLoaded === 0
-                    }
-
-                    PC3.Label {
-                        Layout.preferredWidth: Kirigami.Units.gridUnit * 12
-                        horizontalAlignment: Text.AlignRight
-                        text: searchOverlay.transcriptStatus
-                        color: PhoenixTheme.secondaryTextColor
-                    }
+                PC3.Label {
+                    text: i18n("Messages:")
+                    color: PhoenixTheme.secondaryTextColor
                 }
 
-                RowLayout {
+                PC3.ProgressBar {
+                    Layout.preferredWidth: searchOverlay.progressBarWidth
+                    Layout.maximumWidth: searchOverlay.progressBarWidth
+                    from: 0
+                    to: 100
+                    value: searchOverlay.transcriptProgress
+                    // Until the first message arrives the daemon is
+                    // still answering, and there is nothing to count.
+                    indeterminate: searchOverlay.transcriptLoading
+                        && searchOverlay.transcriptLoaded === 0
+                }
+
+                PC3.Label {
                     Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
+                    Layout.maximumWidth: Kirigami.Units.gridUnit * 12
+                    Layout.minimumWidth: 0
+                    horizontalAlignment: Text.AlignRight
+                    elide: Text.ElideRight
+                    text: searchOverlay.transcriptStatus
+                    color: PhoenixTheme.secondaryTextColor
+                }
 
-                    PC3.Label {
-                        text: i18n("Math:")
-                        color: PhoenixTheme.secondaryTextColor
-                    }
+                PC3.Label {
+                    text: i18n("Math:")
+                    color: PhoenixTheme.secondaryTextColor
+                }
 
-                    PC3.ProgressBar {
-                        Layout.fillWidth: true
-                        from: 0
-                        to: 100
-                        value: searchOverlay.mathProgress
-                    }
+                PC3.ProgressBar {
+                    Layout.preferredWidth: searchOverlay.progressBarWidth
+                    Layout.maximumWidth: searchOverlay.progressBarWidth
+                    from: 0
+                    to: 100
+                    // No formulas in the answers on screen: nothing is
+                    // left to render, and the bar says so by being
+                    // full — an empty bar would read as "waiting".
+                    value: searchOverlay.mathTotal > 0
+                        ? searchOverlay.mathProgress : 100
+                }
 
-                    PC3.Label {
-                        Layout.preferredWidth: Kirigami.Units.gridUnit * 12
-                        horizontalAlignment: Text.AlignRight
-                        text: searchOverlay.mathStatus
-                        color: PhoenixTheme.secondaryTextColor
-                    }
+                PC3.Label {
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: Kirigami.Units.gridUnit * 12
+                    Layout.minimumWidth: 0
+                    horizontalAlignment: Text.AlignRight
+                    elide: Text.ElideRight
+                    text: searchOverlay.mathStatus
+                    color: PhoenixTheme.secondaryTextColor
                 }
             }
 
