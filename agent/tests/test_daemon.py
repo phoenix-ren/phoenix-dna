@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import dataclasses
+import threading
 
 from conftest import wait_for
 
@@ -18,11 +19,11 @@ def events_of(events, kind):
     return [e for e in events if e["kind"] == kind]
 
 
-def make_daemon(config, script, password_provider=None, events=None):
+def make_daemon(config, script, password_provider=None, events=None, provider=None):
     sink = (lambda e: events.append(e)) if events is not None else (lambda e: None)
     return AgentDaemon(
         config,
-        provider=FakeProvider(script),
+        provider=provider or FakeProvider(script),
         password_provider=password_provider,
         emitter=sink,
     )
@@ -188,4 +189,44 @@ def test_state_transitions_emitted(config):
         states = [e["state"] for e in events_of(events, "state_changed")]
         assert "running" in states and "idle" in states
     finally:
+        daemon.shutdown()
+
+
+def test_queue_length_announced_when_a_prompt_waits(config):
+    """A prompt that waits its turn says so.
+
+    The daemon runs one prompt at a time, so a prompt submitted while
+    another run is busy waits in the queue. The widget opens its results
+    pane when the daemon *starts* a run - which, for a queued prompt, is
+    only when the run before it is done. The queue length is what tells
+    the widget that a prompt is on its way but has not started yet, so
+    the daemon announces it the moment the prompt joins the queue.
+    """
+    events = []
+    # The first prompt blocks the worker until it is released, so the
+    # second one is still waiting when the queue is inspected.
+    release = threading.Event()
+
+    class BlockingProvider:
+        def stream(self, messages, tools, should_cancel=None):
+            release.wait(timeout=5)
+            yield {"type": "response", "response": {"choices": []}}
+
+    daemon = make_daemon(config, ["done"], events=events, provider=BlockingProvider())
+    try:
+        daemon.submit("first")
+        assert wait_for(lambda: events_of(events, "run_started"), timeout=5)
+
+        daemon.submit("second")
+        # The queue grew: the daemon says so without waiting for the
+        # first run to end.
+        assert wait_for(
+            lambda: any(
+                e.get("queue_length", 0) > 0 for e in events_of(events, "state_changed")
+            ),
+            timeout=5,
+        ), "the queued prompt is announced"
+        assert daemon.state()["queue_length"] == 1
+    finally:
+        release.set()
         daemon.shutdown()

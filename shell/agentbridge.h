@@ -271,8 +271,21 @@ public:
      * like the conversation row it belongs to stays "running". */
     Q_PROPERTY(bool runActive READ isRunActive NOTIFY runActiveChanged)
 
+    /*! \brief How many prompts wait in the daemon's queue.
+     *
+     * A prompt submitted while another run is busy waits its turn: the
+     * daemon runs one prompt at a time and announces a queued prompt
+     * (RunStarted) only when it reaches it. The count is what tells the
+     * widget that a prompt is on its way but has not started yet — the
+     * wait is the daemon's, and the user should see that something is
+     * happening. */
+    Q_PROPERTY(int queuedPrompts READ queuedPrompts NOTIFY queuedPromptsChanged)
+
     /*! \brief Whether an agent run is live right now. */
     bool isRunActive() const { return m_runActive; }
+
+    /*! \brief How many prompts wait in the daemon's queue. */
+    int queuedPrompts() const { return m_queuedPrompts; }
 
     QString sessionTitle() const { return m_sessionTitle; }
 
@@ -410,6 +423,20 @@ Q_SIGNALS:
      *  conversation model — the cue for the results pane to open on it. */
     void storedSessionOpened();
 
+    /*! \brief Emitted once per run, when the daemon begins it.
+     *
+     * The daemon picks the prompt up and starts the run: the cue for the
+     * results pane to open *now* — the model has not said anything yet,
+     * and it will not for a while (the request to the provider, the
+     * system prompt going over the wire and the model's own thinking
+     * take seconds). Opening the pane here rather than at the run's
+     * first token is the difference between a window that appears at
+     * once and one that appears minutes later.
+     *
+     * The pane shows the run as live from here: the exchange's row is
+     * open, with its spinner, and the answer streams into it. */
+    void runStarted();
+
     /*! \brief Emitted once per run, on its first streamed content.
      *
      * The moment the active run produces its first text delta or tool
@@ -441,6 +468,10 @@ Q_SIGNALS:
     /*! \brief Emitted when a run began or ended: the results pane's send
      *  button is a stop button while a run is live. */
     void runActiveChanged();
+
+    /*! \brief Emitted when the number of prompts waiting in the daemon's
+     *  queue changed. */
+    void queuedPromptsChanged();
 
     /*! \brief The newest dictated clip's cleaned-up transcript arrived.
      *
@@ -478,6 +509,10 @@ private Q_SLOTS:
 
     /*! \brief RunStarted: reset the streaming state for the new run. */
     void onRunStarted(const QString &runId, const QString &sessionId);
+
+    /*! \brief StateChanged: the daemon's own state — whether a run is in
+     *  flight and how many prompts wait behind it. */
+    void onStateChanged(const QString &state, const QString &currentRunId, uint queueLength);
 
     /*! \brief AuthFinished: the daemon's password dialog closed. */
     void onAuthFinished(const QString &runId, bool success);
@@ -656,6 +691,10 @@ private:
     // reset together.
     QString m_runId;
     bool m_runActive = false;
+    // How many prompts wait in the daemon's queue: the daemon runs one
+    // prompt at a time, and a prompt submitted while another run is busy
+    // waits its turn before it is even announced.
+    int m_queuedPrompts = 0;
     // The counters of the outstanding session-search requests: a reply
     // that belongs to an older request is dropped, so the list never
     // shows the results of a superseded query.

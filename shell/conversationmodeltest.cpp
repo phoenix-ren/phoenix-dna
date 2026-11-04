@@ -42,11 +42,40 @@ QString answer(ConversationModel &model)
 {
     return model.data(model.index(0), ConversationModel::ResultRole).toString();
 }
+
+bool running(ConversationModel &model)
+{
+    return model.data(model.index(0), ConversationModel::RunningRole).toBool();
+}
 } // namespace
 
 int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
+
+    // ---- A fresh exchange is running: the pane's spinner turns on it ---
+    //
+    // The results pane opens the moment the daemon picks the prompt up,
+    // before the model has said anything: the exchange is already there,
+    // marked as running, so the window comes up with the prompt in it and
+    // the agent's spinner turning while the answer is on its way.
+    {
+        ConversationModel model;
+        model.beginExchange(QStringLiteral("what is the weather"),
+                            QStringLiteral("michelle"));
+        check(running(model),
+              "a fresh exchange runs: the pane opens with a spinner on it");
+
+        // The model's first words: still the same running exchange.
+        model.appendResult(QStringLiteral("It is sunny"));
+        check(running(model),
+              "the exchange still runs while the answer streams in");
+
+        // The run is over: it stops.
+        model.finishExchange();
+        check(!running(model),
+              "the exchange stops running when the run is over");
+    }
 
     // ---- A run that thinks, says something, calls a tool and answers ---
     {

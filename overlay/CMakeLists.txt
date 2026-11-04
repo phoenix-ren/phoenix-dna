@@ -18,6 +18,7 @@ ecm_add_qml_module(org.phoenixdna.overlay
 ecm_target_qml_sources(org.phoenixdna.overlay
     SOURCES
         qml/DictationOverlay.qml
+        qml/WaitingOverlay.qml
 )
 
 ecm_finalize_qml_module(org.phoenixdna.overlay)

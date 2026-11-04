@@ -238,6 +238,11 @@ class AgentDaemon:
         with self._cond:
             self._pending.append(job)
             self._cond.notify_all()
+        # The queue grew: the prompt waits its turn if another run is
+        # busy, and the widget shows that wait. The state is announced
+        # here rather than only at the run's edges, so the count is
+        # current the moment a prompt joins the queue.
+        self._emit_state()
         return job.run_id
 
     def cancel(self, run_id: str) -> bool:

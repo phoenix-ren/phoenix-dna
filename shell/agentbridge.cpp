@@ -143,6 +143,14 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
     QDBusConnection::sessionBus().connect(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("QuestionAnswered"), this,
         SLOT(onQuestionAnswered(QString, QString, QString, QString)));
+    // The daemon's own state: whether a run is in flight and how many
+    // prompts wait behind it. A prompt submitted while another run is
+    // busy waits in the daemon's queue, and the daemon only announces it
+    // (RunStarted) when it reaches it — so the queue length is what tells
+    // the widget that a prompt is on its way but has not started yet.
+    QDBusConnection::sessionBus().connect(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("StateChanged"), this,
+        SLOT(onStateChanged(QString, QString, uint)));
 
     // Text deltas arrive per token; the pane need not re-layout for each.
     m_deltaTimer.setInterval(100);
@@ -724,6 +732,35 @@ void AgentBridge::onRunStarted(const QString &runId, const QString &sessionId)
     if (ours && m_sessionId != sessionId) {
         m_sessionId = sessionId;
     }
+
+    // The pane opens now, not at the model's first token: the provider
+    // round trip and the model's own thinking take seconds, and a window
+    // that appears only when the answer starts to stream leaves the user
+    // looking at a screen that did not react.
+    //
+    // It is emitted after the row is opened, so the pane comes up with
+    // the prompt in it and the exchange's spinner turning — the answer
+    // streams into that row.
+    Q_EMIT runStarted();
+}
+
+void AgentBridge::onStateChanged(const QString &state,
+                                 const QString &currentRunId,
+                                 uint queueLength)
+{
+    Q_UNUSED(state)
+    Q_UNUSED(currentRunId)
+
+    // How many prompts wait their turn in the daemon. A prompt submitted
+    // while another run is busy waits here — the daemon announces it
+    // (RunStarted) only when it reaches it — so the count is what the
+    // widget shows while it waits.
+    const int queued = static_cast<int>(queueLength);
+    if (m_queuedPrompts == queued) {
+        return;
+    }
+    m_queuedPrompts = queued;
+    Q_EMIT queuedPromptsChanged();
 }
 
 void AgentBridge::onTextDelta(const QString &runId, const QString &text)
