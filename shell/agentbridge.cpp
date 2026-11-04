@@ -39,6 +39,13 @@ const QString kWatchedInterface = QStringLiteral("org.freedesktop.DBus");
 // command failed without the log dwarfing the answer it belongs to.
 const int kToolLogOutputLimit = 2400;
 
+// How long AnswerQuestion may take, in milliseconds. The daemon answers in
+// milliseconds (it only hands the payload to the blocked run); a wedged or
+// dying daemon must not hold the pane in the submitted limbo for the D-Bus
+// default of 25 seconds — the reply that restores the form (and with it the
+// wizard) arrives that much sooner.
+const int kAnswerTimeoutMs = 5000;
+
 // Parses a JSON array into a variant list; an unparsable payload yields an
 // empty list (the daemon always answers with an array, so a malformed one
 // means the daemon is not the one this bridge expects).
@@ -459,10 +466,24 @@ bool AgentBridge::submitAnswers(const QVariantList &answers)
     // AnswerQuestion(ask_id, answer_json): one entry per question of the
     // form, in order — {"selected": [indices], "text": "own words"},
     // either part may carry the answer, an empty entry is a deliberate
-    // skip. A false reply (form no longer pending, payload rejected) is
-    // only logged: the form stays pending, and the view lets the user
-    // retry.
+    // skip. A payload whose entry count does not match the form is not
+    // sent at all (the daemon would refuse it; see the guard below). A
+    // false reply (form no longer pending, payload rejected) is only
+    // logged: the form is restored, and the view lets the user retry.
     if (m_pendingForm.isEmpty() || answers.isEmpty()) {
+        return false;
+    }
+
+    // One entry per question: the daemon resolves the payload against the
+    // form and refuses a count it cannot pair (a wizard's several
+    // questions are answered together or not at all). A payload that can
+    // never be taken would still be "sent" below — the form cleared, the
+    // caller's text consumed — only for the refusal to bring the form
+    // back a round-trip later. Refusing it here lets the caller fall
+    // back at once: the pane's input bar, whose single text answer can
+    // only serve a form of one, submits its text as a prompt instead.
+    const QVariantList formQuestions = m_pendingForm.value(QStringLiteral("questions")).toList();
+    if (!formQuestions.isEmpty() && answers.count() != formQuestions.count()) {
         return false;
     }
 
@@ -490,7 +511,7 @@ bool AgentBridge::submitAnswers(const QVariantList &answers)
             << QString::fromUtf8(QJsonDocument(payload).toJson(QJsonDocument::Compact));
 
     auto *watcher =
-        new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
+        new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message, kAnswerTimeoutMs), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this,
             [this](QDBusPendingCallWatcher *watcher) {
                 const QDBusReply<bool> reply = *watcher;
@@ -498,8 +519,15 @@ bool AgentBridge::submitAnswers(const QVariantList &answers)
                 if (!reply.isValid() || !reply.value()) {
                     qWarning() << "answers were not accepted:" << reply.error().message();
                     // Restore the form: the run is still blocked on it,
-                    // and the user must see their questions again.
-                    setPendingForm(m_lastSubmittedForm);
+                    // and the user must see their questions again —
+                    // unless the form ended while the reply was on its
+                    // way (answered elsewhere, timed out, cancelled,
+                    // run over: the fallback was dropped or a newer
+                    // form took its place), in which case the refusal
+                    // is stale and restores nothing.
+                    if (!m_lastSubmittedForm.isEmpty() && m_pendingForm.isEmpty()) {
+                        setPendingForm(m_lastSubmittedForm);
+                    }
                 }
             });
 
@@ -585,6 +613,14 @@ void AgentBridge::onQuestionAnswered(const QString &runId,
     Q_UNUSED(runId)
     Q_UNUSED(status)
     Q_UNUSED(answerJson)
+
+    // The form ended — whatever ended it. A submission still in flight
+    // for it (its answers optimistically cleared, the reply not yet
+    // back) is stale now: the run has moved on, and the reply's
+    // refusal must not restore a dead form.
+    if (m_lastSubmittedForm.value(QStringLiteral("askId")).toString() == askId) {
+        m_lastSubmittedForm.clear();
+    }
 
     // Only the form this view is showing ends here: a late answer for an
     // already-replaced form must not clear its successor.
@@ -712,7 +748,10 @@ void AgentBridge::onRunStarted(const QString &runId, const QString &sessionId)
     m_pendingThinking.clear();
     // A form never survives its run: if the previous run ended without
     // QuestionAnswered (daemon restart mid-question), its view must go.
+    // Its restore fallback goes with it — a refusal still in flight
+    // must not bring the dead form back on top of this run.
     setPendingForm(QVariantMap());
+    m_lastSubmittedForm.clear();
     if (ours) {
         const QueuedPrompt queued = m_pendingPrompts.takeFirst();
         if (queued.newSession) {
@@ -978,8 +1017,11 @@ void AgentBridge::onRunFinished(const QString &runId,
     m_runId.clear();
     setRunActive(false);
     // ...and any form the run was blocked on is over now, answered or
-    // not (QuestionAnswered usually got here first).
+    // not (QuestionAnswered usually got here first). The restore
+    // fallback goes with it: the run is done, and a refusal reply
+    // still in flight must not resurrect the form after the fact.
     setPendingForm(QVariantMap());
+    m_lastSubmittedForm.clear();
     if (!finalText.trimmed().isEmpty()) {
         m_conversation.setResult(finalText);
     }

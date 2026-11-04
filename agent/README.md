@@ -154,10 +154,15 @@ final-question gate (Next stays disabled until the question is answered;
 the own-words choice, a radio option of its own that picks itself when
 you type, counts), and a "Submit answers" that hands every answer over
 **optimistically**: the overlay closes and the conversation returns at
-once, with the answers summarized in the run's tool log — a rejected
-payload restores the form. Esc dismisses the overlay; the run keeps
-waiting, and the results window shows a card that brings the questions
-back.
+once, with the answers summarized in the run's tool log. A rejected
+payload restores the form **with every answer kept** — only a genuinely
+new form starts the walker over. Esc or the overlay's close button
+dismisses it; the run keeps waiting, and the results window shows a card
+that brings the questions back. The pane's input bar answers only a form
+of one question; while a wizard is pending its text goes on as a prompt
+instead (a wizard's answers leave as one submission or not at all — the
+daemon refuses a mismatched answer count, and so does the widget before
+anything is sent).
 
 The results window renders a pending question as a card above its input
 bar: one radio button per option (checkboxes when `multiple` is set), a

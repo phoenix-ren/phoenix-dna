@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
 import org.kde.plasma.core as PlasmaCore
+import org.kde.plasma.components as PC3
 import org.kde.plasma.plasmoid
 
 // The applet's own QML module: it exposes the C++ controller singleton, the
@@ -479,12 +480,15 @@ PlasmoidItem {
         onRecordClicked: Phoenix.PhoenixController.toggleFollowUpRecording()
 
         onSubmitted: (text, dictated) => {
-            // While the run is blocked on a form, the input bar answers
-            // its first unanswered question — typed or dictated, in the
-            // user's own words — instead of queuing another prompt
-            // behind the blocked run. The model interprets free text
-            // ("the second one", "actually cancel"), so the spoken path
-            // needs no parsing.
+            // While the run is blocked on a form of one question, the
+            // input bar answers it — typed or dictated, in the user's
+            // own words — instead of queuing another prompt behind the
+            // blocked run. The model interprets free text ("the second
+            // one", "actually cancel"), so the spoken path needs no
+            // parsing. A wizard (several questions) is answered in its
+            // own overlay: its answers leave as one submission, so a
+            // single text answer cannot serve it and submitAnswers
+            // declines it — the text goes on as the prompt it is.
             if (Phoenix.PhoenixController.agent.submitAnswers([{ "text": text }])) {
                 // The transcript is consumed: it became an answer, not a
                 // prompt (submitText's clearing, done here because the
@@ -492,14 +496,15 @@ PlasmoidItem {
                 resultsWindow.transcript = "";
                 return;
             }
-            // No question pending (or it just ended): a follow-up.
-            // Follow-ons keep the pane as the conversation surface: the
-            // controller clears both transcript surfaces when the text is
-            // submitted (see submitText()), so the follow-up field is left
-            // empty — placeholder reading "Ask a follow-up…" — for the next
-            // query; here we only follow the newest exchange while the
-            // answer streams in below the previous ones. A follow-on keeps
-            // the session: the daemon continues the conversation on screen.
+            // No question pending (or one a single answer cannot serve):
+            // a follow-up. Follow-ons keep the pane as the conversation
+            // surface: the controller clears both transcript surfaces
+            // when the text is submitted (see submitText()), so the
+            // follow-up field is left empty — placeholder reading "Ask
+            // a follow-up…" — for the next query; here we only follow
+            // the newest exchange while the answer streams in below the
+            // previous ones. A follow-on keeps the session: the daemon
+            // continues the conversation on screen.
             //
             // The one exception is a dictation the user started from the
             // panel widget's record button while this pane was open: its
@@ -615,10 +620,16 @@ PlasmoidItem {
             visible = true;
             // The compositor places the window itself, so the position
             // is applied again a tick later — it then wins over the
-            // placement the compositor chose.
+            // placement the compositor chose. The same tick asks for
+            // the keyboard: the overlay must hold the focus for Esc to
+            // reach it (it is dismissed with the keyboard, see below),
+            // and a window that comes back after a refused submission
+            // does not get the keyboard back by itself.
             Qt.callLater(function() {
                 x = Screen.virtualX + Math.round((Screen.width - width) / 2);
                 y = Screen.virtualY + Math.round((Screen.height - height) / 2);
+                wizardOverlay.requestActivate();
+                wizardBackdrop.forceActiveFocus();
             });
         }
 
@@ -646,9 +657,50 @@ PlasmoidItem {
             border.width: 1
             border.color: PhoenixTheme.backdropBorderColor
 
+            // Esc's home is the backdrop itself: key events travel
+            // from whatever holds the focus up through its ancestors,
+            // and the backdrop is an ancestor of everything the wizard
+            // shows — an option row, the own-answer field, the
+            // buttons. A handler on a sibling of the content (as this
+            // once was) sees Esc only until the user clicks anything
+            // inside the wizard, and a frameless always-on-top window
+            // without a working Esc has no way down at all. Only
+            // Escape is handled, so the walker's keys (Enter in the
+            // own-answer field) are not stolen.
+            focus: true
+            Keys.onEscapePressed: wizardOverlay.dismiss()
+
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: Kirigami.Units.gridUnit * 2
+
+                // The close button: the one way down that needs no
+                // keyboard. It stays enabled while the answers are on
+                // their way (every walker control is disabled then,
+                // but hiding the window costs nothing — the questions
+                // stay pending and the pane's card brings them back,
+                // exactly as with Esc).
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    PC3.ToolButton {
+                        objectName: "wizardCloseButton"
+
+                        icon.source: LucideIcons.url("x", PhoenixTheme.textColor)
+                        icon.width: Kirigami.Units.iconSizes.small
+                        icon.height: Kirigami.Units.iconSizes.small
+
+                        onClicked: wizardOverlay.dismiss()
+
+                        PC3.ToolTip {
+                            text: i18n("Close")
+                        }
+                    }
+                }
 
                 PhoenixResults.WizardView {
                     id: wizardWalker
@@ -672,16 +724,6 @@ PlasmoidItem {
                         9, Math.round(Qt.application.font.pixelSize * 0.8))
                     color: PhoenixTheme.secondaryTextColor
                 }
-            }
-
-            // Esc's home is the overlay itself; the walker's inputs
-            // (Enter in the own-answer field) must not be stolen.
-            FocusScope {
-                id: overlayKeys
-
-                anchors.fill: parent
-                focus: true
-                Keys.onEscapePressed: wizardOverlay.dismiss()
             }
         }
     }

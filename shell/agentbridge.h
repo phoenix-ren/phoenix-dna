@@ -401,11 +401,13 @@ public:
      * question's options (the daemon also accepts exact labels); \a text
      * is anything the user wrote in their own words. Either may carry
      * the answer alone. Returns whether an answer was sent: false when
-     * no question is pending or the answer was empty, so a caller (the
-     * input bar, which answers while a question waits) can fall back to
+     * no question is pending, the answer was empty, or the payload's
+     * entry count does not match the form's question count (the daemon
+     * refuses such a payload, so it is not sent at all) — a caller (the
+     * input bar, which answers while a question waits) falls back to
      * submitting the text as a prompt. A false reply from the daemon
      * (question no longer pending, payload does not resolve) is only
-     * logged — the question stays pending, and the user can retry.
+     * logged — the question is restored, and the user can retry.
      */
     Q_INVOKABLE bool submitAnswers(const QVariantList &answers);
 
