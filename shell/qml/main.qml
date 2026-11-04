@@ -571,8 +571,11 @@ PlasmoidItem {
         visible: false
 
         // The window's own icon: the app's avatar, the same mark every
-        // other window of the app carries (see PhoenixTheme.appIcon).
-        icon: PhoenixTheme.appIcon
+        // other window of the app carries.
+        //
+        // QML has no window-icon API (QIcon is not a QML type), so the
+        // icon is put on the window from C++ (see AppIcon).
+        Component.onCompleted: AppIcon.setWindowIcon(wizardOverlay)
 
         // The form being walked; {} once it is answered or gone.
         property var form: Phoenix.PhoenixController.agent.pendingForm

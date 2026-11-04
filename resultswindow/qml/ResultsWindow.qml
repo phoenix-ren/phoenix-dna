@@ -369,8 +369,11 @@ Window {
 
     // The window's own icon: the app's avatar, as the taskbar entry of
     // the conversation window shows it - the same mark every other window
-    // of the app carries (see PhoenixTheme.appIcon).
-    icon: PhoenixTheme.appIcon
+    // of the app carries.
+    //
+    // QML has no window-icon API (QIcon is not a QML type), so the icon
+    // is put on the window from C++ (see AppIcon).
+    Component.onCompleted: AppIcon.setWindowIcon(resultsWindow)
 
     // A dialog-style toplevel: no minimise/maximise noise in the taskbar
     // entry beyond the title, still fully decorated, movable and

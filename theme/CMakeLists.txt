@@ -40,6 +40,8 @@ ecm_add_qml_module(org.phoenixdna.theme
     DEPENDENCIES
         org.kde.kirigami
     SOURCES
+        appicon.cpp
+        appicon.h
         latexrenderer.cpp
         latexrenderer.h
         linkspan.h
@@ -96,6 +98,9 @@ qt6_add_resources(org.phoenixdna.theme "lucideicons"
 # window and the settings window, and the overlays besides. It is
 # shipped inside the module, so every window draws the same mark from the
 # same file, wherever the app is installed.
+#
+# QML has no window-icon API (QIcon is not a QML type), so the icon is
+# put on the windows from C++ (see appicon.h).
 qt6_add_resources(org.phoenixdna.theme "appicon"
     PREFIX "/qt/qml/${PHOENIX_THEME_PATH}"
     BASE "${CMAKE_SOURCE_DIR}/icons"
@@ -104,7 +109,8 @@ qt6_add_resources(org.phoenixdna.theme "appicon"
 
 # Where the drawings are, for the code that reads them.
 target_compile_definitions(org.phoenixdna.theme PRIVATE
-    PHOENIX_LUCIDE_RESOURCE_DIR="/qt/qml/${PHOENIX_THEME_PATH}/lucide")
+    PHOENIX_LUCIDE_RESOURCE_DIR="/qt/qml/${PHOENIX_THEME_PATH}/lucide"
+    PHOENIX_APPICON_RESOURCE_DIR="/qt/qml/${PHOENIX_THEME_PATH}")
 
 # A QML singleton by pragma, declared to the build the way qt_add_qml_module
 # wants (the qmldir entry is only generated for flagged files).

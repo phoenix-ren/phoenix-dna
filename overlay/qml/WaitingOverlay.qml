@@ -40,8 +40,11 @@ PlasmaCore.Dialog {
     hideOnWindowDeactivate: false
 
     // The window's own icon: the app's avatar, the same mark every other
-    // window of the app carries (see PhoenixTheme.appIcon).
-    icon: PhoenixTheme.appIcon
+    // window of the app carries.
+    //
+    // QML has no window-icon API (QIcon is not a QML type), so the icon
+    // is put on the window from C++ (see AppIcon).
+    Component.onCompleted: AppIcon.setWindowIcon(waitingOverlay)
 
     visible: false
 

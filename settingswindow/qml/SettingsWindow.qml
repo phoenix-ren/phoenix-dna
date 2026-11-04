@@ -130,8 +130,11 @@ Window {
 
     // The window's own icon: the app's avatar, as the taskbar entry of
     // the settings window shows it - the same mark every other window of
-    // the app carries (see PhoenixTheme.appIcon).
-    icon: PhoenixTheme.appIcon
+    // the app carries.
+    //
+    // QML has no window-icon API (QIcon is not a QML type), so the icon
+    // is put on the window from C++ (see AppIcon).
+    Component.onCompleted: AppIcon.setWindowIcon(window)
 
     // The compositor resizes the window; these are the floors.
     minimumWidth: Math.round(Kirigami.Units.gridUnit * 28)
