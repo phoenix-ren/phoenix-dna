@@ -27,11 +27,12 @@ import plasma.applet.org.phoenixdna.agent as Phoenix
  * the button up and clicking it starts or stops the recording.
  *
  * Every button sits in a PlasmaCore.ToolTipArea rather than carrying a
- * PC3.ToolTip. The widget-level tooltip Plasma shows for this applet
- * ("Phoenix DNA") is rendered in one shared tooltip window, and a
- * ToolTipArea hands that window over to whatever is hovered — so a
- * button's tooltip replaces the widget's instead of stacking on top of
- * it, which is what a PC3.ToolTip's separate window would do.
+ * PC3.ToolTip. A ToolTipArea draws its text in Plasma's own tooltip
+ * window, next to the button that owns it; a PC3.ToolTip opens a window
+ * of its own instead. The widget-level tooltip is gone (main.qml clears
+ * the applet's tooltip texts), so these are the only tooltips the widget
+ * has — and the panel's own tooltip area, which covers the whole applet,
+ * no longer competes with them for that one window.
  */
 Item {
     id: root
@@ -44,9 +45,9 @@ Item {
     property PlasmoidItem plasmoidItem: null
 
     // The buttons' tooltips stand down while the applet is expanded: the
-    // popup owns the cursor then, exactly like the widget-level tooltip
-    // Plasma shows for the rest of the widget (CompactApplet.qml in the
-    // desktop package does `active: !plasmoidItem.expanded`).
+    // popup owns the cursor then, and the panel's own tooltip area stands
+    // down with it (CompactApplet.qml in the desktop package does
+    // `active: !plasmoidItem.expanded`).
     readonly property bool tooltipsEnabled:
         plasmoidItem ? !plasmoidItem.expanded : true
 
