@@ -66,6 +66,37 @@ The microphone button and the waveform next to it are one big button: the
 waveform is part of the button's target, so hovering it lights the button up
 and clicking it starts or stops the recording.
 
+## The addresses in the text
+
+Everything the agent says names things: files and folders on the
+machine, pages on the web, mailboxes, phone numbers. In the results
+window and in the session search every such address is a link, and
+what a click does is the desktop's business:
+
+* a folder opens in the file manager — Dolphin — and a file opens in
+  it too, selected in the folder it stands in: where a file *is* is
+  the useful thing to show, the point of the link is the place as
+  much as the bytes;
+* a page opens in the browser, an address in the mail client, a
+  number in the dialer;
+* the Markdown's own links do the same.
+
+The tool log counts: the commands and their output name files more
+than anything else does, and they open like the answer's own links.
+
+The detection is the window's own — it runs on the rendered text,
+after the Markdown import, so the punctuation around an address is
+known to be decoration and not part of it, and the text itself is
+never rewritten, only marked. The daemon is untouched by it.
+
+The detector is careful about what an address is: a path must begin
+with one of the system's roots (or with `~`), a number must look like
+one — a date, a version number and an IP address are not phone
+numbers — and a bare name without a place (`src/main.cpp`) is left
+alone, since there is no telling where it stands. Only what the
+desktop has a handler for is ever handed to it: a link the Markdown
+authored with some other scheme is refused.
+
 ## Typing a query
 
 Not every prompt has to be spoken. The keyboard button at the far left of the
