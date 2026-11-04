@@ -258,6 +258,44 @@ def test_a_dedicated_speech_key_beats_the_provider_key(tmp_path):
     assert config.tts_key() == "sk-dedicated"
 
 
+def test_an_endpoint_alone_names_the_service(tmp_path):
+    """The window's whole configuration: an OpenAI-compatible base URL.
+    The provider — and with it the default model and the key — follows
+    from the host, so the user names nothing else."""
+    for url, provider, model in (
+        ("https://api.openai.com/v1", "openai", "gpt-4o-mini"),
+        ("https://api.groq.com/openai/v1", "groq", "openai/gpt-oss-120b"),
+        ("https://openrouter.ai/api/v1", "openrouter", "anthropic/claude-sonnet-4.5"),
+        ("https://api.minimax.io/v1", "minimax", "MiniMax-Text-01"),
+    ):
+        config = _config(tmp_path, {"llm_base_url": url})
+        assert config.llm_provider == provider, url
+        assert config.llm_base_url == url
+        assert config.model == model
+
+
+def test_an_endpoint_of_ones_own_has_no_model(tmp_path):
+    """A server that is none of the known services gets no model from
+    anywhere: MiniMax's would be refused by it."""
+    config = _config(tmp_path, {"llm_base_url": "https://my.gateway/v1"})
+    assert config.llm_provider == "custom"
+    assert config.model == ""
+
+    # …unless the user named one.
+    config = _config(
+        tmp_path, {"llm_base_url": "https://my.gateway/v1", "model": "qwen3-32b"}
+    )
+    assert config.model == "qwen3-32b"
+
+
+def test_a_named_model_beats_the_services_default(tmp_path):
+    config = _config(
+        tmp_path,
+        {"llm_base_url": "https://api.openai.com/v1", "model": "gpt-4o"},
+    )
+    assert config.model == "gpt-4o"
+
+
 def test_the_provider_tables_cover_what_the_ui_offers():
     assert set(LLM_PROVIDERS) == {
         "minimax",

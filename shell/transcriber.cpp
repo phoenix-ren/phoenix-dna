@@ -3,6 +3,7 @@
 
 #include "transcriber.h"
 #include "keysfile.h"
+#include "providerendpoint.h"
 
 #include <QHttpMultiPart>
 #include <QJsonDocument>
@@ -78,9 +79,26 @@ TranscriptionConfig Transcriber::resolveConfig()
 {
     TranscriptionConfig config;
 
-    // Provider precedence mirrors the key precedence: environment beats
-    // keys.json ("stt_provider", the entry the settings window writes)
-    // beats the MiniMax default.
+    // The endpoint is the whole of the configuration: an
+    // OpenAI-compatible URL names the service, and the provider — and
+    // with it the default model and the key field — follows from the
+    // host. So the endpoint is resolved first, from the environment,
+    // then from keys.json (where the settings window writes it), and
+    // only then does the provider's own default apply.
+    QString endpoint = qEnvironmentVariable("PHOENIX_STT_ENDPOINT");
+    if (endpoint.isEmpty()) {
+        endpoint = keysJsonValue("stt_endpoint");
+    }
+
+    // The model, in the same order.
+    QString model = qEnvironmentVariable("PHOENIX_STT_MODEL");
+    if (model.isEmpty()) {
+        model = keysJsonValue("stt_model");
+    }
+
+    // The provider, named directly: the environment beats keys.json
+    // ("stt_provider", the entry the settings window writes) beats the
+    // MiniMax default.
     QString provider = qEnvironmentVariable("PHOENIX_STT_PROVIDER");
     if (provider.isEmpty()) {
         provider = keysJsonValue("stt_provider");
@@ -88,30 +106,19 @@ TranscriptionConfig Transcriber::resolveConfig()
     if (provider.isEmpty()) {
         provider = QStringLiteral("minimax");
     }
+
+    // A recognised host in the endpoint is a better signal than the
+    // provider name: the user who typed the URL means that service.
+    const QString inferred = providerForEndpoint(endpoint);
+    if (!inferred.isEmpty()) {
+        provider = inferred;
+    }
+
     const ProviderSpec &spec = providerSpec(provider);
 
     config.provider = QLatin1String(spec.name);
-    config.endpoint = QLatin1String(spec.endpoint);
-    config.model = QLatin1String(spec.model);
-
-    const QString model = qEnvironmentVariable("PHOENIX_STT_MODEL");
-    if (!model.isEmpty()) {
-        config.model = model;
-    }
-    const QString endpoint = qEnvironmentVariable("PHOENIX_STT_ENDPOINT");
-    if (!endpoint.isEmpty()) {
-        config.endpoint = endpoint;
-    }
-
-    // A provider with no endpoint of its own ("custom") may still be
-    // named in keys.json, so a user who configures everything in the
-    // file need not set environment variables.
-    if (config.endpoint.isEmpty()) {
-        config.endpoint = keysJsonValue("stt_endpoint");
-    }
-    if (config.model.isEmpty()) {
-        config.model = keysJsonValue("stt_model");
-    }
+    config.endpoint = endpoint.isEmpty() ? QLatin1String(spec.endpoint) : endpoint;
+    config.model = model.isEmpty() ? QLatin1String(spec.model) : model;
 
     // Environment beats keys.json; within the environment the PHOENIX_-
     // prefixed spelling wins. Same precedence as config.py.
@@ -121,6 +128,14 @@ TranscriptionConfig Transcriber::resolveConfig()
     }
     if (config.apiKey.isEmpty()) {
         config.apiKey = keysJsonValue(spec.keyField);
+    }
+    // An endpoint of one's own is nobody else's provider, so it has its
+    // own key: the dedicated entry, or the environment.
+    if (config.apiKey.isEmpty() && inferred.isEmpty() && !endpoint.isEmpty()) {
+        config.apiKey = environmentOrEmpty("PHOENIX_STT_API_KEY");
+        if (config.apiKey.isEmpty()) {
+            config.apiKey = keysJsonValue("stt_api_key");
+        }
     }
 
     return config;

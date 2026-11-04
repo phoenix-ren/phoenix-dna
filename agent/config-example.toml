@@ -7,18 +7,17 @@
 
 [agent]
 # provider = "minimax"            # or "fake" for a canned-response test provider
-# llm_provider = "minimax"        # which service the model calls go to:
-#                                 # "minimax" (default), "openai", "groq",
-#                                 # "openrouter", or "custom" for any
-#                                 # other OpenAI-compatible server. It
-#                                 # brings the defaults for the endpoint,
-#                                 # the model and the key; the two
-#                                 # settings below override them.
+# llm_base_url = "https://api.minimax.io/v1"
+#                                 # where the model calls go. The host in
+#                                 # the URL decides the service: a known
+#                                 # one brings its own default model and
+#                                 # key with it, any other is your own
+#                                 # server (name a model below, or the
+#                                 # daemon says so).
 # model = "MiniMax-M3"             # multimodal; MiniMax-Text-01 cannot see images
 # vision = true                   # send attached images to the model; "auto"
 #                                 # (the default) decides from the model name -
 #                                 # "auto" already covers MiniMax-M3
-# llm_base_url = "https://api.minimax.io/v1"
 # request_timeout = 120
 # max_turns = 24
 # credential_ttl_seconds = 900    # how long a cached sudo password is reused
@@ -39,15 +38,15 @@
 # writes these into ~/.config/phoenix-dna/keys.json; this file wins over
 # it.
 # tts_enabled = true
-# tts_provider = "minimax"         # which engine speaks: "minimax"
-#                                 # (default), "openai", "groq",
-#                                 # "openrouter" or "local". Each brings
-#                                 # its own endpoint, model and voices;
-#                                 # the three settings below override
-#                                 # them.
 # tts_endpoint = "https://api.minimax.io/v1/t2a_v2"
+#                                 # where the voice is made. The host in
+#                                 # the URL decides the engine, as it does
+#                                 # for the model.
 # tts_model = "speech-2.8-turbo"
 # tts_voice = "English_expressive_narrator"
+# tts_provider = "minimax"         # only MiniMax and the on-device
+#                                 # engine ("local") need naming here;
+#                                 # the others follow the endpoint.
 # tts_read_mode = "final"         # "final" (the finished answer) or
 #                                 # "stream" (as it is generated)
 # tts_playback_speed = 1.0        # how fast the audio is played back:

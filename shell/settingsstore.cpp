@@ -3,6 +3,7 @@
 
 #include "settingsstore.h"
 #include "keysfile.h"
+#include "providerendpoint.h"
 
 #include <KGlobalAccel>
 #include <KLocalizedString>
@@ -272,6 +273,18 @@ void SettingsStore::refresh()
         provider = kSttProviderMiniMax;
     }
 
+    // A recognised host in the endpoint is a better signal than the
+    // provider name: the user who typed the URL means that service.
+    // The same rule as Transcriber::resolveConfig() and the daemon's
+    // config.py, so all three read the same provider out of the same
+    // settings.
+    const QString sttEndpoint =
+        keys.value(QStringLiteral("stt_endpoint")).toString();
+    const QString inferred = providerForEndpoint(sttEndpoint);
+    if (!inferred.isEmpty()) {
+        provider = inferred;
+    }
+
     const QString sttKey = keys.value(provider == kSttProviderOpenAI
                                             ? QStringLiteral("openai_api_key")
                                             : provider == kSttProviderGroq
@@ -296,6 +309,20 @@ void SettingsStore::refresh()
         && llmProvider != kLlmProviderOpenRouter
         && llmProvider != kLlmProviderCustom) {
         llmProvider = kLlmProviderMiniMax;
+    }
+
+    // A recognised host in the endpoint decides, the same way it does
+    // in the daemon and in the transcriber: the user who typed the URL
+    // means that service.
+    const QString llmBaseUrl =
+        keys.value(QStringLiteral("llm_base_url")).toString();
+    const QString llmInferred = providerForEndpoint(llmBaseUrl);
+    if (!llmInferred.isEmpty()) {
+        llmProvider = llmInferred;
+    } else if (!llmBaseUrl.isEmpty()) {
+        // An endpoint of one's own is nobody else's provider, so it
+        // gets the dedicated key.
+        llmProvider = kLlmProviderCustom;
     }
 
     const QString llmKey = keys.value(llmKeyFieldFor(llmProvider)).toString();
@@ -358,6 +385,31 @@ void SettingsStore::refresh()
     if (llmProvider != m_llmProvider) {
         m_llmProvider = llmProvider;
         Q_EMIT llmProviderChanged();
+    }
+
+    // The endpoints and the models, as the window wrote them. These
+    // are the whole of the configuration: the daemon works out the
+    // provider from the endpoint's host, so a recognised service brings
+    // its own model and key with it.
+    const QString llmModel = keys.value(QStringLiteral("model")).toString();
+    const QString sttModel = keys.value(QStringLiteral("stt_model")).toString();
+    const QString ttsEndpoint = keys.value(QStringLiteral("tts_endpoint")).toString();
+    const QString ttsModel = keys.value(QStringLiteral("tts_model")).toString();
+
+    if (llmBaseUrl != m_llmBaseUrl || llmModel != m_llmModel) {
+        m_llmBaseUrl = llmBaseUrl;
+        m_llmModel = llmModel;
+        Q_EMIT llmEndpointChanged();
+    }
+    if (sttEndpoint != m_sttEndpoint || sttModel != m_sttModel) {
+        m_sttEndpoint = sttEndpoint;
+        m_sttModel = sttModel;
+        Q_EMIT sttEndpointChanged();
+    }
+    if (ttsEndpoint != m_ttsEndpoint || ttsModel != m_ttsModel) {
+        m_ttsEndpoint = ttsEndpoint;
+        m_ttsModel = ttsModel;
+        Q_EMIT ttsEndpointChanged();
     }
     if (sttKey != m_sttApiKey) {
         m_sttApiKey = sttKey;
@@ -663,6 +715,51 @@ bool SettingsStore::saveLlmProvider(const QString &provider)
     setStatus(i18n("LLM provider set to %1. Restart the agent daemon to apply it: "
                    "systemctl --user restart phoenix.service"),
               false);
+    return true;
+}
+
+bool SettingsStore::saveLlmEndpoint(const QString &endpoint, const QString &model)
+{
+    // Two fields, written together: the endpoint and the model belong
+    // to the same choice, and a half-written pair is a configuration
+    // that cannot work.
+    if (!writeKeyField(QStringLiteral("llm_base_url"), endpoint.trimmed())) {
+        return false;
+    }
+    if (!writeKeyField(QStringLiteral("model"), model.trimmed())) {
+        return false;
+    }
+    // The daemon resolves its endpoint when it starts, like its key.
+    setStatus(i18n("The endpoint was stored. Restart the agent daemon to apply it: "
+                   "systemctl --user restart phoenix.service"),
+              false);
+    return true;
+}
+
+bool SettingsStore::saveSttEndpoint(const QString &endpoint, const QString &model)
+{
+    if (!writeKeyField(QStringLiteral("stt_endpoint"), endpoint.trimmed())) {
+        return false;
+    }
+    if (!writeKeyField(QStringLiteral("stt_model"), model.trimmed())) {
+        return false;
+    }
+    // The transcriber re-resolves its configuration for every clip, so
+    // the very next dictation already runs with the new endpoint.
+    setStatus(i18n("The speech-to-text endpoint was stored; the next dictation uses it."),
+              false);
+    return true;
+}
+
+bool SettingsStore::saveTtsEndpoint(const QString &endpoint, const QString &model)
+{
+    if (!writeKeyField(QStringLiteral("tts_endpoint"), endpoint.trimmed())) {
+        return false;
+    }
+    if (!writeKeyField(QStringLiteral("tts_model"), model.trimmed())) {
+        return false;
+    }
+    setStatus(i18n("The speech endpoint was stored."), false);
     return true;
 }
 

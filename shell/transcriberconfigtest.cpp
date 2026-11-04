@@ -225,6 +225,39 @@ int main(int argc, char **argv)
               "the fallback provider brings its own key");
     }
 
+    // The endpoint is the whole of the configuration: a recognised host
+    // decides the provider, and with it the key field.
+    writeKeys(configDir, QJsonObject{{QStringLiteral("stt_endpoint"),
+                                      QStringLiteral("https://api.openai.com/v1/audio/transcriptions")},
+                                     {QStringLiteral("openai_api_key"),
+                                      QStringLiteral("sk-openai")}});
+    {
+        const TranscriptionConfig config = Transcriber::resolveConfig();
+        check(config.provider == QStringLiteral("openai"),
+              "the endpoint's host decides the provider");
+        check(config.endpoint
+                  == QStringLiteral("https://api.openai.com/v1/audio/transcriptions"),
+              "the endpoint is used as it was stored");
+        check(config.model == QStringLiteral("gpt-4o-mini-transcribe"),
+              "the endpoint's provider brings its own model");
+        check(config.apiKey == QStringLiteral("sk-openai"),
+              "the endpoint's provider brings its own key");
+    }
+
+    // An endpoint of one's own has its own key.
+    writeKeys(configDir, QJsonObject{{QStringLiteral("stt_endpoint"),
+                                      QStringLiteral("https://my.gateway/v1/audio/transcriptions")},
+                                     {QStringLiteral("stt_api_key"),
+                                      QStringLiteral("sk-own")}});
+    {
+        const TranscriptionConfig config = Transcriber::resolveConfig();
+        check(config.endpoint
+                  == QStringLiteral("https://my.gateway/v1/audio/transcriptions"),
+              "an endpoint of one's own is used as it was stored");
+        check(config.apiKey == QStringLiteral("sk-own"),
+              "an endpoint of one's own has the dedicated key");
+    }
+
     if (failures) {
         printf("\n%d check(s) failed\n", failures);
         return 1;

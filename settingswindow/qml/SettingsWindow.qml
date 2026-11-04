@@ -72,14 +72,29 @@ Window {
     property string screenshotShortcut: ""
     property string promptShortcut: ""
 
-    // The stored API keys and the providers that go with them: the LLM
-    // one ("minimax" / "openai" / "custom") and the speech-to-text one
-    // ("minimax" / "openai" / "custom"). Password-echoed below, revealed
-    // by the eye button.
+    // The stored API keys and the endpoints that go with them. The
+    // endpoint is the whole of the configuration: an OpenAI-compatible
+    // base URL names the service, and the daemon works out the
+    // provider from the host. Password-echoed below, revealed by the
+    // eye button.
     property string llmApiKey: ""
     property string llmProvider: "minimax"
+    property string llmBaseUrl: ""
+    property string llmModel: ""
     property string sttApiKey: ""
     property string sttProvider: "minimax"
+    property string sttEndpoint: ""
+    property string sttModel: ""
+    property string ttsEndpoint: ""
+    property string ttsModel: ""
+
+    // The store's changes, pushed in when they happen: the endpoint
+    // and the model of each function come as a pair, so they arrive
+    // together. The names differ from the store's own ("...Changed")
+    // so that binding the properties does not clash with them.
+    signal llmEndpointUpdated()
+    signal sttEndpointUpdated()
+    signal ttsEndpointUpdated()
 
     // Which keys.json field each key is stored as, shown next to it —
     // the speech-to-text field follows the provider.
@@ -121,8 +136,11 @@ Window {
     signal darkFontSizeChangeRequested(int size)
     signal llmKeySaveRequested(string key)
     signal llmProviderChangeRequested(string provider)
+    signal llmEndpointSaveRequested(string endpoint, string model)
     signal sttKeySaveRequested(string key)
     signal sttProviderChangeRequested(string provider)
+    signal sttEndpointSaveRequested(string endpoint, string model)
+    signal ttsEndpointSaveRequested(string endpoint, string model)
     signal shortcutCaptureRequested(string role, int key, int modifiers)
     signal shortcutClearRequested(string role)
     signal speechEnabledChangeRequested(bool enabled)
@@ -171,8 +189,13 @@ Window {
             // app; values are pushed imperatively.)
             llmKeyFieldEdit.text = window.llmApiKey
             sttKeyFieldEdit.text = window.sttApiKey
-            llmProviderCombo.currentIndex = window.providerIndex(window.llmProvider)
-            sttProviderCombo.currentIndex = window.providerIndex(window.sttProvider)
+            llmEndpointEdit.text = window.llmBaseUrl
+            llmModelEdit.text = window.llmModel
+            sttEndpointEdit.text = window.sttEndpoint
+            sttModelEdit.text = window.sttModel
+            ttsEndpointEdit.text = window.ttsEndpoint
+            ttsModelEdit.text = window.ttsModel
+            speechProviderCombo.currentIndex = window.speechProviderIndex(window.speechProvider)
             themeCombo.currentIndex = window.themeIndex(window.theme)
             speechEnabledBox.checked = window.speechEnabled
             speechModeCombo.currentIndex =
@@ -204,10 +227,18 @@ Window {
 
     onLlmApiKeyChanged: llmKeyFieldEdit.text = window.llmApiKey
     onSttApiKeyChanged: sttKeyFieldEdit.text = window.sttApiKey
-    onLlmProviderChanged: llmProviderCombo.currentIndex =
-        window.providerIndex(window.llmProvider)
-    onSttProviderChanged: sttProviderCombo.currentIndex =
-        window.providerIndex(window.sttProvider)
+    onLlmEndpointUpdated: {
+        llmEndpointEdit.text = window.llmBaseUrl
+        llmModelEdit.text = window.llmModel
+    }
+    onSttEndpointUpdated: {
+        sttEndpointEdit.text = window.sttEndpoint
+        sttModelEdit.text = window.sttModel
+    }
+    onTtsEndpointUpdated: {
+        ttsEndpointEdit.text = window.ttsEndpoint
+        ttsModelEdit.text = window.ttsModel
+    }
     onSpeechEnabledChanged: speechEnabledBox.checked = window.speechEnabled
     onSpeechReadModeChanged: speechModeCombo.currentIndex =
         window.speechReadMode === "stream" ? 1 : 0
@@ -236,24 +267,12 @@ Window {
         return theme === "light" ? 1 : theme === "dark" ? 2 : 0
     }
 
-    // The combo's row for a provider ("minimax" → 0, "openai" → 1,
-    // "groq" → 2, "openrouter" → 3, "custom" → 4). Both the LLM and
-    // the speech-to-text combo show the same five, so the mapping lives
-    // in one place.
-    function providerIndex(provider) {
-        return provider === "openai" ? 1
-             : provider === "groq" ? 2
-             : provider === "openrouter" ? 3
-             : provider === "custom" ? 4 : 0
-    }
-
-    // The speech engine's row ("minimax" → 0, "openai" → 1,
-    // "groq" → 2, "local" → 3). "Local" is the on-device engine, which
-    // needs no key and has its own voice ids.
+    // The speech engine's row ("minimax" → 0, "local" → 1). The
+    // OpenAI-shaped engines are named by their endpoint, not from the
+    // list; only MiniMax (a different protocol) and the on-device one
+    // are chosen here.
     function speechProviderIndex(provider) {
-        return provider === "openai" ? 1
-             : provider === "groq" ? 2
-             : provider === "local" ? 3 : 0
+        return provider === "local" ? 1 : 0
     }
 
     // The families on offer for a mode: every one this system has,
@@ -671,33 +690,65 @@ Window {
                         color: PhoenixTheme.subheadingTextColor
                     }
 
+                    // The endpoint is the whole of the configuration:
+                    // an OpenAI-compatible base URL is enough to name a
+                    // service. The daemon works out the provider from
+                    // the host, so a known service brings its own model
+                    // and key with it, and any other server is the
+                    // user's own.
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Kirigami.Units.smallSpacing
 
                         PC3.Label {
-                            text: i18n("Provider")
+                            text: i18n("Endpoint")
                             color: PhoenixTheme.textColor
                         }
 
-                        PC3.ComboBox {
-                            id: llmProviderCombo
+                        PC3.TextField {
+                            id: llmEndpointEdit
+                            objectName: "llmEndpointEdit"
 
-                            model: [i18n("MiniMax"), i18n("OpenAI"), i18n("Groq"),
-                                    i18n("OpenRouter"), i18n("Custom")]
-
-                            // The provider decides which key is used and,
-                            // in the daemon, which endpoint and model are
-                            // the defaults. Like every other change, it
-                            // is reported and the store writes it.
-                            onActivated: (index) =>
-                                window.llmProviderChangeRequested(
-                                    index === 1 ? "openai"
-                                                : index === 2 ? "groq"
-                                                             : index === 3 ? "openrouter"
-                                                                          : index === 4 ? "custom"
-                                                                                       : "minimax")
+                            Layout.fillWidth: true
+                            placeholderText: i18n("https://api.openai.com/v1")
+                            onAccepted: window.llmEndpointSaveRequested(
+                                text, llmModelEdit.text)
                         }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PC3.Label {
+                            text: i18n("Model")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.TextField {
+                            id: llmModelEdit
+                            objectName: "llmModelEdit"
+
+                            Layout.fillWidth: true
+                            placeholderText: i18n("the provider's default")
+                            onAccepted: window.llmEndpointSaveRequested(
+                                llmEndpointEdit.text, text)
+                        }
+
+                        PC3.Button {
+                            text: i18n("Save")
+                            enabled: llmEndpointEdit.text !== window.llmBaseUrl
+                                     || llmModelEdit.text !== window.llmModel
+                            onClicked: window.llmEndpointSaveRequested(
+                                llmEndpointEdit.text, llmModelEdit.text)
+                        }
+                    }
+
+                    HintLabel {
+                        Layout.fillWidth: true
+                        text: i18n("Any OpenAI-compatible endpoint works — OpenAI, "
+                            + "OpenRouter, Groq, MiniMax or your own server. "
+                            + "Leave the model empty to use the service's default.")
                     }
 
                     RowLayout {
@@ -772,28 +823,54 @@ Window {
                         spacing: Kirigami.Units.smallSpacing
 
                         PC3.Label {
-                            text: i18n("Provider")
+                            text: i18n("Endpoint")
                             color: PhoenixTheme.textColor
                         }
 
-                        PC3.ComboBox {
-                            id: sttProviderCombo
+                        PC3.TextField {
+                            id: sttEndpointEdit
+                            objectName: "sttEndpointEdit"
 
-                            model: [i18n("MiniMax"), i18n("OpenAI"), i18n("Groq"),
-                                    i18n("OpenRouter"), i18n("Custom")]
-
-                            // Choosing a provider is a change like any
-                            // other: the window reports it, the store
-                            // writes it, the refreshed state comes back
-                            // through the bound properties above.
-                            onActivated: (index) =>
-                                window.sttProviderChangeRequested(
-                                    index === 1 ? "openai"
-                                                : index === 2 ? "groq"
-                                                             : index === 3 ? "openrouter"
-                                                                          : index === 4 ? "custom"
-                                                                                       : "minimax")
+                            Layout.fillWidth: true
+                            placeholderText: i18n("https://api.openai.com/v1/audio/transcriptions")
+                            onAccepted: window.sttEndpointSaveRequested(
+                                text, sttModelEdit.text)
                         }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PC3.Label {
+                            text: i18n("Model")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.TextField {
+                            id: sttModelEdit
+                            objectName: "sttModelEdit"
+
+                            Layout.fillWidth: true
+                            placeholderText: i18n("the provider's default")
+                            onAccepted: window.sttEndpointSaveRequested(
+                                sttEndpointEdit.text, text)
+                        }
+
+                        PC3.Button {
+                            text: i18n("Save")
+                            enabled: sttEndpointEdit.text !== window.sttEndpoint
+                                     || sttModelEdit.text !== window.sttModel
+                            onClicked: window.sttEndpointSaveRequested(
+                                sttEndpointEdit.text, sttModelEdit.text)
+                        }
+                    }
+
+                    HintLabel {
+                        Layout.fillWidth: true
+                        text: i18n("Any OpenAI-compatible transcription endpoint "
+                            + "works — OpenAI, Groq, OpenRouter, MiniMax or your "
+                            + "own server.")
                     }
 
                     RowLayout {
@@ -923,11 +1000,70 @@ Window {
 
                     HintLabel {
                         Layout.fillWidth: true
-                        text: i18n("Synthesis uses the agent's MiniMax key. The "
-                            + "answer's math is spoken as mathematics, code is "
-                            + "not read out, and speaking stops the moment you "
-                            + "close the results window or press its record "
+                        text: i18n("The answer's math is spoken as mathematics, "
+                            + "code is not read out, and speaking stops the moment "
+                            + "you close the results window or press its record "
                             + "button.")
+                    }
+
+                    // The voice's endpoint, like the others: an
+                    // OpenAI-compatible speech endpoint is enough to name
+                    // a service. MiniMax's speaks a different protocol,
+                    // so it is the one that needs choosing from the
+                    // list; the others are named by their URL.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PC3.Label {
+                            text: i18n("Endpoint")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.TextField {
+                            id: ttsEndpointEdit
+                            objectName: "ttsEndpointEdit"
+
+                            Layout.fillWidth: true
+                            placeholderText: i18n("https://api.openai.com/v1/audio/speech")
+                            onAccepted: window.ttsEndpointSaveRequested(
+                                text, ttsModelEdit.text)
+                        }
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PC3.Label {
+                            text: i18n("Model")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.TextField {
+                            id: ttsModelEdit
+                            objectName: "ttsModelEdit"
+
+                            Layout.fillWidth: true
+                            placeholderText: i18n("the provider's default")
+                            onAccepted: window.ttsEndpointSaveRequested(
+                                ttsEndpointEdit.text, text)
+                        }
+
+                        PC3.Button {
+                            text: i18n("Save")
+                            enabled: ttsEndpointEdit.text !== window.ttsEndpoint
+                                     || ttsModelEdit.text !== window.ttsModel
+                            onClicked: window.ttsEndpointSaveRequested(
+                                ttsEndpointEdit.text, ttsModelEdit.text)
+                        }
+                    }
+
+                    HintLabel {
+                        Layout.fillWidth: true
+                        text: i18n("Any OpenAI-compatible speech endpoint works. "
+                            + "MiniMax's own speaks a different protocol, so it "
+                            + "is chosen from the list below.")
                     }
 
                     RowLayout {
@@ -942,21 +1078,15 @@ Window {
                         PC3.ComboBox {
                             id: speechProviderCombo
 
-                            // MiniMax, OpenAI, Groq and OpenRouter
-                            // speak different protocols, so this picks
-                            // the engine, not just a voice. "Local" is
-                            // the on-device one.
-                            model: [i18n("MiniMax"), i18n("OpenAI"),
-                                    i18n("Groq"), i18n("OpenRouter"),
-                                    i18n("Local")]
+                            // MiniMax speaks a different protocol from
+                            // the OpenAI-shaped ones, so it is named here
+                            // rather than by its URL. "Local" is the
+                            // on-device engine, which needs no key.
+                            model: [i18n("MiniMax"), i18n("Local")]
 
                             onActivated: (index) =>
                                 window.speechProviderChangeRequested(
-                                    index === 1 ? "openai"
-                                                : index === 2 ? "groq"
-                                                             : index === 3 ? "openrouter"
-                                                                          : index === 4 ? "local"
-                                                                                       : "minimax")
+                                    index === 1 ? "local" : "minimax")
                         }
                     }
 

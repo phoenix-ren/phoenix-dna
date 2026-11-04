@@ -77,6 +77,31 @@ class SettingsStore : public QObject
      *  key in the "llm_api_key" entry. */
     Q_PROPERTY(QString llmProvider READ llmProvider NOTIFY llmProviderChanged)
 
+    /*! \brief The endpoint the model's calls go to.
+     *
+     *  This is the whole of it, really: an OpenAI-compatible base URL
+     *  is enough to name a service. The daemon works out the provider
+     *  from the host, so a recognised service brings its own model and
+     *  key with it, and any other server is the user's own. */
+    Q_PROPERTY(QString llmBaseUrl READ llmBaseUrl NOTIFY llmEndpointChanged)
+
+    /*! \brief The model the calls name ("gpt-4o-mini", "llama-3.3-70b").
+     *
+     *  Empty when the provider's own default is in force. */
+    Q_PROPERTY(QString llmModel READ llmModel NOTIFY llmEndpointChanged)
+
+    /*! \brief The endpoint the dictation is transcribed at. */
+    Q_PROPERTY(QString sttEndpoint READ sttEndpoint NOTIFY sttEndpointChanged)
+
+    /*! \brief The model the transcription names. */
+    Q_PROPERTY(QString sttModel READ sttModel NOTIFY sttEndpointChanged)
+
+    /*! \brief The endpoint the voice is synthesized at. */
+    Q_PROPERTY(QString ttsEndpoint READ ttsEndpoint NOTIFY ttsEndpointChanged)
+
+    /*! \brief The model the voice names. */
+    Q_PROPERTY(QString ttsModel READ ttsModel NOTIFY ttsEndpointChanged)
+
     /*! \brief The stored speech-to-text API key for the active provider. */
     Q_PROPERTY(QString sttApiKey READ sttApiKey NOTIFY sttApiKeyChanged)
 
@@ -183,6 +208,12 @@ public:
 
     QString llmApiKey() const { return m_llmApiKey; }
     QString llmProvider() const { return m_llmProvider; }
+    QString llmBaseUrl() const { return m_llmBaseUrl; }
+    QString llmModel() const { return m_llmModel; }
+    QString sttEndpoint() const { return m_sttEndpoint; }
+    QString sttModel() const { return m_sttModel; }
+    QString ttsEndpoint() const { return m_ttsEndpoint; }
+    QString ttsModel() const { return m_ttsModel; }
     QString sttApiKey() const { return m_sttApiKey; }
     QString sttProvider() const { return m_sttProvider; }
     QString theme() const { return m_theme; }
@@ -238,6 +269,19 @@ public:
      *  restart of the daemon to take effect. */
     Q_INVOKABLE bool saveLlmProvider(const QString &provider);
 
+    /*! \brief Stores the endpoint the model's calls go to.
+     *
+     *  An OpenAI-compatible base URL is enough to name a service: the
+     *  daemon works out the provider from the host, so a recognised
+     *  service brings its own model and key with it. */
+    Q_INVOKABLE bool saveLlmEndpoint(const QString &endpoint, const QString &model);
+
+    /*! \brief Stores the endpoint the dictation is transcribed at. */
+    Q_INVOKABLE bool saveSttEndpoint(const QString &endpoint, const QString &model);
+
+    /*! \brief Stores the endpoint the voice is synthesized at. */
+    Q_INVOKABLE bool saveTtsEndpoint(const QString &endpoint, const QString &model);
+
     /*! \brief Stores (or removes) the speech-to-text key of the active
      *  provider; the next dictation already uses it. */
     Q_INVOKABLE bool saveSttApiKey(const QString &apiKey);
@@ -292,6 +336,9 @@ public:
 Q_SIGNALS:
     void llmApiKeyChanged();
     void llmProviderChanged();
+    void llmEndpointChanged();
+    void sttEndpointChanged();
+    void ttsEndpointChanged();
     void sttApiKeyChanged();
     void sttProviderChanged();
     void themeChanged();
@@ -358,6 +405,12 @@ private:
     QTimer *m_statusClear = nullptr;
     QString m_llmApiKey;
     QString m_llmProvider = QStringLiteral("minimax");
+    QString m_llmBaseUrl;
+    QString m_llmModel;
+    QString m_sttEndpoint;
+    QString m_sttModel;
+    QString m_ttsEndpoint;
+    QString m_ttsModel;
     QString m_sttApiKey;
     QString m_sttProvider = QStringLiteral("minimax");
     QString m_theme = QStringLiteral("system");

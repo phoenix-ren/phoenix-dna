@@ -162,6 +162,53 @@ int main(int argc, char **argv)
               "the openrouter speech provider comes from the key file");
     }
 
+    // The endpoint is the whole of the configuration: a recognised host
+    // decides the provider, and with it the key field.
+    writeKeys(configDir, QJsonObject{{QStringLiteral("llm_base_url"),
+                                      QStringLiteral("https://api.openai.com/v1")},
+                                     {QStringLiteral("openai_api_key"),
+                                      QStringLiteral("sk-openai")}});
+    {
+        SettingsStore store(nullptr, nullptr, nullptr, nullptr);
+        check(store.llmProvider() == QStringLiteral("openai"),
+              "the endpoint's host decides the LLM provider");
+        check(store.llmKeyField() == QStringLiteral("openai_api_key"),
+              "the endpoint's provider brings its own key field");
+        check(store.llmApiKey() == QStringLiteral("sk-openai"),
+              "the endpoint's provider brings its own key");
+        check(store.llmBaseUrl() == QStringLiteral("https://api.openai.com/v1"),
+              "the endpoint is shown as it was stored");
+    }
+
+    // An endpoint of one's own is nobody else's provider.
+    writeKeys(configDir, QJsonObject{{QStringLiteral("llm_base_url"),
+                                      QStringLiteral("https://my.gateway/v1")},
+                                     {QStringLiteral("llm_api_key"),
+                                      QStringLiteral("sk-own")}});
+    {
+        SettingsStore store(nullptr, nullptr, nullptr, nullptr);
+        check(store.llmProvider() == QStringLiteral("custom"),
+              "an endpoint of one's own means the custom provider");
+        check(store.llmKeyField() == QStringLiteral("llm_api_key"),
+              "an endpoint of one's own has the dedicated key field");
+    }
+
+    // The same for the dictation.
+    writeKeys(configDir, QJsonObject{{QStringLiteral("stt_endpoint"),
+                                      QStringLiteral("https://api.groq.com/openai/v1/audio/transcriptions")},
+                                     {QStringLiteral("groq_api_key"),
+                                      QStringLiteral("gsk-groq")}});
+    {
+        SettingsStore store(nullptr, nullptr, nullptr, nullptr);
+        check(store.sttProvider() == QStringLiteral("groq"),
+              "the endpoint's host decides the speech-to-text provider");
+        check(store.sttKeyField() == QStringLiteral("groq_api_key"),
+              "the endpoint's provider brings its own key field");
+        check(store.sttEndpoint()
+                  == QStringLiteral("https://api.groq.com/openai/v1/audio/transcriptions"),
+              "the speech-to-text endpoint is shown as it was stored");
+    }
+
     if (failures) {
         printf("\n%d check(s) failed\n", failures);
         return 1;

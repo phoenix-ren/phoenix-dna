@@ -225,18 +225,20 @@ environment → `~/.config/phoenix-dna/keys.json` (mode 0600) for keys, and
 
 | Key / setting | Env var | Purpose |
 |---|---|---|
-| `llm_provider` | `PHOENIX_LLM_PROVIDER` | which hosted service the model calls go to: `minimax` (default), `openai`, `groq`, `openrouter`, or `custom` for any other OpenAI-compatible server. It brings the defaults for the endpoint, the model and the key; `llm_base_url` and `model` override them |
+| `llm_base_url`, `model` | `PHOENIX_BASE_URL`, `PHOENIX_MODEL` | the endpoint the model calls go to and the model they name. The host in the URL decides the service: a known one brings its own default model and key field, any other is the user's own server |
 | `minimax_api_key` | `MINIMAX_API_KEY` | the MiniMax key: the LLM by default, and the speech-to-text and speech synthesis when those use MiniMax |
-| `openai_api_key` | `OPENAI_API_KEY` | the OpenAI key: the LLM when `llm_provider = "openai"`, and the speech when the provider is OpenAI |
-| `groq_api_key` | `GROQ_API_KEY` | the Groq key: the LLM when `llm_provider = "groq"`, and the speech when the provider is Groq |
-| `openrouter_api_key` | `OPENROUTER_API_KEY` | the OpenRouter key: the LLM when `llm_provider = "openrouter"`, and the speech when the provider is OpenRouter |
+| `openai_api_key` | `OPENAI_API_KEY` | the OpenAI key: the LLM when the endpoint is OpenAI's, and the speech when the endpoint is |
+| `groq_api_key` | `GROQ_API_KEY` | the Groq key, in the same way |
+| `openrouter_api_key` | `OPENROUTER_API_KEY` | the OpenRouter key, in the same way |
 | `llm_api_key` | `PHOENIX_LLM_API_KEY` | a key of one's own, for a gateway or a self-hosted server — beats the provider's key |
 | `tavily_api_key` | `TAVILY_API_KEY` | web search (tool omitted if unset) |
 | `exa_api_key` | `EXA_API_KEY` | web search (tool omitted if unset) |
-| `stt_provider`, `openai_api_key`, `groq_api_key`, `openrouter_api_key` | `PHOENIX_STT_PROVIDER`, `OPENAI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY` | the plasmoid's speech-to-text: provider (`minimax` default, `openai`, `groq`, `openrouter` or `custom`) and its key — read by the widget, not the daemon |
-| `model`, `llm_base_url`, `max_turns`, `credential_ttl_seconds`, bash timeouts … | `PHOENIX_MODEL`, `PHOENIX_BASE_URL`, … | see `config-example.toml` |
+| `stt_endpoint`, `stt_model` | `PHOENIX_STT_ENDPOINT`, `PHOENIX_STT_MODEL` | the endpoint the dictation is transcribed at and the model it names — read by the widget, not the daemon |
+| `stt_api_key` | `PHOENIX_STT_API_KEY` | the key of a speech-to-text endpoint of one's own |
+| `max_turns`, `credential_ttl_seconds`, bash timeouts … | — | see `config-example.toml` |
 | `tts_enabled`, `tts_voice`, `tts_read_mode` … | `PHOENIX_TTS_ENABLED`, … | the read-aloud settings (see *Reading the answers aloud*) |
-| `tts_provider`, `tts_endpoint`, `tts_model` | `PHOENIX_TTS_PROVIDER`, … | which engine speaks: `minimax` (default), `openai`, `groq`, `openrouter` or `local`. Each brings its own endpoint, model and voices; the three settings override them |
+| `tts_endpoint`, `tts_model` | `PHOENIX_TTS_ENDPOINT`, … | the endpoint the voice is made at and the model it names |
+| `tts_provider` | `PHOENIX_TTS_PROVIDER` | which engine speaks: `minimax` (default), `openai`, `groq`, `openrouter` or `local`. Only MiniMax and the on-device one need naming — the rest follow the endpoint |
 | `tts_playback_speed` | `PHOENIX_TTS_PLAYBACK_SPEED` | how fast the audio is played back: 1.0 is the speed it was spoken at, 1.5 half again as fast. The stretch keeps the pitch, so the voice stays the voice (default 1.0) |
 | `ask_timeout_seconds` | — | how long an unanswered `ask_user` question may block the run before the model proceeds on its own (default 300; `0` waits forever) |
 | `confirm_destructive` | — | destructive commands that escalate to root (screen in `phoenix_dna/confirm.py`) block on a harness-owned Allow/Deny, fail closed (default true) |

@@ -183,93 +183,88 @@ for the details.
 
 ## Choosing the model
 
-The agent talks to whichever OpenAI-compatible endpoint you name. The
-settings window offers the two hosted services; `agent.toml` (or the
-environment) reaches any other one.
+The agent talks to whichever OpenAI-compatible endpoint you name, and
+**the settings window is where you name it** (the panel's gear button →
+**API keys**). An endpoint is all it takes:
 
-| `llm_provider` | Endpoint | Model | Key |
-| --- | --- | --- | --- |
-| `minimax` (default) | `https://api.minimax.io/v1` | `MiniMax-Text-01` | `minimax_api_key` |
-| `openai` | `https://api.openai.com/v1` | `gpt-4o-mini` | `openai_api_key` |
-| `groq` | `https://api.groq.com/openai/v1` | `openai/gpt-oss-120b` | `groq_api_key` |
-| `openrouter` | `https://openrouter.ai/api/v1` | `anthropic/claude-sonnet-4.5` | `openrouter_api_key` |
-| `custom` | — you name it | — you name it | `llm_api_key` |
+```
+Endpoint:  https://openrouter.ai/api/v1
+Model:     anthropic/claude-sonnet-4.5
+```
+
+The host in the URL says which service it is, so the endpoint brings
+the rest with it — the default model, and the key field the window
+shows. A URL that is none of the known services is your own server: it
+gets no model from anywhere (name one, or the daemon says so), and its
+key is the dedicated `llm_api_key` entry.
+
+| Endpoint | Default model | Key |
+| --- | --- | --- |
+| `https://api.minimax.io/v1` | `MiniMax-Text-01` | `minimax_api_key` |
+| `https://api.openai.com/v1` | `gpt-4o-mini` | `openai_api_key` |
+| `https://api.groq.com/openai/v1` | `openai/gpt-oss-120b` | `groq_api_key` |
+| `https://openrouter.ai/api/v1` | `anthropic/claude-sonnet-4.5` | `openrouter_api_key` |
+| anything else | — you name it | `llm_api_key` |
+
+The same holds for the dictation and the voice: each has an endpoint
+field in the window, and the host in the URL decides the service.
 
 Groq's models are named by their own family — `openai/gpt-oss-120b`,
 `qwen/qwen3.8-27b`, `meta-llama/…` — and which of them an account may
 use is the account's own business; the ones yours has are listed at
-<https://console.groq.com/keys>. Name the one you want in `model`.
+<https://console.groq.com/keys>. OpenRouter carries hundreds of models,
+each named `vendor/name`, listed at <https://openrouter.ai/models>; the
+free ones are marked `:free`.
 
-OpenRouter carries hundreds of models, each named `vendor/name`:
-
-```toml
-[agent]
-llm_provider = "openrouter"
-model = "google/gemini-3-flash-preview"
-```
-
-The list is at <https://openrouter.ai/models>. It bills per model, and
-the free ones are marked `:free`.
-
-A provider only supplies *defaults*. `llm_base_url` and `model` override
-them, so a gateway or a self-hosted model is reached by naming its
-endpoint — no new entry in the code:
-
-```toml
-[agent]
-llm_provider = "openai"
-llm_base_url = "https://my.gateway/v1"
-model = "qwen3-32b"
-```
-
-The key lives in `~/.config/phoenix-dna/keys.json` under the provider's
-own field, or in the environment (`OPENAI_API_KEY`, `GROQ_API_KEY`,
-`MINIMAX_API_KEY`, `PHOENIX_LLM_API_KEY`); `PHOENIX_LLM_PROVIDER` names
-the provider from the environment, and `PHOENIX_BASE_URL` /
-`PHOENIX_MODEL` override the endpoint and the model. The daemon reads
-all of this when it starts, so a changed key or endpoint applies after
-`systemctl --user restart phoenix.service`.
-
-Switching provider does not leave the old one's model behind: a model
-that belongs to another provider follows the new one (OpenAI would
+Switching endpoint does not leave the old one's model behind: a model
+that belongs to another service follows the new one (OpenAI would
 refuse "MiniMax-M3"). A model you named yourself — for your own server
 — is left alone.
 
 `vision` is a separate question and is *not* switched with the
-provider: `vision = true` in `agent.toml` states it outright, so a
-provider change that lands on a text-only model (Llama, for instance)
-will be sent images it cannot read. Use `vision = "auto"` to let the
-model name decide.
+endpoint: `vision = true` in `agent.toml` states it outright, so an
+endpoint that lands on a text-only model (Llama, for instance) will be
+sent images it cannot read. Use `vision = "auto"` to let the model name
+decide.
 
-The **custom** provider has no defaults at all: with no `llm_base_url`
-and no `model` the daemon says so rather than calling somewhere
-unexpected.
+`agent.toml` overrides the window, so it is the right place for what
+the window does not offer:
+
+```toml
+[agent]
+llm_base_url = "https://my.gateway/v1"
+model = "qwen3-32b"
+```
+
+The keys live in `~/.config/phoenix-dna/keys.json`, or in the
+environment (`OPENAI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`,
+`MINIMAX_API_KEY`, `PHOENIX_LLM_API_KEY`); `PHOENIX_BASE_URL` and
+`PHOENIX_MODEL` name the endpoint and the model from the environment.
+The daemon reads all of this when it starts, so a changed key or
+endpoint applies after `systemctl --user restart phoenix.service`.
 
 Models that reason out loud (MiniMax's `<think>` blocks) are handled the
-same way whichever provider serves them — the reasoning is shown
+same way whichever service serves them — the reasoning is shown
 separately and never read aloud.
 
 ## Dictation (speech to text)
 
-The dictation clip is transcribed by whichever provider is chosen in the
-settings window. All of them take the same multipart request — a
-`model` field and the audio as `file` — because MiniMax deliberately
-mirrors the OpenAI schema, so one code path serves them all.
+The dictation clip is transcribed by whichever endpoint the window
+names. They all take the same multipart request — a `model` field and
+the audio as `file` — because MiniMax deliberately mirrors the OpenAI
+schema, so one code path serves them all.
 
-| Provider | Endpoint | Model |
-| --- | --- | --- |
-| `minimax` (default) | `https://api.minimax.io/v1/speech_to_text` | `asr-1.0` |
-| `openai` | `https://api.openai.com/v1/audio/transcriptions` | `gpt-4o-mini-transcribe` |
-| `groq` | `https://api.groq.com/openai/v1/audio/transcriptions` | `whisper-large-v3-turbo` |
-| `openrouter` | `https://openrouter.ai/api/v1/audio/transcriptions` | `openai/whisper-large-v3-turbo` |
-| `custom` | — you name it | — you name it |
+| Endpoint | Default model |
+| --- | --- |
+| `https://api.minimax.io/v1/speech_to_text` | `asr-1.0` |
+| `https://api.openai.com/v1/audio/transcriptions` | `gpt-4o-mini-transcribe` |
+| `https://api.groq.com/openai/v1/audio/transcriptions` | `whisper-large-v3-turbo` |
+| `https://openrouter.ai/api/v1/audio/transcriptions` | `openai/whisper-large-v3-turbo` |
 
-The **custom** provider stands for any other OpenAI-compatible server:
-name its endpoint and model in `~/.config/phoenix-dna/agent.toml`, or
-through `PHOENIX_STT_ENDPOINT` and `PHOENIX_STT_MODEL`, and put its key
-in the `stt_api_key` entry of `keys.json` (or `PHOENIX_STT_API_KEY`).
+An endpoint of one's own is your own server: put its key in the
+`stt_api_key` entry of `keys.json` (or `PHOENIX_STT_API_KEY`).
 
-Unlike the model calls, a changed provider or key applies to the *very
+Unlike the model calls, a changed endpoint or key applies to the *very
 next* dictation — the transcriber re-resolves its configuration for
 every clip, so nothing has to be restarted.
 
@@ -312,16 +307,15 @@ with the agent's own MiniMax key; a dedicated `tts_api_key` entry in
 `PHOENIX_TTS_*` environment spelling (`PHOENIX_TTS_ENABLED`, …) that
 beats the file.
 
-The **voice provider** is a choice of its own: `tts_provider` picks the
-engine, and each engine brings its own endpoint, model and voice ids.
+The **voice** has an endpoint field in the window too, and the host in
+the URL decides the service — the same rule as the model's endpoint.
 
-| `tts_provider` | Endpoint | Model | Voices |
-| --- | --- | --- | --- |
-| `minimax` (default) | `https://api.minimax.io/v1/t2a_v2` | `speech-2.8-turbo` | `English_expressive_narrator` and the rest of MiniMax's catalogue |
-| `openai` | `https://api.openai.com/v1/audio/speech` | `gpt-4o-mini-tts` | `alloy`, `ash`, `nova`, … |
-| `groq` | `https://api.groq.com/openai/v1/audio/speech` | `canopylabs/orpheus-v1-english` | `troy`, `austin`, `hannah`, … |
-| `openrouter` | `https://openrouter.ai/api/v1/audio/speech` | `elevenlabs/eleven-turbo-v2` | `george`, `sarah`, `adam`, … |
-| `local` | — | — | the local model's own voices (see below) |
+| Endpoint | Model | Voices |
+| --- | --- | --- |
+| `https://api.minimax.io/v1/t2a_v2` | `speech-2.8-turbo` | `English_expressive_narrator` and the rest of MiniMax's catalogue |
+| `https://api.openai.com/v1/audio/speech` | `gpt-4o-mini-tts` | `alloy`, `ash`, `nova`, … |
+| `https://api.groq.com/openai/v1/audio/speech` | `canopylabs/orpheus-v1-english` | `troy`, `austin`, `hannah`, … |
+| `https://openrouter.ai/api/v1/audio/speech` | `elevenlabs/eleven-turbo-v2` | `george`, `sarah`, `adam`, … |
 
 Groq's own voices come with a catch: Orpheus asks the organisation's
 admin to accept its terms once
@@ -333,20 +327,11 @@ several voice providers (ElevenLabs, Deepgram, Google, Fish Audio);
 the list is at
 <https://openrouter.ai/models?output_modalities=speech>.
 
-
-The hosted engines speak two protocols — MiniMax answers with a
-hex-encoded SSE stream, OpenAI (and Groq, which mirrors it) with a plain
-audio body — so each has its own implementation behind the same
-interface. `tts_endpoint`, `tts_model` and `tts_voice` override the
-provider's defaults, which is how a third OpenAI-compatible server is
-used:
-
-```toml
-[agent]
-tts_provider = "openai"
-tts_endpoint = "https://my.gateway/v1/audio/speech"
-tts_voice = "nova"
-```
+MiniMax speaks a different protocol from the OpenAI-shaped ones — it
+answers with a hex-encoded SSE stream, they with a plain audio body — so
+it is the one engine that is chosen from a list rather than named by
+its URL. The on-device engine ("Local") is chosen there too, and needs
+no key.
 
 Two read modes exist, and they are genuinely different:
 

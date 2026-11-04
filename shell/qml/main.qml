@@ -763,15 +763,39 @@ PlasmoidItem {
         screenshotShortcut: Phoenix.PhoenixController.screenshotPicker.shortcut
         promptShortcut: Phoenix.PhoenixController.promptShortcut
 
+        // The store's changes, pushed in: the endpoint and the model of
+        // each function come as a pair, so the fields are filled in
+        // together. The property bindings above carry the values; these
+        // carry the moment they changed.
+        Connections {
+            target: Phoenix.PhoenixController.settings
+
+            function onLlmEndpointChanged() {
+                settingsWindow.llmEndpointUpdated();
+            }
+            function onSttEndpointChanged() {
+                settingsWindow.sttEndpointUpdated();
+            }
+            function onTtsEndpointChanged() {
+                settingsWindow.ttsEndpointUpdated();
+            }
+        }
+
         // The stored keys and everything about them the fields explain.
         llmApiKey: Phoenix.PhoenixController.settings.llmApiKey
         llmProvider: Phoenix.PhoenixController.settings.llmProvider
+        llmBaseUrl: Phoenix.PhoenixController.settings.llmBaseUrl
+        llmModel: Phoenix.PhoenixController.settings.llmModel
         llmKeyField: Phoenix.PhoenixController.settings.llmKeyField
         llmKeyFromEnvironment: Phoenix.PhoenixController.settings.llmKeyFromEnvironment
         sttApiKey: Phoenix.PhoenixController.settings.sttApiKey
         sttKeyField: Phoenix.PhoenixController.settings.sttKeyField
         sttProvider: Phoenix.PhoenixController.settings.sttProvider
+        sttEndpoint: Phoenix.PhoenixController.settings.sttEndpoint
+        sttModel: Phoenix.PhoenixController.settings.sttModel
         sttKeyFromEnvironment: Phoenix.PhoenixController.settings.sttKeyFromEnvironment
+        ttsEndpoint: Phoenix.PhoenixController.settings.ttsEndpoint
+        ttsModel: Phoenix.PhoenixController.settings.ttsModel
         keysFilePath: Phoenix.PhoenixController.settings.keysFilePath
         statusMessage: Phoenix.PhoenixController.settings.statusMessage
         statusIsError: Phoenix.PhoenixController.settings.statusIsError
@@ -792,6 +816,12 @@ PlasmoidItem {
             Phoenix.PhoenixController.settings.saveLlmApiKey(key)
         onLlmProviderChangeRequested: (provider) =>
             Phoenix.PhoenixController.settings.saveLlmProvider(provider)
+        onLlmEndpointSaveRequested: (endpoint, model) =>
+            Phoenix.PhoenixController.settings.saveLlmEndpoint(endpoint, model)
+        onSttEndpointSaveRequested: (endpoint, model) =>
+            Phoenix.PhoenixController.settings.saveSttEndpoint(endpoint, model)
+        onTtsEndpointSaveRequested: (endpoint, model) =>
+            Phoenix.PhoenixController.settings.saveTtsEndpoint(endpoint, model)
         onSttKeySaveRequested: (key) =>
             Phoenix.PhoenixController.settings.saveSttApiKey(key)
         onSttProviderChangeRequested: (provider) =>

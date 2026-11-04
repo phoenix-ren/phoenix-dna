@@ -203,6 +203,29 @@ KEY_ENV = {
     "tts_api_key": ("PHOENIX_TTS_API_KEY", "TTS_API_KEY"),
 }
 
+#: The fields the settings window manages in keys.json (the same
+#: entries the plasmoid reads, so both sides agree without a text file
+#: in sight). Applied between the defaults and agent.toml: the file and
+#: the environment remain the power-user overrides.
+#:
+#: The endpoint and the model are here, not only in agent.toml: the
+#: window writes them, so the window's choice is what the daemon uses.
+#: A user who names an endpoint in agent.toml still wins - that file is
+#: applied after this one.
+_KEYS_FILE_FIELDS = (
+    "llm_provider",
+    "llm_base_url",
+    "model",
+    "stt_provider",
+    "stt_endpoint",
+    "stt_model",
+    "tts_provider",
+    "tts_endpoint",
+    "tts_model",
+    "tts_voice",
+    "tts_format",
+)
+
 #: The tts_* fields an environment variable can override, spelled
 #: PHOENIX_TTS_<REST> (e.g. PHOENIX_TTS_ENABLED, PHOENIX_TTS_READ_MODE).
 _TTS_ENV_FIELDS = (
@@ -232,6 +255,21 @@ _TTS_KEY_FIELDS = (
     "tts_playback_speed",
     "tts_format",
     "tts_read_mode",
+)
+
+#: The fields the window writes for the *endpoints* and the *models* of
+#: the three functions, on top of the tts_* ones above. They live in
+#: keys.json too, so the window is enough: the user names an endpoint
+#: there and the daemon reads it from the same place.
+_ENDPOINT_KEY_FIELDS = (
+    "llm_provider",
+    "llm_base_url",
+    "model",
+    "stt_provider",
+    "stt_endpoint",
+    "stt_model",
+    "tts_endpoint",
+    "tts_model",
 )
 
 
@@ -413,6 +451,42 @@ def _apply_overrides(config: Config, overrides: dict) -> Config:
     return replace(config, **cleaned)
 
 
+#: Which provider an endpoint URL belongs to. The point is that the
+#: user can name an endpoint and nothing else: the provider is then
+#: worked out from the URL, so the key field, the default model and the
+#: default voice follow.
+#:
+#: Matched on the host, so a proxy in front of a service does not
+#: change the answer.
+_ENDPOINT_HOSTS = {
+    "api.openai.com": "openai",
+    "api.groq.com": "groq",
+    "openrouter.ai": "openrouter",
+    "api.minimax.io": "minimax",
+    "api.minimax.chat": "minimax",
+}
+
+
+def provider_for_endpoint(endpoint: str) -> str:
+    """The provider an endpoint URL belongs to, or "" when it is none
+    of the known ones.
+
+    A URL the user typed is the strongest signal there is: it says
+    which service is meant, better than a name they had to pick from a
+    list. So a recognised host wins over a remembered provider.
+    """
+    text = (endpoint or "").strip().lower()
+    if not text:
+        return ""
+    # Strip the scheme and anything after the host: a URL may be
+    # "https://api.openai.com/v1" or "api.openai.com/v1".
+    host = text.split("://", 1)[-1].split("/", 1)[0].split(":", 1)[0]
+    for known, provider in _ENDPOINT_HOSTS.items():
+        if host == known or host.endswith("." + known):
+            return provider
+    return ""
+
+
 def _belongs_to_other(model: str, provider_name: str) -> bool:
     """Whether a model of that name belongs to a provider other than
     the one in force.
@@ -466,11 +540,15 @@ def load_config(
 
     config = Config(config_dir=config_dir, data_dir=data_dir, keys=keys)
 
-    # What the settings window wrote to keys.json (see _TTS_KEY_FIELDS):
-    # above the defaults, below agent.toml and the environment.
-    config = _apply_overrides(
-        config, {field: keys[field] for field in _TTS_KEY_FIELDS if keys.get(field)}
-    )
+    # What the settings window wrote to keys.json (see _TTS_KEY_FIELDS
+    # and _ENDPOINT_KEY_FIELDS): above the defaults, below agent.toml and
+    # the environment.
+    from_keys = {
+        field: keys[field]
+        for field in _TTS_KEY_FIELDS + _ENDPOINT_KEY_FIELDS
+        if keys.get(field)
+    }
+    config = _apply_overrides(config, from_keys)
 
     # agent.toml overrides
     toml_file = config_dir / "agent.toml"
@@ -529,6 +607,30 @@ def load_config(
             env_overrides[name] = env[env_name]
     config = _apply_overrides(config, env_overrides)
 
+    # An endpoint that names a service is a better signal than the
+    # provider name: the user who typed "https://api.openai.com/v1"
+    # means OpenAI, whatever the remembered provider says. So a
+    # recognised host decides, and the provider follows it — which is
+    # what lets the settings window offer nothing but an endpoint.
+    #
+    # This runs after the overrides, so the endpoint that is actually
+    # in force is the one that decides.
+    #
+    # But only an endpoint the user *named* decides. The built-in
+    # default is MiniMax's, and it must not override a provider that
+    # was named outright: "llm_provider = openai" with no endpoint
+    # means OpenAI, not MiniMax.
+    named_endpoint = (
+        env.get("PHOENIX_BASE_URL")
+        or toml_table.get("llm_base_url")
+        or keys.get("llm_base_url", "")
+    )
+    inferred = provider_for_endpoint(str(named_endpoint or ""))
+    if inferred and inferred != provider_name:
+        provider_name = inferred
+        provider = LLM_PROVIDERS[inferred]
+        config = replace(config, llm_provider=inferred)
+
     # The provider's defaults fill in what the user did not name, and
     # only that: a base URL or a model set in keys.json, agent.toml or
     # the environment is kept, so any OpenAI-compatible server can be
@@ -575,6 +677,21 @@ def load_config(
         if config.model == DEFAULT_MODEL:
             config = replace(config, model="")
 
+    # An endpoint that is none of the known services is the user's own
+    # server, so it gets no model from anywhere: "MiniMax-Text-01"
+    # would be sent to a gateway that knows nothing about it. The
+    # daemon says so plainly instead.
+    #
+    # Again, only a named endpoint counts: the built-in default is
+    # MiniMax's, which is a known service.
+    if named_endpoint and not provider_for_endpoint(str(named_endpoint)):
+        if config.model == DEFAULT_MODEL:
+            config = replace(config, model="")
+        if provider_name != "custom":
+            provider_name = "custom"
+            provider = LLM_PROVIDERS["custom"]
+            config = replace(config, llm_provider="custom")
+
     # The key: a dedicated one (llm_api_key in keys.json, or
     # PHOENIX_LLM_API_KEY in the environment) beats the provider's own.
     # PHOENIX_LLM_API_KEY was already applied above as an environment
@@ -611,6 +728,28 @@ def load_config(
     ):
         if default and getattr(config, field) == marker:
             config = replace(config, **{field: default})
+
+    # A speech endpoint that names a service decides the engine, the
+    # same way the model's endpoint decides the model provider — but
+    # only an endpoint the user named, for the same reason.
+    named_speech_endpoint = (
+        env.get("PHOENIX_TTS_ENDPOINT")
+        or toml_table.get("tts_endpoint")
+        or keys.get("tts_endpoint", "")
+    )
+    inferred = provider_for_endpoint(str(named_speech_endpoint or ""))
+    if inferred and inferred in TTS_PROVIDERS and inferred != tts_provider:
+        tts_provider = inferred
+        speech = TTS_PROVIDERS[inferred]
+        config = replace(config, tts_provider=inferred)
+        for field, default, marker in (
+            ("tts_endpoint", speech["endpoint"], DEFAULT_TTS_ENDPOINT),
+            ("tts_model", speech["model"], DEFAULT_TTS_MODEL),
+            ("tts_voice", speech["voice"], DEFAULT_TTS_VOICE),
+            ("tts_format", speech["format"], DEFAULT_TTS_FORMAT),
+        ):
+            if default and getattr(config, field) == marker:
+                config = replace(config, **{field: default})
 
     config.data_dir.mkdir(parents=True, exist_ok=True)
     config.config_dir.mkdir(parents=True, exist_ok=True)
