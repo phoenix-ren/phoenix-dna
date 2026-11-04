@@ -7,129 +7,25 @@ SPDX-License-Identifier: BSD-2-Clause
 
 ![Phoenix DNA](icons/phoenix-dna.svg)
 
-A voice-first desktop AI agent for KDE Plasma 6, packaged as a plasmoid
-(panel widget) plus a Python D-Bus daemon.
+Do you suffer from advanced AI psychosis? Then this tool is for *you*!
+Phoenix DNA is the world's first **desktop-native agent**; an AI agent 
+specifically tailored for desktop use on Linux/KDE. In other agents, getting
+past the `sudo` (I'm looking at you, [OpenCode](https://opencode.ai])) interactive 
+prompt can an exercise in frustration -- and that's because virtually every 
+AI agent on the market is basically lowest-common denominator, (sort of) runs-anywhere 
+*web shite*. 
 
-The plasmoid captures speech, transcribes it, and forwards the text to the
-agent daemon over D-Bus. The daemon runs an LLM tool loop as the desktop
-user, streams progress back, and renders the result in a fully-fledged results
-window. When the agent needs a decision only the user can make, it asks: the
-question appears in the results window as a card — radio buttons (or
-checkboxes) per option, or the user's own words — and the run continues once
-it is answered. Several questions arrive as one form and open a wizard
-overlay of its own: large, centred, themed; one question at a time with a
-back button and exact progress, each answer required before the next, and
-everything sent together at the end — the conversation returning the moment
-you submit.
+By contrast, Phoenix DNA is hyperfocused on desktop use:
+- **easy access**: a widget on your window manager's task panel; simple.
+- **text-to-speech output**: for when you're afk
+- **authentication built in**: using a native KDE PAM authentication, so your DNA can `apt install` for you
+- **streamlined screenshot grabbing tool**: your queries often relate to a visible window, so make it easy to grab a screenshot and write a prompt directed at it
+- **hyperlinks**: to quickly open files, URLs, email addresses, phone numbers, etc. outputted during LLM responses
+- **tool CPU usage monitoring**: to confirm the tool that's been running for five minutes isn't dead
+- **back-to-the-future UX and performance**: because in a capable programmer's hands, native is faster, harder, stronger, better
+- **other agents allowed!**: a dictated prompt is automatically copied to the clipboard for easy pasting into prompt boxes of lesser AI agents
 
-The panel's search button (or Meta+Alt+`) opens the session search: the
-user's previous sessions on the left, under the name the daemon gave them,
-and the selected session's queries and responses on the right. Double-clicking
-a session opens it in the results window, where the conversation can be
-continued.
-
-## The trail of a run
-
-The results window shows what the agent did while it worked, in the order it
-did it: the notes it thinks in, the words it says, the tools it calls. Each
-step is one line — "Used 1 Thought", "Used 2 Edit" — that opens into the
-step's own text: the reasoning, the command with its output, the code it
-changed. The steps of one stretch belong together, so a run of eight calls
-reads as one entry.
-
-The answer comes last and on its own, in the agent's font and at full size —
-the point of the run. What the agent *says* on the way there — the working
-notes that precede a tool call — is set the same way: it is the agent's own
-words, and it is read as such. Only the titles of the steps around them are
-dimmed, and only the reasoning and the tool output stay behind their titles:
-they are the model's private notes and a log, not words for the user.
-
-Because the trail is written as the run goes on, the window can be followed
-while the agent works. A step that is still running says so, and says for
-how long — the difference between an agent at work and an agent that hung.
-
-While a command runs, its step also shows a CPU meter in the style of an
-audio level meter: a row of LED segments — green, then yellow, then red —
-that light with the command's share of the machine, and a peak-hold segment
-that lingers above the level before it, too, decays. The daemon reports the
-command's process id over D-Bus as it starts; the widget follows the whole
-process group through `/proc` (children where they are visible, the group
-itself when they are not), so a `make -j` reads as busy and a hung command
-as the silence it is. The share is of all cores together — the readout
-beside the bar restates it in cores ("×2.4").
-
-None of it is read aloud. The read-aloud speaks the answer — the words after
-the last tool call — and never a working note; the same is true of the
-daemon's own speech (see *Reading the answers aloud* below).
-
-The microphone button and the waveform next to it are one big button: the
-waveform is part of the button's target, so hovering it lights the button up
-and clicking it starts or stops the recording.
-
-## The addresses in the text
-
-Everything the agent says names things: files and folders on the
-machine, pages on the web, mailboxes, phone numbers. In the results
-window and in the session search every such address is a link, and
-what a click does is the desktop's business:
-
-* a folder opens in the file manager — Dolphin — and a file opens in
-  it too, selected in the folder it stands in: where a file *is* is
-  the useful thing to show, the point of the link is the place as
-  much as the bytes;
-* a page opens in the browser, an address in the mail client, a
-  number in the dialer;
-* the Markdown's own links do the same.
-
-The tool log counts: the commands and their output name files more
-than anything else does, and they open like the answer's own links.
-
-The detection is the window's own — it runs on the rendered text,
-after the Markdown import, so the punctuation around an address is
-known to be decoration and not part of it, and the text itself is
-never rewritten, only marked. The daemon is untouched by it.
-
-The detector is careful about what an address is: a path must begin
-with one of the system's roots (or with `~`), a number must look like
-one — a date, a version number and an IP address are not phone
-numbers — and a bare name without a place (`src/main.cpp`) is left
-alone, since there is no telling where it stands. Only what the
-desktop has a handler for is ever handed to it: a link the Markdown
-authored with some other scheme is refused.
-
-## Typing a query
-
-Not every prompt has to be spoken. The keyboard button at the far left of the
-panel opens the same prompt editor as the microphone, but empty and with
-the keyboard in it: nothing is recorded, nothing is transcribed, and the
-query is sent to the agent like a dictated one. The global shortcut
-`Meta+Alt+Return` does the same from any application.
-
-In every prompt editor — the dictation overlay as much as the results
-window's follow-up field — `Return` sends, and `Shift+Return` is the line
-break. A query of several sentences is written without the first `Return`
-sending it away, and the send button is a plain up arrow inside the prompt
-field, doing with a click what `Return` does with the keyboard.
-
-While the agent is working on a query, that same button is a stop button:
-one press interrupts the run (its tools are told too), and the conversation
-shows how far it got. A finished query announces itself with a soft chime —
-the answer can be read when it is heard, without the window being watched.
-
-The button is a toggle — pressing it again puts the editor away, and the
-query stays as a draft, so a mis-click costs nothing. `Esc` is the way to
-throw the draft away: the editor closes and the query is gone.
-
-The conversation window owns the prompt while it is on screen: a typed
-query continues that session, exactly like a dictated follow-on.
-
-## The dictated prompt on the clipboard
-
-When the voice input has ended and the prompt editor opens on the
-transcript, the prompt is put on the clipboard — so it can be pasted
-into another application without being picked out of the editor by
-hand. The editor remains the place where the prompt is checked and
-corrected; corrections made there are not copied.
+Made with 🏳️‍⚧️ 💜 and attitude by Phoenix Ren aka Michelle Percossi, and her trusty GLM and MiniMax AIs.
 
 ## Layout
 
@@ -167,6 +63,37 @@ named after the window it shows.
 
 Both need KWin, which is where the pointer is followed, the title of the
 target window is looked up and the picture is taken.
+
+## The addresses in the text
+
+Everything the agent says names things: files and folders on the
+machine, pages on the web, mailboxes, phone numbers. In the results
+window and in the session search every such address is a link, and
+what a click does is the desktop's business:
+
+* a folder opens in the file manager — Dolphin — and a file opens in
+  it too, selected in the folder it stands in: where a file *is* is
+  the useful thing to show, the point of the link is the place as
+  much as the bytes;
+* a page opens in the browser, an address in the mail client, a
+  number in the dialer;
+* the Markdown's own links do the same.
+
+The tool log counts: the commands and their output name files more
+than anything else does, and they open like the answer's own links.
+
+The detection is the window's own — it runs on the rendered text,
+after the Markdown import, so the punctuation around an address is
+known to be decoration and not part of it, and the text itself is
+never rewritten, only marked. The daemon is untouched by it.
+
+The detector is careful about what an address is: a path must begin
+with one of the system's roots (or with `~`), a number must look like
+one — a date, a version number and an IP address are not phone
+numbers — and a bare name without a place (`src/main.cpp`) is left
+alone, since there is no telling where it stands. Only what the
+desktop has a handler for is ever handed to it: a link the Markdown
+authored with some other scheme is refused.
 
 ## Settings
 
