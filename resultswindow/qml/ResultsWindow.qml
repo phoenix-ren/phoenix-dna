@@ -929,7 +929,21 @@ Window {
                                             visible: trailItem.open
                                                     && trailItem.modelData.kind === "thought"
 
-                                            text: trailItem.modelData.body
+                                            // The text follows the fold: a
+                                            // folded step carries no
+                                            // document. A TextEdit imports
+                                            // its Markdown into a
+                                            // QTextDocument on every change
+                                            // of its text, and the notes
+                                            // grow with every 100 ms delta
+                                            // flush — on the GUI thread, in
+                                            // plasmashell, for text nobody
+                                            // could see. The import happens
+                                            // when the step is opened
+                                            // instead: once, on demand, and
+                                            // live while it is watched.
+                                            text: trailItem.open
+                                                ? trailItem.modelData.body : ""
                                             textFormat: TextEdit.MarkdownText
                                             wrapMode: Text.WordWrap
                                             color: PhoenixTheme.secondaryTextColor
@@ -972,7 +986,17 @@ Window {
                                             visible: trailItem.open
                                                     && trailItem.modelData.kind === "tool"
 
-                                            text: trailItem.modelData.body
+                                            // Like the notes above: a folded
+                                            // step imports nothing. The log
+                                            // of a stretch of work is long,
+                                            // and it grew twice per tool
+                                            // call of the run — every growth
+                                            // re-imported the entire log
+                                            // into the document, on the GUI
+                                            // thread, for a step that
+                                            // starts folded.
+                                            text: trailItem.open
+                                                ? trailItem.modelData.body : ""
                                             textFormat: TextEdit.MarkdownText
                                             wrapMode: Text.WordWrap
                                             color: PhoenixTheme.secondaryTextColor
