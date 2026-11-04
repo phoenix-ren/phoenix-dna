@@ -99,11 +99,11 @@ corrected; corrections made there are not copied.
 | `resultswindow/` | Fully-fledged results window for conversation output        |
 | `search/`    | Session search: the previous sessions, listed by name           |
 | `settingswindow/` | Settings window: appearance, API keys and global shortcuts |
-| `theme/`     | Shared colour-scheme singleton and Markdown presentation helpers |
+| `theme/`     | Shared colour-scheme singleton, the app's icon set and Markdown presentation helpers |
 | `waveform/`  | Offline `.wav` → `.png` waveform renderer                       |
 | `widgettest/`| Developer testbench that hosts the widget in a plain window      |
 | `agent/`     | Python agent daemon (`phoenix-dna-agent`), a D-Bus service          |
-| `icons/`     | The artwork: the mark the widget picker shows, and the avatar    |
+| `icons/`     | The artwork: the mark the widget picker shows, the avatar, and the app's own icon set (Lucide's drawings) |
 
 ## Prompts with files
 

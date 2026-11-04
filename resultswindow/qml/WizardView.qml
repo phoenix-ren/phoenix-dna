@@ -237,7 +237,7 @@ ColumnLayout {
             objectName: "backButton"
 
             enabled: wizardView.cursor > 0 && !wizardView.__sent
-            icon.name: "go-previous"
+            icon.source: LucideIcons.url("arrow-left", PhoenixTheme.textColor)
             text: i18n("Back")
             onClicked: wizardView.goBack()
         }
@@ -256,7 +256,7 @@ ColumnLayout {
 
             visible: wizardView.cursor < wizardView.count - 1
             enabled: inputs.canSend && !wizardView.__sent
-            icon.name: "go-next"
+            icon.source: LucideIcons.url("arrow-right", PhoenixTheme.textColor)
             text: i18n("Next")
             onClicked: wizardView.goNext()
         }
@@ -266,7 +266,7 @@ ColumnLayout {
 
             visible: wizardView.cursor >= wizardView.count - 1
             enabled: inputs.canSend && !wizardView.__sent
-            icon.name: "document-send"
+            icon.source: LucideIcons.url("send", PhoenixTheme.textColor)
             text: i18n("Submit answers")
             onClicked: wizardView.submitAll()
         }

@@ -228,7 +228,7 @@ ColumnLayout {
             objectName: "answerButton"
 
             Layout.alignment: Qt.AlignRight
-            icon.name: "document-send"
+            icon.source: LucideIcons.url("send", PhoenixTheme.textColor)
             text: i18n("Send answer")
             enabled: inputs.canSend
             onClicked: inputs.submit()

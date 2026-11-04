@@ -9,6 +9,10 @@ import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
 import org.kde.ksvg as KSvg
 
+// The app's own icon set: Lucide's drawings, inked in the colour of the
+// panel they stand in.
+import org.phoenixdna.theme
+
 import plasma.applet.org.phoenixdna.agent as Phoenix
 
 /*
@@ -129,7 +133,9 @@ Item {
 
                 anchors.fill: parent
 
-                icon.name: "input-keyboard"
+                icon.source: LucideIcons.url("keyboard", checked
+                    ? Kirigami.Theme.highlightColor
+                    : Kirigami.Theme.textColor)
                 icon.width: Kirigami.Units.iconSizes.small
                 icon.height: Kirigami.Units.iconSizes.small
 
@@ -137,8 +143,6 @@ Item {
                 // like the search button - pressing it again puts the editor
                 // away again.
                 checked: Phoenix.PhoenixController.promptEditorOpen
-                icon.color: checked ? Kirigami.Theme.highlightColor
-                                    : Kirigami.Theme.textColor
 
                 // While the microphone is open the dictation owns the
                 // prompt: the button waits for it to end rather than
@@ -232,7 +236,8 @@ Item {
                 // The record button becomes a stop button while recording. A
                 // microphone rather than a red circle signals speech input;
                 // no colour tint needed either way.
-                icon.name: root.recording ? "media-playback-stop" : "audio-input-microphone"
+                icon.source: LucideIcons.url(root.recording ? "circle-stop" : "mic-audio-lines",
+                    Kirigami.Theme.textColor)
                 icon.width: Kirigami.Units.iconSizes.small
                 icon.height: Kirigami.Units.iconSizes.small
 
@@ -274,13 +279,12 @@ Item {
 
                 anchors.fill: parent
 
-                icon.name: "camera-photo"
+                // While the picker waits for a click, the button says so.
+                icon.source: LucideIcons.url("camera", Phoenix.PhoenixController.screenshotPicker.picking
+                    ? Kirigami.Theme.highlightColor
+                    : Kirigami.Theme.textColor)
                 icon.width: Kirigami.Units.iconSizes.small
                 icon.height: Kirigami.Units.iconSizes.small
-                // While the picker waits for a click, the button says so.
-                icon.color: Phoenix.PhoenixController.screenshotPicker.picking
-                    ? Kirigami.Theme.highlightColor
-                    : Kirigami.Theme.textColor
 
                 onClicked: Phoenix.PhoenixController.startScreenshot()
 
@@ -315,14 +319,14 @@ Item {
 
                 anchors.fill: parent
 
-                icon.name: "edit-find"
+                icon.source: LucideIcons.url("search", checked
+                    ? Kirigami.Theme.highlightColor
+                    : Kirigami.Theme.textColor)
                 icon.width: Kirigami.Units.iconSizes.small
                 icon.height: Kirigami.Units.iconSizes.small
 
                 // The search is open while the button is pressed.
                 checked: Phoenix.PhoenixController.sessionSearchOpen
-                icon.color: checked ? Kirigami.Theme.highlightColor
-                                    : Kirigami.Theme.textColor
 
                 onClicked: Phoenix.PhoenixController.toggleSessionSearch()
 
@@ -349,15 +353,15 @@ Item {
 
                 anchors.fill: parent
 
-                icon.name: "settings-configure"
+                icon.source: LucideIcons.url("settings", checked
+                    ? Kirigami.Theme.highlightColor
+                    : Kirigami.Theme.textColor)
                 icon.width: Kirigami.Units.iconSizes.small
                 icon.height: Kirigami.Units.iconSizes.small
 
                 // The pane is up while the button is checked; as with the
                 // search button, the next press puts it away.
                 checked: root.settingsOpen
-                icon.color: checked ? Kirigami.Theme.highlightColor
-                                    : Kirigami.Theme.textColor
 
                 onClicked: root.settingsClicked()
 

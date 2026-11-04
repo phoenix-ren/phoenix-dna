@@ -5,6 +5,10 @@ import QtQuick
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
 
+// The app's own icon set: Lucide's drawings, inked in the colour of the
+// window they stand in.
+import org.phoenixdna.theme
+
 /*
  * The shortcut capture button of the settings window.
  *
@@ -45,7 +49,7 @@ PC3.Button {
     text: internal.listening
           ? i18n("Type the new shortcut…")
           : (sequenceText.length > 0 ? sequenceText : i18n("None"))
-    icon.name: "configure-shortcuts"
+    icon.source: LucideIcons.url("keyboard", PhoenixTheme.textColor)
 
     // Recording state: the highlight asks for the keys.
     highlighted: internal.listening
