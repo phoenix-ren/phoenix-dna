@@ -570,6 +570,10 @@ PlasmoidItem {
         hideOnWindowDeactivate: false
         visible: false
 
+        // The window's own icon: the app's avatar, the same mark every
+        // other window of the app carries (see PhoenixTheme.appIcon).
+        icon: PhoenixTheme.appIcon
+
         // The form being walked; {} once it is answered or gone.
         property var form: Phoenix.PhoenixController.agent.pendingForm
 

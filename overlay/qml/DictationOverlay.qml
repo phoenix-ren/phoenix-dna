@@ -32,6 +32,10 @@ PlasmaCore.Dialog {
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     hideOnWindowDeactivate: false
 
+    // The window's own icon: the app's avatar, the same mark every other
+    // window of the app carries (see PhoenixTheme.appIcon).
+    icon: PhoenixTheme.appIcon
+
     // The transcript arrives progressively from the speech-to-text engine
     // and stays editable: the user can correct the recognition before it
     // becomes a prompt.

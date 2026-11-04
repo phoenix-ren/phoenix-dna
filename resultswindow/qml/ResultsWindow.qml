@@ -367,6 +367,11 @@ Window {
         ? i18n("%1 — Phoenix DNA", sessionTitle)
         : i18n("Conversation — Phoenix DNA")
 
+    // The window's own icon: the app's avatar, as the taskbar entry of
+    // the conversation window shows it - the same mark every other window
+    // of the app carries (see PhoenixTheme.appIcon).
+    icon: PhoenixTheme.appIcon
+
     // A dialog-style toplevel: no minimise/maximise noise in the taskbar
     // entry beyond the title, still fully decorated, movable and
     // resizable by the compositor. Keep-above preserves the pane's old

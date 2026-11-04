@@ -128,6 +128,11 @@ Window {
     title: i18n("Settings — Phoenix DNA")
     flags: Qt.Dialog
 
+    // The window's own icon: the app's avatar, as the taskbar entry of
+    // the settings window shows it - the same mark every other window of
+    // the app carries (see PhoenixTheme.appIcon).
+    icon: PhoenixTheme.appIcon
+
     // The compositor resizes the window; these are the floors.
     minimumWidth: Math.round(Kirigami.Units.gridUnit * 28)
     minimumHeight: Math.round(Kirigami.Units.gridUnit * 20)

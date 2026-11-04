@@ -91,6 +91,17 @@ qt6_add_resources(org.phoenixdna.theme "lucideicons"
     FILES ${phoenix_lucide_files}
 )
 
+# The app's own icon: the avatar (icons/phoenix-dna-avatar.png), which
+# every window of the app carries - the taskbar entries of the results
+# window and the settings window, and the overlays besides. It is
+# shipped inside the module, so every window draws the same mark from the
+# same file, wherever the app is installed.
+qt6_add_resources(org.phoenixdna.theme "appicon"
+    PREFIX "/qt/qml/${PHOENIX_THEME_PATH}"
+    BASE "${CMAKE_SOURCE_DIR}/icons"
+    FILES "${CMAKE_SOURCE_DIR}/icons/phoenix-dna-avatar.png"
+)
+
 # Where the drawings are, for the code that reads them.
 target_compile_definitions(org.phoenixdna.theme PRIVATE
     PHOENIX_LUCIDE_RESOURCE_DIR="/qt/qml/${PHOENIX_THEME_PATH}/lucide")

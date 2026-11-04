@@ -39,6 +39,10 @@ PlasmaCore.Dialog {
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     hideOnWindowDeactivate: false
 
+    // The window's own icon: the app's avatar, the same mark every other
+    // window of the app carries (see PhoenixTheme.appIcon).
+    icon: PhoenixTheme.appIcon
+
     visible: false
 
     // The size of the card: small enough to stay out of the way, big

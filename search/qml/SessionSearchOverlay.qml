@@ -134,6 +134,10 @@ PlasmaCore.Dialog {
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
     hideOnWindowDeactivate: false
 
+    // The window's own icon: the app's avatar, the same mark every other
+    // window of the app carries (see PhoenixTheme.appIcon).
+    icon: PhoenixTheme.appIcon
+
     visible: false
 
     // Fades in when the search opens, out again when it is dismissed; the

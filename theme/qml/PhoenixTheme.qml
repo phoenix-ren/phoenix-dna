@@ -46,6 +46,17 @@ QtObject {
     // store owns the persisted value); read by everything else.
     property string preference: "system"
 
+    // The app's own icon: the avatar, as every window of the app carries
+    // it - the taskbar entries of the results window and the settings
+    // window, and the overlays besides. One address for all of them, so
+    // every window shows the same mark.
+    //
+    // The picture is bundled with this module and read from its
+    // resources, so the windows carry the icon with them wherever the app
+    // is installed.
+    readonly property string appIcon:
+        "qrc:/qt/qml/org/phoenixdna/theme/phoenix-dna-avatar.png"
+
     // Whether the desktop side of the resolution is the dark one.
     // Written by the shell, from the applet's Kirigami (Plasma) theme.
     property bool systemPrefersDark: false
