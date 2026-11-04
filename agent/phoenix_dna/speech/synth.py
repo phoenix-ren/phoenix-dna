@@ -5,7 +5,8 @@
 
 An engine turns one piece of text into mono 16-bit PCM (s16le) at its
 declared :attr:`SynthesisEngine.sample_rate` — one uniform contract for
-the HTTP engine and the local one, so the Speaker never knows which is
+the HTTP engines (MiniMax's and OpenAI's, which speak different
+protocols) and the local one, so the Speaker never knows which is
 below it:
 
 * ``synthesize(text)`` yields PCM chunks as they arrive (streaming: the
@@ -72,6 +73,48 @@ def build_engine(config: Config) -> SynthesisEngine | None:
             )
             return None
         return MinimaxEngine(
+            api_key=api_key,
+            model=config.tts_model,
+            endpoint=config.tts_endpoint,
+            voice=config.tts_voice,
+            speed=config.tts_speed,
+            sample_rate=32000,
+            audio_format=config.tts_format,
+        )
+    if provider == "openai":
+        from .openai_engine import OpenAiEngine
+
+        api_key = config.tts_key()
+        if not api_key:
+            log.warning(
+                "tts_provider is 'openai' but no key is set "
+                "(PHOENIX_TTS_API_KEY, OPENAI_API_KEY or keys.json); "
+                "speech stays off"
+            )
+            return None
+        return OpenAiEngine(
+            api_key=api_key,
+            model=config.tts_model,
+            endpoint=config.tts_endpoint,
+            voice=config.tts_voice,
+            speed=config.tts_speed,
+            sample_rate=32000,
+            audio_format=config.tts_format,
+        )
+    if provider == "groq":
+        # Groq's speech endpoint is the OpenAI one on Groq's own base
+        # URL, so the same engine serves it.
+        from .openai_engine import OpenAiEngine
+
+        api_key = config.tts_key()
+        if not api_key:
+            log.warning(
+                "tts_provider is 'groq' but no key is set "
+                "(PHOENIX_TTS_API_KEY, GROQ_API_KEY or keys.json); "
+                "speech stays off"
+            )
+            return None
+        return OpenAiEngine(
             api_key=api_key,
             model=config.tts_model,
             endpoint=config.tts_endpoint,

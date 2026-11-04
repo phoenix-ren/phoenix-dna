@@ -765,6 +765,7 @@ PlasmoidItem {
 
         // The stored keys and everything about them the fields explain.
         llmApiKey: Phoenix.PhoenixController.settings.llmApiKey
+        llmProvider: Phoenix.PhoenixController.settings.llmProvider
         llmKeyField: Phoenix.PhoenixController.settings.llmKeyField
         llmKeyFromEnvironment: Phoenix.PhoenixController.settings.llmKeyFromEnvironment
         sttApiKey: Phoenix.PhoenixController.settings.sttApiKey
@@ -783,11 +784,14 @@ PlasmoidItem {
         speechEnabled: Phoenix.PhoenixController.settings.speechEnabled
         speechReadMode: Phoenix.PhoenixController.settings.speechReadMode
         speechVoice: Phoenix.PhoenixController.settings.speechVoice
+        speechProvider: Phoenix.PhoenixController.settings.speechProvider
         speechPlaybackSpeed: Phoenix.PhoenixController.settings.speechPlaybackSpeed
         speechFromEnvironment: Phoenix.PhoenixController.settings.speechFromEnvironment
 
         onLlmKeySaveRequested: (key) =>
             Phoenix.PhoenixController.settings.saveLlmApiKey(key)
+        onLlmProviderChangeRequested: (provider) =>
+            Phoenix.PhoenixController.settings.saveLlmProvider(provider)
         onSttKeySaveRequested: (key) =>
             Phoenix.PhoenixController.settings.saveSttApiKey(key)
         onSttProviderChangeRequested: (provider) =>
@@ -824,6 +828,10 @@ PlasmoidItem {
         }
         onSpeechVoiceChangeRequested: (voice) => {
             Phoenix.PhoenixController.settings.saveSpeechVoice(voice)
+            Phoenix.PhoenixController.agent.reloadSpeech()
+        }
+        onSpeechProviderChangeRequested: (provider) => {
+            Phoenix.PhoenixController.settings.saveSpeechProvider(provider)
             Phoenix.PhoenixController.agent.reloadSpeech()
         }
         onSpeechPlaybackSpeedChangeRequested: (speed) => {

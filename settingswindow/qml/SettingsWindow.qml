@@ -72,9 +72,12 @@ Window {
     property string screenshotShortcut: ""
     property string promptShortcut: ""
 
-    // The stored API keys and the speech-to-text provider ("minimax" /
-    // "openai"). Password-echoed below, revealed by the eye button.
+    // The stored API keys and the providers that go with them: the LLM
+    // one ("minimax" / "openai" / "custom") and the speech-to-text one
+    // ("minimax" / "openai" / "custom"). Password-echoed below, revealed
+    // by the eye button.
     property string llmApiKey: ""
+    property string llmProvider: "minimax"
     property string sttApiKey: ""
     property string sttProvider: "minimax"
 
@@ -93,10 +96,12 @@ Window {
 
     // Read-aloud: whether the daemon speaks the answers, when it starts
     // speaking them ("final"/"stream"), the voice id it synthesizes
-    // with, and whether the environment overrides any of it.
+    // with, which engine speaks it ("minimax" / "openai" / "local"), and
+    // whether the environment overrides any of it.
     property bool speechEnabled: false
     property string speechReadMode: "final"
     property string speechVoice: ""
+    property string speechProvider: "minimax"
     readonly property string speechVoiceDefault: "English_expressive_narrator"
 
     // How fast the spoken answers play; 1.0 is the speed the voice was
@@ -115,6 +120,7 @@ Window {
     signal lightFontSizeChangeRequested(int size)
     signal darkFontSizeChangeRequested(int size)
     signal llmKeySaveRequested(string key)
+    signal llmProviderChangeRequested(string provider)
     signal sttKeySaveRequested(string key)
     signal sttProviderChangeRequested(string provider)
     signal shortcutCaptureRequested(string role, int key, int modifiers)
@@ -122,6 +128,7 @@ Window {
     signal speechEnabledChangeRequested(bool enabled)
     signal speechReadModeChangeRequested(string mode)
     signal speechVoiceChangeRequested(string voice)
+    signal speechProviderChangeRequested(string provider)
     signal speechPlaybackSpeedChangeRequested(real speed)
     signal speechTestRequested()
 
@@ -164,7 +171,8 @@ Window {
             // app; values are pushed imperatively.)
             llmKeyFieldEdit.text = window.llmApiKey
             sttKeyFieldEdit.text = window.sttApiKey
-            sttProviderCombo.currentIndex = window.sttProvider === "openai" ? 1 : 0
+            llmProviderCombo.currentIndex = window.providerIndex(window.llmProvider)
+            sttProviderCombo.currentIndex = window.providerIndex(window.sttProvider)
             themeCombo.currentIndex = window.themeIndex(window.theme)
             speechEnabledBox.checked = window.speechEnabled
             speechModeCombo.currentIndex =
@@ -172,6 +180,7 @@ Window {
             speechVoiceCombo.editText = window.speechVoice !== ""
                 ? window.speechVoice
                 : window.speechVoiceDefault
+            speechProviderCombo.currentIndex = window.speechProviderIndex(window.speechProvider)
             speechSpeedCombo.currentIndex =
                 speechSpeedCombo.speeds.indexOf(window.speechPlaybackSpeed)
             // The font lists are rebuilt on every opening: what this
@@ -195,14 +204,18 @@ Window {
 
     onLlmApiKeyChanged: llmKeyFieldEdit.text = window.llmApiKey
     onSttApiKeyChanged: sttKeyFieldEdit.text = window.sttApiKey
+    onLlmProviderChanged: llmProviderCombo.currentIndex =
+        window.providerIndex(window.llmProvider)
     onSttProviderChanged: sttProviderCombo.currentIndex =
-        window.sttProvider === "openai" ? 1 : 0
+        window.providerIndex(window.sttProvider)
     onSpeechEnabledChanged: speechEnabledBox.checked = window.speechEnabled
     onSpeechReadModeChanged: speechModeCombo.currentIndex =
         window.speechReadMode === "stream" ? 1 : 0
     onSpeechVoiceChanged: speechVoiceCombo.editText = window.speechVoice !== ""
         ? window.speechVoice
         : window.speechVoiceDefault
+    onSpeechProviderChanged: speechProviderCombo.currentIndex =
+        window.speechProviderIndex(window.speechProvider)
     onSpeechPlaybackSpeedChanged: speechSpeedCombo.currentIndex =
         speechSpeedCombo.speeds.indexOf(window.speechPlaybackSpeed)
     onThemeChanged: themeCombo.currentIndex = window.themeIndex(window.theme)
@@ -221,6 +234,24 @@ Window {
     // "dark" → 2), kept in one place for the two pushes above.
     function themeIndex(theme) {
         return theme === "light" ? 1 : theme === "dark" ? 2 : 0
+    }
+
+    // The combo's row for a provider ("minimax" → 0, "openai" → 1,
+    // "groq" → 2, "custom" → 3). Both the LLM and the speech-to-text
+    // combo show the same four, so the mapping lives in one place.
+    function providerIndex(provider) {
+        return provider === "openai" ? 1
+             : provider === "groq" ? 2
+             : provider === "custom" ? 3 : 0
+    }
+
+    // The speech engine's row ("minimax" → 0, "openai" → 1,
+    // "groq" → 2, "local" → 3). "Local" is the on-device engine, which
+    // needs no key and has its own voice ids.
+    function speechProviderIndex(provider) {
+        return provider === "openai" ? 1
+             : provider === "groq" ? 2
+             : provider === "local" ? 3 : 0
     }
 
     // The families on offer for a mode: every one this system has,
@@ -634,8 +665,35 @@ Window {
 
                     Kirigami.Heading {
                         level: 5
-                        text: i18n("LLM (MiniMax)")
+                        text: i18n("LLM")
                         color: PhoenixTheme.subheadingTextColor
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PC3.Label {
+                            text: i18n("Provider")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.ComboBox {
+                            id: llmProviderCombo
+
+                            model: [i18n("MiniMax"), i18n("OpenAI"), i18n("Groq"), i18n("Custom")]
+
+                            // The provider decides which key is used and,
+                            // in the daemon, which endpoint and model are
+                            // the defaults. Like every other change, it
+                            // is reported and the store writes it.
+                            onActivated: (index) =>
+                                window.llmProviderChangeRequested(
+                                    index === 1 ? "openai"
+                                                : index === 2 ? "groq"
+                                                             : index === 3 ? "custom"
+                                                                          : "minimax")
+                        }
                     }
 
                     RowLayout {
@@ -717,15 +775,18 @@ Window {
                         PC3.ComboBox {
                             id: sttProviderCombo
 
-                            model: [i18n("MiniMax"), i18n("OpenAI")]
+                            model: [i18n("MiniMax"), i18n("OpenAI"), i18n("Groq"), i18n("Custom")]
 
                             // Choosing a provider is a change like any
                             // other: the window reports it, the store
                             // writes it, the refreshed state comes back
                             // through the bound properties above.
                             onActivated: (index) =>
-                                window.sttProviderChangeRequested(index === 1 ? "openai"
-                                                                              : "minimax")
+                                window.sttProviderChangeRequested(
+                                    index === 1 ? "openai"
+                                                : index === 2 ? "groq"
+                                                             : index === 3 ? "custom"
+                                                                          : "minimax")
                         }
                     }
 
@@ -769,12 +830,16 @@ Window {
 
                     HintLabel {
                         Layout.fillWidth: true
-                        text: window.sttProvider === "openai"
-                              ? i18n("Stored as %1 in %2; the next dictation uses it.",
-                                     window.sttKeyField, window.keysFilePath)
-                              : i18n("The MiniMax key shared with the agent (%1); the "
+                        text: window.sttProvider === "minimax"
+                              ? i18n("The MiniMax key shared with the agent (%1); the "
                                 + "next dictation uses it. Stored in %2.",
                                 window.sttKeyField, window.keysFilePath)
+                              : window.sttProvider === "custom"
+                                ? i18n("Stored as %1 in %2; the next dictation uses it. "
+                                    + "Name its endpoint and model in agent.toml.",
+                                    window.sttKeyField, window.keysFilePath)
+                                : i18n("Stored as %1 in %2; the next dictation uses it.",
+                                    window.sttKeyField, window.keysFilePath)
                     }
                     HintLabel {
                         Layout.fillWidth: true
@@ -857,6 +922,42 @@ Window {
                             + "not read out, and speaking stops the moment you "
                             + "close the results window or press its record "
                             + "button.")
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PC3.Label {
+                            text: i18n("Voice provider:")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.ComboBox {
+                            id: speechProviderCombo
+
+                            // MiniMax, OpenAI and Groq speak
+                            // different protocols, so this picks the
+                            // engine, not just a voice. "Local" is the
+                            // on-device one.
+                            model: [i18n("MiniMax"), i18n("OpenAI"),
+                                    i18n("Groq"), i18n("Local")]
+
+                            onActivated: (index) =>
+                                window.speechProviderChangeRequested(
+                                    index === 1 ? "openai"
+                                                : index === 2 ? "groq"
+                                                             : index === 3 ? "local"
+                                                                          : "minimax")
+                        }
+                    }
+
+                    HintLabel {
+                        Layout.fillWidth: true
+                        text: i18n("The provider decides which voice ids exist and "
+                            + "where the audio is made. MiniMax and OpenAI send the "
+                            + "text to their service; Local speaks it on this "
+                            + "computer and needs no key.")
                     }
 
                     RowLayout {

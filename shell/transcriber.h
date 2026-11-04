@@ -13,7 +13,7 @@ class QNetworkReply;
 /*! \brief Everything one transcription request needs, resolved on demand. */
 struct TranscriptionConfig
 {
-    QString provider; ///< "minimax" (default) or "openai"
+    QString provider; ///< "minimax" (default), "openai" or "custom"
     QString endpoint; ///< full URL of the transcriptions endpoint
     QString model;    ///< API model name
     QString apiKey;   ///< bearer token; empty means "not configured"
@@ -22,13 +22,15 @@ struct TranscriptionConfig
 /*!
  * \brief Sends a finished dictation clip to a speech-to-text API.
  *
- * Both providers expose the same multipart contract — a "model" field plus
+ * All providers expose the same multipart contract — a "model" field plus
  * the audio as "file", authorized with a bearer key — because MiniMax
  * deliberately mirrors the OpenAI schema (even its error responses), so one
- * code path serves both:
+ * code path serves them all:
  *
  *   minimax: POST https://api.minimax.io/v1/speech_to_text, model asr-1.0
  *   openai:  POST https://api.openai.com/v1/audio/transcriptions
+ *   custom:  any other OpenAI-compatible server; its endpoint and model
+ *            must be named (see below)
  *
  * MiniMax is the default since that key is already configured for the agent
  * daemon. Configuration follows the conventions of agent/phoenix_dna/config.py
@@ -36,14 +38,15 @@ struct TranscriptionConfig
  * spelling wins within the environment) and is re-resolved for every request,
  * so a changed key takes effect without restarting plasmashell:
  *
- *   PHOENIX_STT_PROVIDER  "minimax" (default) or "openai"; without it, the
- *                         "stt_provider" entry of keys.json decides (the one
- *                         the settings window writes)
+ *   PHOENIX_STT_PROVIDER  "minimax" (default), "openai" or "custom";
+ *                         without it, the "stt_provider" entry of keys.json
+ *                         decides (the one the settings window writes)
  *   PHOENIX_STT_MODEL     model override (e.g. "whisper-1")
  *   PHOENIX_STT_ENDPOINT  endpoint override
  *
- * Keys are read from keys.json ("minimax_api_key" / "openai_api_key") or the
- * corresponding MINIMAX_API_KEY / PHOENIX_MINIMAX_API_KEY style variables.
+ * Keys are read from keys.json ("minimax_api_key" / "openai_api_key" /
+ * "stt_api_key") or the corresponding MINIMAX_API_KEY /
+ * PHOENIX_MINIMAX_API_KEY style variables.
  */
 class Transcriber : public QObject
 {

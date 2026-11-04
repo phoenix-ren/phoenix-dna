@@ -30,6 +30,41 @@ const QString kPromptRole = QStringLiteral("prompt");
 // keys.json falls back to MiniMax, like Transcriber::resolveConfig() does.
 const QString kSttProviderMiniMax = QStringLiteral("minimax");
 const QString kSttProviderOpenAI = QStringLiteral("openai");
+const QString kSttProviderGroq = QStringLiteral("groq");
+const QString kSttProviderCustom = QStringLiteral("custom");
+
+// The LLM providers the agent daemon knows. Each brings its own API
+// key field; the daemon's config.py resolves the same names (see
+// agent/phoenix_dna/config.py, LLM_PROVIDERS).
+const QString kLlmProviderMiniMax = QStringLiteral("minimax");
+const QString kLlmProviderOpenAI = QStringLiteral("openai");
+const QString kLlmProviderGroq = QStringLiteral("groq");
+const QString kLlmProviderCustom = QStringLiteral("custom");
+
+// The speech engines the daemon knows; anything else in keys.json
+// falls back to MiniMax, like the daemon's config.py does.
+const QString kSpeechProviderMiniMax = QStringLiteral("minimax");
+const QString kSpeechProviderOpenAI = QStringLiteral("openai");
+const QString kSpeechProviderGroq = QStringLiteral("groq");
+const QString kSpeechProviderLocal = QStringLiteral("local");
+
+/*! \brief The keys.json field the API key of \a provider lives in.
+ *
+ * "custom" is a gateway or a self-hosted server: it has no key of its
+ * own, so the dedicated "llm_api_key" entry serves it. */
+QString llmKeyFieldFor(const QString &provider)
+{
+    if (provider.compare(kLlmProviderOpenAI, Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("openai_api_key");
+    }
+    if (provider.compare(kLlmProviderGroq, Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("groq_api_key");
+    }
+    if (provider.compare(kLlmProviderCustom, Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("llm_api_key");
+    }
+    return QStringLiteral("minimax_api_key");
+}
 
 // The colour schemes the settings window offers; anything else in
 // keys.json follows the system, the resolved default.
@@ -178,11 +213,26 @@ SettingsStore::SettingsStore(QAction *recordShortcut,
     refresh();
 }
 
+QString SettingsStore::llmKeyField() const
+{
+    // The field of the active provider, as the daemon's config.py
+    // resolves it (LLM_PROVIDERS).
+    return llmKeyFieldFor(m_llmProvider);
+}
+
 QString SettingsStore::sttKeyField() const
 {
     // The field of the active provider, as in Transcriber's provider table.
-    return m_sttProvider == kSttProviderOpenAI ? QStringLiteral("openai_api_key")
-                                               : QStringLiteral("minimax_api_key");
+    if (m_sttProvider == kSttProviderOpenAI) {
+        return QStringLiteral("openai_api_key");
+    }
+    if (m_sttProvider == kSttProviderGroq) {
+        return QStringLiteral("groq_api_key");
+    }
+    if (m_sttProvider == kSttProviderCustom) {
+        return QStringLiteral("stt_api_key");
+    }
+    return QStringLiteral("minimax_api_key");
 }
 
 QString SettingsStore::keysFilePath() const
@@ -200,21 +250,42 @@ void SettingsStore::refresh()
     const QJsonObject keys = PhoenixKeys::readKeys();
 
     // Provider precedence, as Transcriber::resolveConfig() resolves it:
-    // environment beats keys.json beats the MiniMax default. Anything but
-    // "openai" means MiniMax — the fallback there and here agree.
+    // environment beats keys.json beats the MiniMax default. Anything
+    // that is not one of the known names means MiniMax — the fallback
+    // there and here agree.
     QString provider = qEnvironmentVariable("PHOENIX_STT_PROVIDER");
     if (provider.isEmpty()) {
         provider = keys.value(QStringLiteral("stt_provider")).toString();
     }
-    provider = provider.compare(kSttProviderOpenAI, Qt::CaseInsensitive) == 0
-                   ? kSttProviderOpenAI
-                   : kSttProviderMiniMax;
+    provider = provider.toLower();
+    if (provider != kSttProviderOpenAI && provider != kSttProviderGroq
+        && provider != kSttProviderCustom) {
+        provider = kSttProviderMiniMax;
+    }
 
     const QString sttKey = keys.value(provider == kSttProviderOpenAI
                                             ? QStringLiteral("openai_api_key")
-                                            : QStringLiteral("minimax_api_key"))
+                                            : provider == kSttProviderGroq
+                                                  ? QStringLiteral("groq_api_key")
+                                                  : provider == kSttProviderCustom
+                                                        ? QStringLiteral("stt_api_key")
+                                                        : QStringLiteral("minimax_api_key"))
                               .toString();
-    const QString llmKey = keys.value(QStringLiteral("minimax_api_key")).toString();
+
+    // The LLM provider decides which key the agent's own model calls
+    // use. The environment wins over the file, as everywhere else;
+    // an unknown name falls back to MiniMax, which is the daemon's own
+    // default (config.py's LLM_PROVIDERS).
+    QString llmProvider = qEnvironmentVariable("PHOENIX_LLM_PROVIDER");
+    if (llmProvider.isEmpty()) {
+        llmProvider = keys.value(QStringLiteral("llm_provider")).toString();
+    }
+    if (llmProvider.isEmpty()) {
+        llmProvider = kLlmProviderMiniMax;
+    }
+    llmProvider = llmProvider.toLower();
+
+    const QString llmKey = keys.value(llmKeyFieldFor(llmProvider)).toString();
 
     // The colour scheme resolves like the provider does: only the three
     // spellings mean anything, everything else (including no entry at
@@ -252,6 +323,13 @@ void SettingsStore::refresh()
     if (speechReadMode.compare(QStringLiteral("stream"), Qt::CaseInsensitive) != 0) {
         speechReadMode = QStringLiteral("final");
     }
+    // The speech engine: the daemon's config.py knows the same three
+    // names (TTS_PROVIDERS); anything else means MiniMax.
+    QString speechProvider = keys.value(QStringLiteral("tts_provider")).toString().toLower();
+    if (speechProvider != kSpeechProviderOpenAI && speechProvider != kSpeechProviderGroq
+        && speechProvider != kSpeechProviderLocal) {
+        speechProvider = kSpeechProviderMiniMax;
+    }
     QString speechVoice = keys.value(QStringLiteral("tts_voice")).toString();
     if (speechVoice.isEmpty()) {
         speechVoice = QStringLiteral("English_expressive_narrator");
@@ -262,6 +340,10 @@ void SettingsStore::refresh()
     if (llmKey != m_llmApiKey) {
         m_llmApiKey = llmKey;
         Q_EMIT llmApiKeyChanged();
+    }
+    if (llmProvider != m_llmProvider) {
+        m_llmProvider = llmProvider;
+        Q_EMIT llmProviderChanged();
     }
     if (sttKey != m_sttApiKey) {
         m_sttApiKey = sttKey;
@@ -303,6 +385,10 @@ void SettingsStore::refresh()
         m_speechVoice = speechVoice;
         Q_EMIT speechVoiceChanged();
     }
+    if (speechProvider != m_speechProvider) {
+        m_speechProvider = speechProvider;
+        Q_EMIT speechProviderChanged();
+    }
     if (speechPlaybackSpeed != m_speechPlaybackSpeed) {
         m_speechPlaybackSpeed = speechPlaybackSpeed;
         Q_EMIT speechPlaybackSpeedChanged();
@@ -317,16 +403,34 @@ void SettingsStore::refreshEnvironmentFlags()
     // spellings beats the key file — but only when actually set to
     // something, like config.py's "or" chain treats an empty value as
     // absent — so a key entered here would be ignored.
-    const auto overrides = [](const char *primary, const char *secondary) {
-        return (!qEnvironmentVariableIsEmpty(primary) && qEnvironmentVariableIsSet(primary))
-            || (!qEnvironmentVariableIsEmpty(secondary) && qEnvironmentVariableIsSet(secondary));
+    const auto overrides = [](const char *prefixed, const char *plain) {
+        return (!qEnvironmentVariableIsEmpty(prefixed) && qEnvironmentVariableIsSet(prefixed))
+            || (!qEnvironmentVariableIsEmpty(plain) && qEnvironmentVariableIsSet(plain));
     };
-    const bool llm = overrides("MINIMAX_API_KEY", "PHOENIX_MINIMAX_API_KEY")
+    const bool llm = (m_llmProvider == kLlmProviderOpenAI
+                      ? overrides("PHOENIX_OPENAI_API_KEY", "OPENAI_API_KEY")
+                      : m_llmProvider == kLlmProviderGroq
+                            ? overrides("PHOENIX_GROQ_API_KEY", "GROQ_API_KEY")
+                            : overrides("PHOENIX_MINIMAX_API_KEY", "MINIMAX_API_KEY"))
         || !qEnvironmentVariableIsEmpty("PHOENIX_LLM_API_KEY");
     const bool stt = m_sttProvider == kSttProviderOpenAI
-        ? overrides("OPENAI_API_KEY", "PHOENIX_OPENAI_API_KEY")
-        : overrides("MINIMAX_API_KEY", "PHOENIX_MINIMAX_API_KEY");
-    const bool speech = overrides("TTS_API_KEY", "PHOENIX_TTS_API_KEY")
+        ? overrides("PHOENIX_OPENAI_API_KEY", "OPENAI_API_KEY")
+        : m_sttProvider == kSttProviderGroq
+              ? overrides("PHOENIX_GROQ_API_KEY", "GROQ_API_KEY")
+              : m_sttProvider == kSttProviderCustom
+                    ? overrides("PHOENIX_STT_API_KEY", "")
+                    : overrides("PHOENIX_MINIMAX_API_KEY", "MINIMAX_API_KEY");
+    // The speech settings are read by the daemon from keys.json, but the
+// environment overrides them — and with them the key the engine uses,
+// which belongs to the provider in force.
+const bool speech = overrides("PHOENIX_TTS_API_KEY", "TTS_API_KEY")
+        || (m_speechProvider == kSpeechProviderOpenAI
+                ? overrides("PHOENIX_OPENAI_API_KEY", "OPENAI_API_KEY")
+                : m_speechProvider == kSpeechProviderGroq
+                      ? overrides("PHOENIX_GROQ_API_KEY", "GROQ_API_KEY")
+                      : m_speechProvider == kSpeechProviderMiniMax
+                            ? overrides("PHOENIX_MINIMAX_API_KEY", "MINIMAX_API_KEY")
+                            : false)
         || !qEnvironmentVariableIsEmpty("PHOENIX_TTS_ENABLED")
         || !qEnvironmentVariableIsEmpty("PHOENIX_TTS_READ_MODE")
         || !qEnvironmentVariableIsEmpty("PHOENIX_TTS_VOICE");
@@ -523,6 +627,24 @@ bool SettingsStore::saveLlmApiKey(const QString &apiKey)
     return true;
 }
 
+bool SettingsStore::saveLlmProvider(const QString &provider)
+{
+    const QString name = provider.trimmed().toLower();
+    if (name != kLlmProviderMiniMax && name != kLlmProviderOpenAI
+        && name != kLlmProviderGroq && name != kLlmProviderCustom) {
+        setStatus(i18n("Unknown LLM provider: %1", provider), true);
+        return false;
+    }
+    if (!writeKeyField(QStringLiteral("llm_provider"), name)) {
+        return false;
+    }
+    // The daemon reads its provider when it starts, like its key.
+    setStatus(i18n("LLM provider set to %1. Restart the agent daemon to apply it: "
+                   "systemctl --user restart phoenix.service"),
+              false);
+    return true;
+}
+
 bool SettingsStore::saveSttApiKey(const QString &apiKey)
 {
     if (!writeKeyField(sttKeyField(), apiKey.trimmed())) {
@@ -541,16 +663,23 @@ bool SettingsStore::saveSttApiKey(const QString &apiKey)
 
 bool SettingsStore::saveSttProvider(const QString &provider)
 {
-    if (provider.compare(kSttProviderOpenAI, Qt::CaseInsensitive) == 0
-        || provider.compare(kSttProviderMiniMax, Qt::CaseInsensitive) == 0) {
-        if (!writeKeyField(QStringLiteral("stt_provider"), provider.toLower())) {
+    const QString name = provider.trimmed().toLower();
+    if (name == kSttProviderOpenAI || name == kSttProviderMiniMax
+        || name == kSttProviderGroq || name == kSttProviderCustom) {
+        if (!writeKeyField(QStringLiteral("stt_provider"), name)) {
             return false;
         }
-        setStatus(i18n("Speech-to-text provider set to %1.",
-                       provider.compare(kSttProviderOpenAI, Qt::CaseInsensitive) == 0
-                           ? i18n("OpenAI")
-                           : i18n("MiniMax")),
-                  false);
+        QString label;
+        if (name == kSttProviderOpenAI) {
+            label = i18n("OpenAI");
+        } else if (name == kSttProviderGroq) {
+            label = i18n("Groq");
+        } else if (name == kSttProviderCustom) {
+            label = i18n("Custom");
+        } else {
+            label = i18n("MiniMax");
+        }
+        setStatus(i18n("Speech-to-text provider set to %1.", label), false);
         return true;
     }
 
@@ -638,6 +767,31 @@ bool SettingsStore::saveSpeechVoice(const QString &voice)
     setStatus(i18n("Read-aloud voice set to %1.",
                    trimmed.isEmpty() ? i18n("the default") : trimmed),
               false);
+    return true;
+}
+
+bool SettingsStore::saveSpeechProvider(const QString &provider)
+{
+    const QString name = provider.trimmed().toLower();
+    if (name != kSpeechProviderMiniMax && name != kSpeechProviderOpenAI
+        && name != kSpeechProviderGroq && name != kSpeechProviderLocal) {
+        setStatus(i18n("Unknown speech provider: %1", provider), true);
+        return false;
+    }
+    if (!writeKeyField(QStringLiteral("tts_provider"), name)) {
+        return false;
+    }
+    QString label;
+    if (name == kSpeechProviderOpenAI) {
+        label = i18n("OpenAI");
+    } else if (name == kSpeechProviderGroq) {
+        label = i18n("Groq");
+    } else if (name == kSpeechProviderLocal) {
+        label = i18n("Local");
+    } else {
+        label = i18n("MiniMax");
+    }
+    setStatus(i18n("Read-aloud provider set to %1.", label), false);
     return true;
 }
 

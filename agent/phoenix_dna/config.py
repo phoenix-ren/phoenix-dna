@@ -7,10 +7,19 @@ API keys are never stored in this repository. They are read from
 ``~/.config/phoenix-dna/keys.json`` (mode 0600) or from the environment:
 
 * MiniMax:  ``MINIMAX_API_KEY`` / ``PHOENIX_MINIMAX_API_KEY``
+* OpenAI:   ``OPENAI_API_KEY`` / ``PHOENIX_OPENAI_API_KEY``
 * Tavily:   ``TAVILY_API_KEY``  / ``PHOENIX_TAVILY_API_KEY``
 * Exa:      ``EXA_API_KEY``     / ``PHOENIX_EXA_API_KEY``
 * Speech:   ``PHOENIX_TTS_API_KEY`` / ``TTS_API_KEY`` / keys.json
-  "tts_api_key" — else the MiniMax key is reused (see Config.tts_key).
+  "tts_api_key" — else the key of the configured provider is reused
+  (see Config.tts_key).
+
+The agent talks to whichever endpoint the user names. ``llm_provider``
+picks a set of sensible defaults (base URL, model, which key to read);
+``llm_base_url`` and ``model`` override those defaults individually, so
+any OpenAI-compatible server can be used by naming its endpoint. The
+same holds for synthesis: ``tts_provider`` picks the engine, and
+``tts_endpoint`` / ``tts_model`` / ``tts_voice`` override its details.
 """
 
 from __future__ import annotations
@@ -26,13 +35,135 @@ log = logging.getLogger("phoenix.config")
 DEFAULT_BASE_URL = "https://api.minimax.io/v1"
 DEFAULT_MODEL = "MiniMax-Text-01"
 
+DEFAULT_TTS_ENDPOINT = "https://api.minimax.io/v1/t2a_v2"
+DEFAULT_TTS_MODEL = "speech-2.8-turbo"
+DEFAULT_TTS_VOICE = "English_expressive_narrator"
+DEFAULT_TTS_FORMAT = "opus"
+
+#: The known LLM providers: the name the user picks, the endpoint and
+#: model to use with it, and the keys.json field its API key lives in.
+#:
+#: "minimax" and "openai" are the hosted services; "custom" is for any
+#: other OpenAI-compatible server — it has no defaults of its own, so
+#: llm_base_url and model must be set for it.
+#:
+#: A provider only supplies *defaults*. A base URL or a model named
+#: explicitly (in agent.toml, the environment, or keys.json) always
+#: wins, so a provider can be pointed at a proxy or a self-hosted
+#: model without a new entry here.
+LLM_PROVIDERS: dict[str, dict] = {
+    "minimax": {
+        "base_url": "https://api.minimax.io/v1",
+        "model": "MiniMax-Text-01",
+        "key_field": "minimax_api_key",
+        # The model names this provider owns, by family. A model of
+        # another provider's family is stale once the provider
+        # changes (see load_config).
+        "model_families": ("minimax",),
+    },
+    "openai": {
+        "base_url": "https://api.openai.com/v1",
+        "model": "gpt-4o-mini",
+        "key_field": "openai_api_key",
+        "model_families": ("gpt-", "o1", "o3", "o4", "chatgpt-"),
+    },
+    "custom": {
+        "base_url": "",
+        "model": "",
+        "key_field": "llm_api_key",
+        # "custom" owns no family: it is the user's own server, so
+        # whatever model they name is theirs.
+        "model_families": (),
+    },
+    "groq": {
+        "base_url": "https://api.groq.com/openai/v1",
+        "model": "llama-3.3-70b-versatile",
+        "key_field": "groq_api_key",
+        # Groq serves Llama and the open-weight models, under their own
+        # names; "gpt-oss" is the one it hosts under an OpenAI name.
+        "model_families": ("llama-", "gpt-oss", "mixtral-", "gemma-"),
+    },
+}
+
+#: The known speech-synthesis providers: the name the user picks, the
+#: endpoint, model and voice to use with it, and the keys.json field
+#: its API key lives in.
+#:
+#: "minimax" and "openai" are hosted services with entirely different
+#: APIs — MiniMax answers with a hex-encoded SSE stream, OpenAI with a
+#: plain audio body (see speech/minimax_engine.py and
+#: speech/openai_engine.py). "local" is the on-device engine and needs
+#: no key; "none" turns speech off.
+#:
+#: As with the LLM, a provider supplies only defaults: tts_endpoint,
+#: tts_model and tts_voice override them, so any compatible server
+#: can be used by naming its endpoint.
+TTS_PROVIDERS: dict[str, dict] = {
+    "minimax": {
+        "endpoint": "https://api.minimax.io/v1/t2a_v2",
+        "model": "speech-2.8-turbo",
+        "voice": "English_expressive_narrator",
+        "format": "opus",
+        "key_field": "minimax_api_key",
+        # MiniMax answers with Opus, MP3, FLAC or raw PCM.
+        "formats": ("opus", "mp3", "flac", "pcm"),
+    },
+    "openai": {
+        "endpoint": "https://api.openai.com/v1/audio/speech",
+        "model": "gpt-4o-mini-tts",
+        "voice": "alloy",
+        # OpenAI's default is MP3, and it is the format every
+        # OpenAI-compatible server understands.
+        "format": "mp3",
+        "key_field": "openai_api_key",
+        # OpenAI answers with MP3, Opus, AAC, FLAC, WAV or raw PCM.
+        "formats": ("mp3", "opus", "aac", "flac", "wav", "pcm"),
+    },
+    "groq": {
+        # The same OpenAI-shaped speech endpoint, on Groq's own base
+        # URL. The model is Orpheus, and the voices are its own.
+        "endpoint": "https://api.groq.com/openai/v1/audio/speech",
+        "model": "canopylabs/orpheus-v1-english",
+        "voice": "troy",
+        # Groq's own default is WAV.
+        "format": "wav",
+        "key_field": "groq_api_key",
+        "formats": ("wav", "mp3", "pcm", "flac", "opus"),
+    },
+    "local": {
+        "endpoint": "",
+        "model": "",
+        "voice": "",
+        "format": "",
+        "key_field": "",
+        "formats": (),
+    },
+    "none": {
+        "endpoint": "",
+        "model": "",
+        "voice": "",
+        "format": "",
+        "key_field": "",
+        "formats": (),
+    },
+}
+
+#: Where each key may come from in the environment. The PHOENIX_-
+#: prefixed spelling is listed first because it wins over the plain
+#: one, as it does in the C++ side (see shell/transcriber.cpp).
 KEY_ENV = {
-    "minimax_api_key": ("MINIMAX_API_KEY", "PHOENIX_MINIMAX_API_KEY"),
-    "tavily_api_key": ("TAVILY_API_KEY", "PHOENIX_TAVILY_API_KEY"),
-    "exa_api_key": ("EXA_API_KEY", "PHOENIX_EXA_API_KEY"),
+    "minimax_api_key": ("PHOENIX_MINIMAX_API_KEY", "MINIMAX_API_KEY"),
+    "openai_api_key": ("PHOENIX_OPENAI_API_KEY", "OPENAI_API_KEY"),
+    "groq_api_key": ("PHOENIX_GROQ_API_KEY", "GROQ_API_KEY"),
+    # A dedicated key for the agent's own model calls, for a gateway or
+    # a self-hosted server that is none of the hosted providers.
+    "llm_api_key": ("PHOENIX_LLM_API_KEY",),
+    "tavily_api_key": ("PHOENIX_TAVILY_API_KEY", "TAVILY_API_KEY"),
+    "exa_api_key": ("PHOENIX_EXA_API_KEY", "EXA_API_KEY"),
     # A dedicated speech key; absent, synthesis falls back to the
-    # MiniMax key (it is the same account either way).
-    "tts_api_key": ("TTS_API_KEY", "PHOENIX_TTS_API_KEY"),
+    # key of the configured speech provider (it is the same account
+    # either way).
+    "tts_api_key": ("PHOENIX_TTS_API_KEY", "TTS_API_KEY"),
 }
 
 #: The tts_* fields an environment variable can override, spelled
@@ -71,6 +202,10 @@ _TTS_KEY_FIELDS = (
 class Config:
     # LLM
     provider: str = "minimax"  # "minimax" | "fake"
+    #: The hosted service the agent talks to: "minimax" (default),
+    #: "openai", or "custom" for any other OpenAI-compatible server.
+    #: Only supplies defaults — llm_base_url and model override them.
+    llm_provider: str = "minimax"
     llm_base_url: str = DEFAULT_BASE_URL
     llm_api_key: str = ""
     model: str = DEFAULT_MODEL
@@ -118,16 +253,16 @@ class Config:
     # default — speech is strictly opt-in, and with it off nothing
     # about the daemon's behaviour changes.
     tts_enabled: bool = False
-    tts_provider: str = "minimax"  # "minimax" | "local" | "none"
-    tts_model: str = "speech-2.8-turbo"
-    tts_endpoint: str = "https://api.minimax.io/v1/t2a_v2"
-    tts_voice: str = "English_expressive_narrator"
+    tts_provider: str = "minimax"  # "minimax" | "openai" | "local" | "none"
+    tts_model: str = DEFAULT_TTS_MODEL
+    tts_endpoint: str = DEFAULT_TTS_ENDPOINT
+    tts_voice: str = DEFAULT_TTS_VOICE
     tts_speed: float = 1.0
     #: How fast the synthesized audio is *played back*: 1.0 is the speed
     #: it was spoken at, 1.5 is half again as fast. The stretch keeps
     #: the pitch, so the voice stays the voice (see speech/player.py).
     tts_playback_speed: float = 1.0
-    tts_format: str = "opus"  # opus (preferred) | mp3 | flac | pcm
+    tts_format: str = DEFAULT_TTS_FORMAT  # opus (preferred) | mp3 | flac | pcm
     tts_read_mode: str = "final"  # "final" | "stream"
     tts_holdback_sentences: int = 1
     #: Kokoro .onnx (voices.json beside it) or Piper .onnx; Path("")
@@ -144,17 +279,33 @@ class Config:
             "exa_search": self.keys.get("exa_api_key", ""),
         }
 
+    def llm_key(self) -> str:
+        """The API key the agent's own model calls use.
+
+        A dedicated ``llm_api_key`` (keys.json, or PHOENIX_LLM_API_KEY in
+        the environment) beats the key of the configured provider, so a
+        user can point the agent at their own gateway without the
+        provider's own key.
+        """
+        return self.keys.get("llm_api_key", "") or self.llm_api_key
+
     def tts_key(self) -> str:
         """The API key speech synthesis uses.
 
         A dedicated ``tts_api_key`` (keys.json, or PHOENIX_TTS_API_KEY /
-        TTS_API_KEY in the environment) beats the agent's MiniMax key;
-        without one the MiniMax key serves, because the speech API is
-        MiniMax's as well.
+        TTS_API_KEY in the environment) beats the key of the configured
+        speech provider; without one the provider's own key serves,
+        because the speech API belongs to the same account.
         """
-        return self.keys.get("tts_api_key", "") or self.keys.get(
-            "minimax_api_key", ""
-        )
+        dedicated = self.keys.get("tts_api_key", "")
+        if dedicated:
+            return dedicated
+        provider = self.tts_provider.strip().lower()
+        if provider == "openai":
+            return self.keys.get("openai_api_key", "")
+        if provider == "groq":
+            return self.keys.get("groq_api_key", "")
+        return self.keys.get("minimax_api_key", "")
 
 
 def _load_keys_file(config_dir: Path) -> dict:
@@ -223,6 +374,26 @@ def _apply_overrides(config: Config, overrides: dict) -> Config:
     return replace(config, **cleaned)
 
 
+def _belongs_to_other(model: str, provider_name: str) -> bool:
+    """Whether a model of that name belongs to a provider other than
+    the one in force.
+
+    Used to spot the model that outlived a provider switch: "MiniMax-M3"
+    means nothing to OpenAI, and "gpt-4o" means nothing to MiniMax.
+    The families are the ones each provider names its models by; a name
+    that belongs to no family (the user's own server) belongs to
+    nobody, and is left alone.
+    """
+    name = model.strip().lower()
+    for other, spec in LLM_PROVIDERS.items():
+        if other == provider_name:
+            continue
+        for family in spec.get("model_families", ()):
+            if name.startswith(family.lower()):
+                return True
+    return False
+
+
 def load_config(
     config_dir: str | Path | None = None,
     data_dir: str | Path | None = None,
@@ -243,17 +414,18 @@ def load_config(
     ).expanduser()
 
     keys = _load_keys_file(config_dir)
-    for key, (primary, secondary) in KEY_ENV.items():
-        value = env.get(secondary) or env.get(primary)
+    for key, names in KEY_ENV.items():
+        # The names are listed PHOENIX_-first, because that spelling
+        # wins over the plain one; the first one that is set wins.
+        value = ""
+        for name in names:
+            value = env.get(name, "")
+            if value:
+                break
         if value:
             keys[key] = value
 
-    config = Config(
-        config_dir=config_dir,
-        data_dir=data_dir,
-        keys=keys,
-        llm_api_key=env.get("PHOENIX_LLM_API_KEY") or keys.get("minimax_api_key", ""),
-    )
+    config = Config(config_dir=config_dir, data_dir=data_dir, keys=keys)
 
     # What the settings window wrote to keys.json (see _TTS_KEY_FIELDS):
     # above the defaults, below agent.toml and the environment.
@@ -263,6 +435,7 @@ def load_config(
 
     # agent.toml overrides
     toml_file = config_dir / "agent.toml"
+    toml_table: dict = {}
     if toml_file.is_file():
         import tomllib
 
@@ -270,9 +443,36 @@ def load_config(
             data = tomllib.loads(toml_file.read_text())
             table = data.get("agent", data)
             if isinstance(table, dict):
+                toml_table = table
                 config = _apply_overrides(config, table)
         except (OSError, ValueError) as exc:
             log.warning("failed to parse %s: %s", toml_file, exc)
+
+    # The LLM provider decides the defaults for the base URL, the model
+    # and the key — but it must be known before they are applied, and
+    # the provider itself can be named by keys.json, agent.toml or the
+    # environment. So it is resolved first, here.
+    #
+    # The order is the one everything else follows: the environment
+    # beats agent.toml, which beats keys.json. The toml table is asked
+    # directly, because config.llm_provider carries a default and so
+    # cannot say whether the user named one.
+    provider_name = (
+        env.get("PHOENIX_LLM_PROVIDER")
+        or toml_table.get("llm_provider")
+        or keys.get("llm_provider", "")
+        or config.llm_provider
+    ).strip().lower()
+    if provider_name not in LLM_PROVIDERS:
+        log.warning(
+            "unknown llm_provider %r; known providers are %s — "
+            "falling back to 'minimax'",
+            provider_name,
+            ", ".join(sorted(LLM_PROVIDERS)),
+        )
+        provider_name = "minimax"
+    provider = LLM_PROVIDERS[provider_name]
+    config = replace(config, llm_provider=provider_name)
 
     # environment overrides
     env_overrides = {}
@@ -290,6 +490,89 @@ def load_config(
             env_overrides[name] = env[env_name]
     config = _apply_overrides(config, env_overrides)
 
+    # The provider's defaults fill in what the user did not name, and
+    # only that: a base URL or a model set in keys.json, agent.toml or
+    # the environment is kept, so any OpenAI-compatible server can be
+    # used by naming it. This runs last so that an explicit setting
+    # always beats the default it replaces.
+    #
+    # A field is "unset" when it still carries the built-in default of
+    # the *first* provider: that value cannot have come from the user,
+    # so it may be replaced by the current provider's own default. Each
+    # field has its own marker — a base URL left at MiniMax's must not
+    # survive a switch to OpenAI, and a model left at MiniMax's must
+    # not either.
+    unset = {"llm_base_url": DEFAULT_BASE_URL, "model": DEFAULT_MODEL}
+    for field, default in (
+        ("llm_base_url", provider["base_url"]),
+        ("model", provider["model"]),
+    ):
+        if default and getattr(config, field) == unset[field]:
+            config = replace(config, **{field: default})
+
+    # A model that belongs to *another* provider is stale once the
+    # provider changes: "MiniMax-M3" means nothing to OpenAI or to a
+    # gateway, and the request would be refused. So when the model in
+    # force is one that another provider owns, the model follows the
+    # provider in force.
+    #
+    # A model the user typed for their own server is theirs and is
+    # left alone: only the model families the providers own are
+    # treated as stale. "custom" owns none, so a model named for a
+    # self-hosted server always stays.
+    if config.model and provider["model"] and _belongs_to_other(
+        config.model, provider_name
+    ):
+        config = replace(config, model=provider["model"])
+
+    # A provider with no defaults of its own ("custom") must not
+    # inherit the first provider's: an unset base URL or model there
+    # means "not configured", not "MiniMax". The daemon reports it
+    # clearly rather than calling somewhere unexpected.
+    if not provider["base_url"]:
+        if config.llm_base_url == DEFAULT_BASE_URL:
+            config = replace(config, llm_base_url="")
+    if not provider["model"]:
+        if config.model == DEFAULT_MODEL:
+            config = replace(config, model="")
+
+    # The key: a dedicated one (llm_api_key in keys.json, or
+    # PHOENIX_LLM_API_KEY in the environment) beats the provider's own.
+    # PHOENIX_LLM_API_KEY was already applied above as an environment
+    # override; what is left is the keys.json entry.
+    dedicated = keys.get("llm_api_key", "")
+    if dedicated:
+        config = replace(config, llm_api_key=dedicated)
+    elif not config.llm_api_key:
+        config = replace(
+            config, llm_api_key=keys.get(provider["key_field"], "")
+        )
+
+    # The same for synthesis: the provider named (in keys.json,
+    # agent.toml or the environment) brings its own endpoint, model and
+    # voice, unless the user named those too.
+    tts_provider = config.tts_provider.strip().lower()
+    if tts_provider not in TTS_PROVIDERS:
+        log.warning(
+            "unknown tts_provider %r; known providers are %s — "
+            "falling back to 'minimax'",
+            tts_provider,
+            ", ".join(sorted(TTS_PROVIDERS)),
+        )
+        tts_provider = "minimax"
+        config = replace(config, tts_provider=tts_provider)
+    speech = TTS_PROVIDERS[tts_provider]
+    # The markers are the defaults of the first provider: a value that
+    # still is one of them cannot have come from the user.
+    for field, default, marker in (
+        ("tts_endpoint", speech["endpoint"], DEFAULT_TTS_ENDPOINT),
+        ("tts_model", speech["model"], DEFAULT_TTS_MODEL),
+        ("tts_voice", speech["voice"], DEFAULT_TTS_VOICE),
+        ("tts_format", speech["format"], DEFAULT_TTS_FORMAT),
+    ):
+        if default and getattr(config, field) == marker:
+            config = replace(config, **{field: default})
+
     config.data_dir.mkdir(parents=True, exist_ok=True)
     config.config_dir.mkdir(parents=True, exist_ok=True)
     return config
@@ -305,10 +588,12 @@ def describe(config: Config) -> str:
 
     lines = [
         f"provider        : {config.provider}",
+        f"llm provider    : {config.llm_provider}",
         f"model           : {config.model}",
         f"vision          : {config.vision if config.vision is not None else 'auto'}",
         f"llm_base_url    : {config.llm_base_url}",
         f"llm api key     : {mask(config.llm_api_key)}",
+        f"tts api key     : {mask(config.tts_key())}",
         f"tavily api key  : {mask(config.keys.get('tavily_api_key', ''))}",
         f"exa api key     : {mask(config.keys.get('exa_api_key', ''))}",
         f"config dir      : {config.config_dir}",

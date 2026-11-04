@@ -68,6 +68,15 @@ class SettingsStore : public QObject
     /*! \brief The stored LLM API key ("" when none is). */
     Q_PROPERTY(QString llmApiKey READ llmApiKey NOTIFY llmApiKeyChanged)
 
+    /*! \brief The LLM provider: "minimax" (default), "openai" or "custom".
+     *
+     *  The provider decides which API key the agent's model calls use
+     *  (see llmKeyField) and, in the daemon, which endpoint and model
+     *  are the defaults. "custom" is any other OpenAI-compatible
+     *  server: its endpoint and model are named in agent.toml, and its
+     *  key in the "llm_api_key" entry. */
+    Q_PROPERTY(QString llmProvider READ llmProvider NOTIFY llmProviderChanged)
+
     /*! \brief The stored speech-to-text API key for the active provider. */
     Q_PROPERTY(QString sttApiKey READ sttApiKey NOTIFY sttApiKeyChanged)
 
@@ -105,7 +114,7 @@ class SettingsStore : public QObject
     Q_PROPERTY(int darkFontSize READ darkFontSize NOTIFY darkFontSizeChanged)
 
     /*! \brief The keys.json field behind llmApiKey, shown by the UI. */
-    Q_PROPERTY(QString llmKeyField READ llmKeyField CONSTANT)
+    Q_PROPERTY(QString llmKeyField READ llmKeyField NOTIFY llmProviderChanged)
 
     /*! \brief The keys.json field behind sttApiKey, shown by the UI. */
     Q_PROPERTY(QString sttKeyField READ sttKeyField NOTIFY sttProviderChanged)
@@ -132,6 +141,13 @@ class SettingsStore : public QObject
 
     /*! \brief The voice id the daemon synthesizes with ("tts_voice"). */
     Q_PROPERTY(QString speechVoice READ speechVoice NOTIFY speechVoiceChanged)
+
+    /*! \brief The speech engine: "minimax" (default), "openai" or "local".
+     *
+     *  The provider decides which voice ids exist and where the audio is
+     *  made: MiniMax and OpenAI send the text to their service, Local
+     *  speaks it on this computer. */
+    Q_PROPERTY(QString speechProvider READ speechProvider NOTIFY speechProviderChanged)
 
     /*! \brief How fast the spoken answers play ("tts_playback_speed").
      *
@@ -166,6 +182,7 @@ public:
                   QObject *parent = nullptr);
 
     QString llmApiKey() const { return m_llmApiKey; }
+    QString llmProvider() const { return m_llmProvider; }
     QString sttApiKey() const { return m_sttApiKey; }
     QString sttProvider() const { return m_sttProvider; }
     QString theme() const { return m_theme; }
@@ -173,7 +190,7 @@ public:
     QString darkFont() const { return m_darkFont; }
     int lightFontSize() const { return m_lightFontSize; }
     int darkFontSize() const { return m_darkFontSize; }
-    QString llmKeyField() const { return QStringLiteral("minimax_api_key"); }
+    QString llmKeyField() const;
     QString sttKeyField() const;
     QString keysFilePath() const;
     bool llmKeyFromEnvironment() const { return m_llmKeyFromEnvironment; }
@@ -181,6 +198,7 @@ public:
     bool speechEnabled() const { return m_speechEnabled; }
     QString speechReadMode() const { return m_speechReadMode; }
     QString speechVoice() const { return m_speechVoice; }
+    QString speechProvider() const { return m_speechProvider; }
     qreal speechPlaybackSpeed() const { return m_speechPlaybackSpeed; }
     QString speechEnabledField() const { return QStringLiteral("tts_enabled"); }
     bool speechFromEnvironment() const { return m_speechFromEnvironment; }
@@ -207,8 +225,18 @@ public:
     /*! \brief Unbinds the shortcut of \a role. */
     Q_INVOKABLE bool clearShortcut(const QString &role);
 
-    /*! \brief Stores (or, when empty, removes) the LLM API key. */
+    /*! \brief Stores (or, when empty, removes) the LLM API key.
+     *
+     *  The key belongs to the active provider's field (see
+     *  llmKeyField), so switching providers and then storing a key
+     *  fills in the new one's slot. */
     Q_INVOKABLE bool saveLlmApiKey(const QString &apiKey);
+
+    /*! \brief Stores the LLM provider ("minimax"/"openai"/"custom").
+     *
+     *  The daemon reads it when it starts, so the change needs a
+     *  restart of the daemon to take effect. */
+    Q_INVOKABLE bool saveLlmProvider(const QString &provider);
 
     /*! \brief Stores (or removes) the speech-to-text key of the active
      *  provider; the next dictation already uses it. */
@@ -251,12 +279,19 @@ public:
     /*! \brief Stores the voice id the daemon synthesizes with. */
     Q_INVOKABLE bool saveSpeechVoice(const QString &voice);
 
+    /*! \brief Stores the speech engine ("minimax"/"openai"/"local").
+     *
+     *  The daemon rebuilds its speech pipeline when the shell asks it
+     *  to, so the change takes effect at once. */
+    Q_INVOKABLE bool saveSpeechProvider(const QString &provider);
+
     /*! \brief Stores the speed the spoken answers play at; the daemon
      *  re-reads it when the shell asks it to reload speech. */
     Q_INVOKABLE bool saveSpeechPlaybackSpeed(qreal speed);
 
 Q_SIGNALS:
     void llmApiKeyChanged();
+    void llmProviderChanged();
     void sttApiKeyChanged();
     void sttProviderChanged();
     void themeChanged();
@@ -267,6 +302,7 @@ Q_SIGNALS:
     void speechEnabledChanged();
     void speechReadModeChanged();
     void speechVoiceChanged();
+    void speechProviderChanged();
     void speechPlaybackSpeedChanged();
     void keysEnvironmentChanged();
     void statusMessageChanged();
@@ -321,6 +357,7 @@ private:
     QAction *m_promptShortcut = nullptr;
     QTimer *m_statusClear = nullptr;
     QString m_llmApiKey;
+    QString m_llmProvider = QStringLiteral("minimax");
     QString m_sttApiKey;
     QString m_sttProvider = QStringLiteral("minimax");
     QString m_theme = QStringLiteral("system");
@@ -331,6 +368,7 @@ private:
     bool m_speechEnabled = false;
     QString m_speechReadMode = QStringLiteral("final");
     QString m_speechVoice = QStringLiteral("English_expressive_narrator");
+    QString m_speechProvider = QStringLiteral("minimax");
     qreal m_speechPlaybackSpeed = 1.0;
     QString m_statusMessage;
     bool m_llmKeyFromEnvironment = false;

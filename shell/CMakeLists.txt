@@ -214,6 +214,27 @@ target_link_libraries(dictationintenttest PRIVATE
 )
 add_test(NAME dictationintenttest COMMAND dictationintenttest)
 
+# How the speech-to-text configuration is resolved — which provider is
+# in force, which endpoint and model it names, and which key it uses.
+# The rules are the ones the settings window and the daemon's config.py
+# share: the environment beats keys.json, the PHOENIX_-prefixed spelling
+# beats the plain one, and an explicitly named endpoint or model always
+# beats the provider's own default. Registers with CTest; run `ctest`
+# from the build directory.
+#
+#   transcriberconfigtest
+add_executable(transcriberconfigtest
+    transcriberconfigtest.cpp
+    transcriber.cpp
+    transcriber.h
+)
+target_include_directories(transcriberconfigtest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(transcriberconfigtest PRIVATE
+    Qt6::Core
+    Qt6::Network
+)
+add_test(NAME transcriberconfigtest COMMAND transcriberconfigtest)
+
 # The CPU meter of a running bash tool call — the /proc sampling and its
 # peak-meter ballistics — checked without a window: a busy command is
 # tracked until it dies (the meter must stop by itself when the

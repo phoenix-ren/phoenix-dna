@@ -26,6 +26,11 @@ def main(argv: list[str] | None = None) -> int:
         choices=["minimax", "fake"],
         help="LLM provider (overrides config; 'fake' needs no API key)",
     )
+    parser.add_argument(
+        "--llm-provider",
+        choices=["minimax", "openai", "groq", "custom"],
+        help="which hosted service the model calls go to (overrides config)",
+    )
     parser.add_argument("--config-dir", help="configuration directory")
     parser.add_argument("--data-dir", help="state/data directory")
     parser.add_argument(
@@ -46,6 +51,24 @@ def main(argv: list[str] | None = None) -> int:
         import dataclasses
 
         config = dataclasses.replace(config, provider=args.provider)
+    if args.llm_provider:
+        import dataclasses
+
+        # The provider brings its own endpoint, model and key; a
+        # --llm-provider on the command line replaces the configured
+        # one, so the defaults follow it (unless agent.toml names an
+        # endpoint or a model of its own).
+        config = dataclasses.replace(config, llm_provider=args.llm_provider)
+        from .config import LLM_PROVIDERS
+
+        spec = LLM_PROVIDERS[args.llm_provider]
+        if spec["base_url"]:
+            config = dataclasses.replace(config, llm_base_url=spec["base_url"])
+        if spec["model"]:
+            config = dataclasses.replace(config, model=spec["model"])
+        key = config.keys.get(spec["key_field"], "")
+        if key:
+            config = dataclasses.replace(config, llm_api_key=key)
 
     if args.check_config:
         print(describe(config))

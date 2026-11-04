@@ -610,8 +610,15 @@ def build_provider(config):
         return FakeProvider(["This is a canned response from the fake provider."])
     if not config.llm_api_key:
         raise RuntimeError(
-            "no MiniMax API key configured: set MINIMAX_API_KEY or create "
-            f"{config.config_dir / 'keys.json'} (see agent/README.md)"
+            f"no API key configured for the '{config.llm_provider}' provider: "
+            f"set its API key (see agent/README.md) or create "
+            f"{config.config_dir / 'keys.json'}"
+        )
+    if not config.llm_base_url or not config.model:
+        raise RuntimeError(
+            "the LLM endpoint and model are not configured: name them in "
+            f"{config.config_dir / 'agent.toml'} as llm_base_url and model, "
+            "or pick a known provider as llm_provider"
         )
     return OpenAICompatProvider(
         base_url=config.llm_base_url,
