@@ -9,7 +9,9 @@ SPDX-License-Identifier: BSD-2-Clause
 
 Do you suffer from advanced AI psychosis? Then this tool is for *you*!
 Phoenix DNA is the world's first **desktop-native agent**; an AI agent 
-specifically tailored for desktop use on Linux/KDE. In other agents, getting
+specifically tailored for desktop use on Linux/KDE. 
+
+In other agents, getting
 past the `sudo` (I'm looking at you, [OpenCode](https://opencode.ai])) interactive 
 prompt can an exercise in frustration -- and that's because virtually every 
 AI agent on the market is basically lowest-common denominator, (sort of) runs-anywhere 
