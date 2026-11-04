@@ -154,3 +154,38 @@ def test_bash_call_reports_its_pid_over_dbus(client):
     assert started["run_id"] == run_id
     assert finished["call_id"] == received["call_started"]
     assert finished["run_id"] == run_id
+
+
+def test_the_turn_reports_its_wire_traffic(client):
+    """The bytes of a turn travel over D-Bus, so the UI can meter them."""
+    bus, iface = client
+    from phoenix_dna.service import INTERFACE
+
+    received = []
+    done = threading.Event()
+
+    def on_wire_bytes(run_id, turn, bytes_sent, bytes_received):
+        received.append(
+            {
+                "run_id": str(run_id),
+                "turn": int(turn),
+                "bytes_sent": int(bytes_sent),
+                "bytes_received": int(bytes_received),
+            }
+        )
+        done.set()
+
+    bus.add_signal_receiver(
+        on_wire_bytes, signal_name="WireBytes", dbus_interface=INTERFACE
+    )
+
+    run_id = str(iface.SubmitPrompt("talk to me", ""))
+    assert done.wait(15), "WireBytes never arrived"
+
+    traffic = received[-1]
+    assert traffic["run_id"] == run_id
+    # The first turn of the run.
+    assert traffic["turn"] == 1
+    # The counts are whole numbers of bytes, and the fake provider's
+    # answer was not empty.
+    assert traffic["bytes_received"] > 0

@@ -105,9 +105,9 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
     QDBusConnection::sessionBus().connect(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("RunFinished"), this,
         SLOT(onRunFinished(QString, QString, QString, uint, uint, uint)));
-    QDBusConnection::sessionBus().connect(
-        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("AuthFinished"), this,
-        SLOT(onAuthFinished(QString, bool)));
+    QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
+                                          QStringLiteral("AuthFinished"), this,
+                                          SLOT(onAuthFinished(QString, bool)));
     QDBusConnection::sessionBus().connect(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("ToolCallStarted"), this,
         SLOT(onToolCallStarted(QString, QString, QString, QString)));
@@ -123,6 +123,11 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
     QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
                                           QStringLiteral("ToolProcessFinished"), this,
                                           SLOT(onToolProcessFinished(QString, QString, uint)));
+    // The traffic of the conversation with the model: the bytes of each
+    // turn, which the wire meter turns into rates.
+    QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
+                                          QStringLiteral("WireBytes"), this,
+                                          SLOT(onWireBytes(QString, uint, uint, uint)));
     QDBusConnection::sessionBus().connect(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("TranscriptCleaned"), this,
         SLOT(onTranscriptCleaned(QString, QString, QString, QString)));
@@ -334,8 +339,7 @@ void AgentBridge::requestSessionTranscript(const QString &user, const QString &s
                 // not wait for it — it shows the progress instead.
                 const QByteArray payload = reply.value().toUtf8();
                 QThreadPool::globalInstance()->start([this, request, payload]() {
-                    const QVariantList messages =
-                        parseJsonArray(QString::fromUtf8(payload));
+                    const QVariantList messages = parseJsonArray(QString::fromUtf8(payload));
                     QMetaObject::invokeMethod(
                         this,
                         [this, request, messages]() {
@@ -458,8 +462,8 @@ bool AgentBridge::submitAnswers(const QVariantList &answers)
     for (const QVariant &entry : answers) {
         const QVariantMap map = entry.toMap();
         QJsonObject object;
-        const QJsonArray chosen = QJsonArray::fromVariantList(
-            map.value(QStringLiteral("selected")).toList());
+        const QJsonArray chosen =
+            QJsonArray::fromVariantList(map.value(QStringLiteral("selected")).toList());
         if (!chosen.isEmpty()) {
             object.insert(QStringLiteral("selected"), chosen);
         }
@@ -803,10 +807,9 @@ void AgentBridge::onToolCallStarted(const QString &runId,
             body = args.value(QLatin1String("command")).toString();
         }
     }
-    m_conversation.beginToolCall(
-        tool,
-        QStringLiteral("#### %1 %2\n\n%3")
-            .arg(QStringLiteral("⚒"), tool, fencedBlock(body, language)));
+    m_conversation.beginToolCall(tool,
+                                 QStringLiteral("#### %1 %2\n\n%3")
+                                     .arg(QStringLiteral("⚒"), tool, fencedBlock(body, language)));
 }
 
 void AgentBridge::onToolCallFinished(const QString &runId,
@@ -824,9 +827,8 @@ void AgentBridge::onToolCallFinished(const QString &runId,
     const QString mark =
         status == QLatin1String("success") ? QStringLiteral("✓") : QStringLiteral("✗ error");
     m_conversation.endToolCall(
-        status,
-        QStringLiteral("%1\n\n%2")
-            .arg(mark, fencedBlock(elideOutput(output, kToolLogOutputLimit), QString())));
+        status, QStringLiteral("%1\n\n%2")
+                    .arg(mark, fencedBlock(elideOutput(output, kToolLogOutputLimit), QString())));
 }
 
 void AgentBridge::onToolProcessStarted(const QString &runId,
@@ -850,6 +852,13 @@ void AgentBridge::onToolProcessFinished(const QString &runId, const QString &cal
     Q_UNUSED(pid)
 
     m_cpuMeter.release();
+}
+
+void AgentBridge::onWireBytes(const QString &runId, uint turn, uint bytesSent, uint bytesReceived)
+{
+    Q_UNUSED(runId)
+
+    m_wireMeter.addTraffic(int(turn), bytesSent, bytesReceived);
 }
 
 QString AgentBridge::senderNameForMode(const QString &mode)

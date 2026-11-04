@@ -112,7 +112,10 @@ class AgentLoop:
                     if item.get("type") == "text_delta":
                         self._emit(
                             events.make(
-                                events.TEXT_DELTA, run_id=self.run_id, text=item["text"]
+                                events.TEXT_DELTA,
+                                run_id=self.run_id,
+                                text=item["text"],
+                                bytes_in=int(item.get("bytes_in", 0) or 0),
                             )
                         )
                     elif item.get("type") == "thinking_delta":
@@ -121,6 +124,7 @@ class AgentLoop:
                                 events.THINKING_DELTA,
                                 run_id=self.run_id,
                                 text=item["text"],
+                                bytes_in=int(item.get("bytes_in", 0) or 0),
                             )
                         )
                     elif item.get("type") == "response":
@@ -132,6 +136,21 @@ class AgentLoop:
                     tokens_in += response.usage.input_tokens
                     tokens_out += response.usage.output_tokens
                 last_text = response.text or last_text
+
+                # The turn's wire traffic: the request that went out and
+                # the answer that came in. The frontend meters the rate
+                # of the connection from these.
+                self._emit(
+                    events.make(
+                        events.WIRE_BYTES,
+                        run_id=self.run_id,
+                        turn=turns,
+                        bytes_sent=int(getattr(response, "bytes_sent", 0) or 0),
+                        bytes_received=int(
+                            getattr(response, "bytes_received", 0) or 0
+                        ),
+                    )
+                )
 
                 self._sessions.append(
                     self._conversation,

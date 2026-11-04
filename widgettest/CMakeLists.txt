@@ -34,6 +34,7 @@ add_executable(widgettest
 
 target_compile_definitions(widgettest PRIVATE
     PHOENIX_APPLET_PLUGIN="${CMAKE_BINARY_DIR}/bin/plasma/applets/$<TARGET_FILE_NAME:org.phoenixdna.agent>"
+    PHOENIX_QML_IMPORT_PATH="${CMAKE_BINARY_DIR}/bin"
 )
 
 target_link_libraries(widgettest PRIVATE

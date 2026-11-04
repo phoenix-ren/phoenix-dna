@@ -50,7 +50,13 @@ int main(int argc, char **argv)
         QStringLiteral("With --record: toggle recording off again after this many "
                        "seconds (exercises the stop path)."),
         QStringLiteral("s"));
-    parser.addOptions({speedOption, secondsOption, grabOption, recordOption, stopAfterOption});
+    QCommandLineOption metersOption(
+        QStringLiteral("meters"),
+        QStringLiteral("Show the results window's meters instead of the panel widget: the CPU "
+                       "meter of a running command and the pair of rate meters of the "
+                       "conversation with the model."));
+    parser.addOptions(
+        {speedOption, secondsOption, grabOption, recordOption, stopAfterOption, metersOption});
     parser.addPositionalArgument(
         QStringLiteral("wav"), QStringLiteral("Optional .wav file: fed to the waveform as realtime "
                                               "25 ms buffers on a feed thread, looping. Without it "
@@ -111,6 +117,9 @@ int main(int argc, char **argv)
 
     QQuickView view;
     view.engine()->addImportPath(QStringLiteral("/usr/lib64/qt6/qml"));
+    // The app's own QML modules from the build tree: the meters live in
+    // the results window's module, the theme's colours in the theme's.
+    view.engine()->addImportPath(QStringLiteral(PHOENIX_QML_IMPORT_PATH));
     view.engine()->rootContext()->setContextProperty(QStringLiteral("waveBuffer"), waveBuffer);
     view.engine()->rootContext()->setContextProperty(QStringLiteral("waveFeedRunning"), feeding);
     view.engine()->rootContext()->setContextProperty(QStringLiteral("waveAutoRecord"),
@@ -130,7 +139,9 @@ int main(int argc, char **argv)
     // The root Rectangle has no implicit size of its own: make the view size
     // the root object, or the content collapses to zero.
     view.setResizeMode(QQuickView::SizeRootObjectToView);
-    view.setSource(QUrl(QStringLiteral("qrc:/widgettest/qml/main.qml")));
+    view.setSource(QUrl(parser.isSet(metersOption)
+                            ? QStringLiteral("qrc:/widgettest/qml/meters.qml")
+                            : QStringLiteral("qrc:/widgettest/qml/main.qml")));
     for (const auto &error : view.errors()) {
         fprintf(stderr, "QML error: %s\n", qPrintable(error.toString()));
     }
@@ -139,8 +150,12 @@ int main(int argc, char **argv)
     }
 
     // Panel-proportioned: 88 px hosts the applet alone; a fed waveform opens
-    // a second row underneath it.
-    view.resize(480, feeding ? 300 : 88);
+    // a second row underneath it. The meters need a window of their own.
+    if (parser.isSet(metersOption)) {
+        view.resize(480, 220);
+    } else {
+        view.resize(480, feeding ? 300 : 88);
+    }
     view.show();
 
     if (feed) {

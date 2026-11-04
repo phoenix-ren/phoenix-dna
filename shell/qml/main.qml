@@ -343,6 +343,11 @@ PlasmoidItem {
         // pane draws it as an audio level meter under the running step.
         cpuMeter: Phoenix.PhoenixController.agent.cpuMeter
 
+        // The rate of the conversation with the model: the bytes that go
+        // out and come in, as a pair of level meters under the running
+        // thought step.
+        wireMeter: Phoenix.PhoenixController.agent.wireMeter
+
         // Dictation state for the input bar, mirroring the overlay. The
         // transcript itself is pushed imperatively (see the Connections
         // above) because the pane's editor is editable.

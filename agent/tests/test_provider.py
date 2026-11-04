@@ -64,6 +64,54 @@ def _response(items):
     return responses[0]["response"]
 
 
+# -- the wire traffic --------------------------------------------------------
+
+
+def test_received_bytes_are_counted():
+    # Every byte of the response body passes the provider on its way in;
+    # the count is what the frontend meters the rate from.
+    provider = OpenAICompatProvider("http://localhost", "key", "model")
+    line = _sse({"choices": [{"delta": {"content": "hello"}}]})
+    list(provider._consume(_FakeStream([line, b"data: [DONE]\n"]), None))
+    assert provider.wire.received == len(line) + len(b"data: [DONE]\n")
+
+
+def test_deltas_carry_their_own_size():
+    items = _consume(
+        [_sse({"choices": [{"delta": {"reasoning_content": "thinking"}}]}),
+         _sse({"choices": [{"delta": {"content": "answer"}}]})]
+    )
+    deltas = {i["type"]: i for i in items if i["type"] != "response"}
+    assert deltas["thinking_delta"]["bytes_in"] == len(b"thinking")
+    assert deltas["text_delta"]["bytes_in"] == len(b"answer")
+
+
+def test_multi_byte_characters_count_as_bytes():
+    # The size of a delta is its size on the wire: a character outside
+    # ASCII takes more than one byte, and the meter would be wrong if it
+    # counted characters.
+    items = _consume([_sse({"choices": [{"delta": {"content": "héllo"}}]})])
+    delta = next(i for i in items if i["type"] == "text_delta")
+    assert delta["bytes_in"] == len("héllo".encode())
+    assert delta["bytes_in"] != len("héllo")
+
+
+def test_the_response_carries_the_call_totals(monkeypatch):
+    # The request body goes out in one piece; the count is what the
+    # frontend meters the send rate from.
+    provider = OpenAICompatProvider("http://localhost", "key", "model")
+    captured = {}
+
+    def fake_urlopen(request, timeout=None):
+        captured["body"] = request.data
+        return _FakeStream([b"data: [DONE]\n"])
+
+    monkeypatch.setattr("phoenix_dna.provider.urllib.request.urlopen", fake_urlopen)
+    list(provider.stream([{"role": "user", "content": "hi"}], []))
+    assert provider.wire.sent == len(captured["body"])
+    assert provider.wire.sent > 0
+
+
 def test_wellformed_arguments_parse():
     response = _response([_tool_call_chunk('{"command": "ls"}')])
     call = response.tool_calls[0]

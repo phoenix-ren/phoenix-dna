@@ -49,6 +49,10 @@ _SIGNAL_MAP = {
         "tool_call_finished",
         ("run_id", "call_id", "tool", "status", "output"),
     ),
+    "wire_bytes": (
+        "wire_bytes",
+        ("run_id", "turn", "bytes_sent", "bytes_received"),
+    ),
     "tool_process_started": (
         "tool_process_started",
         ("run_id", "call_id", "command", "pid"),
@@ -90,6 +94,9 @@ _DEFAULTS = {
     "output": "",
     "command": "",
     "pid": 0,
+    "turn": 0,
+    "bytes_sent": 0,
+    "bytes_received": 0,
     "text": "",
     "final_text": "",
     "message": "",
@@ -153,6 +160,7 @@ def build_bridge(service) -> SignalBridge:
             "thinking_delta": service.ThinkingDelta,
             "tool_call_started": service.ToolCallStarted,
             "tool_call_finished": service.ToolCallFinished,
+            "wire_bytes": service.WireBytes,
             "tool_process_started": service.ToolProcessStarted,
             "tool_process_finished": service.ToolProcessFinished,
             "auth_requested": service.AuthRequested,
@@ -208,6 +216,12 @@ if dbus is not None:
 
         @dbus.service.signal(INTERFACE, signature="sssss")
         def ToolCallFinished(self, run_id, call_id, tool, status, output): ...
+
+        # The wire traffic of one turn: the bytes of the request that went
+        # out and the bytes of the answer that came in. The UI meters the
+        # rate of the connection from these.
+        @dbus.service.signal(INTERFACE, signature="suuu")
+        def WireBytes(self, run_id, turn, bytes_sent, bytes_received): ...
 
         # The bash tool's process began: pid is the command's session
         # leader (= process-group id), which the UI meters via /proc

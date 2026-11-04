@@ -20,6 +20,11 @@ TEXT_DELTA = "text_delta"
 THINKING_DELTA = "thinking_delta"
 TOOL_CALL_STARTED = "tool_call_started"
 TOOL_CALL_FINISHED = "tool_call_finished"
+#: The wire traffic of one turn of the conversation with the model:
+#: the bytes of the request that went out and the bytes of the answer
+#: that came in. The frontend meters the rate of the connection from
+#: these (see the UI's WireMeter).
+WIRE_BYTES = "wire_bytes"
 #: A bash tool call's process began. ``pid`` is the command's session
 #: leader (the daemon spawns commands with start_new_session=True), so
 #: it doubles as the process-group id: the UI meters the whole command
