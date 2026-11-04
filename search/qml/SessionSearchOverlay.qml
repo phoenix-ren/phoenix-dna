@@ -455,18 +455,22 @@ PlasmaCore.Dialog {
             spacing: Kirigami.Units.smallSpacing
 
             // ---- The progress of what is being loaded -------------------
-            // Two bars, side by side and always there: the messages on
-            // their way from the daemon, and the math on its way from
-            // the LaTeX engine. The conversation is below them and fills
-            // while they move — the window says what it is doing
-            // instead of freezing without a word.
+            // Two bars, always there: the messages on their way from the
+            // daemon, and the math on its way from the LaTeX engine. The
+            // conversation is below them and fills while they move — the
+            // window says what it is doing instead of freezing without a
+            // word.
             //
-            // The bars are the same width, so the two of them can be
-            // read against each other; a bar that grows with the window
-            // would only say "something is happening".
-            RowLayout {
+            // One row each, and the same column for the bars: they stand
+            // under one another, both starting at the same place, so the
+            // two can be read against one another. A grid says that by
+            // itself — the bars share a column, and the rows keep them
+            // apart.
+            GridLayout {
                 Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
+                columns: 3
+                columnSpacing: Kirigami.Units.smallSpacing
+                rowSpacing: 2
 
                 PC3.Label {
                     text: i18n("Messages:")
