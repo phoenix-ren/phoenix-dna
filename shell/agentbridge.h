@@ -54,6 +54,10 @@ class Speaker;
  * streams the model's reasoning into the row's trail, ToolCall* add their
  * steps to it, and RunFinished(run_id, status,
  * final_text, turns, tokens_in, tokens_out) completes the run's row.
+ * While a run is live — between RunStarted and RunFinished — \a runActive
+ * is true and the results pane's send button is a stop button: cancelRun()
+ * speaks the daemon's Cancel(run_id) method, and the run answers with a
+ * RunFinished of its own (status "cancelled").
  *
  * Transcript cleanup: SubmitTranscriptCleanup(text) asks the daemon to
  * normalize a finished dictation with a single LLM call ("Multiply five
@@ -231,6 +235,17 @@ public:
     bool isAgentSpeaking() const;
     bool isSpeechAvailable() const;
 
+    /*! \brief Whether an agent run is live right now.
+     *
+     * True from a run's RunStarted until its RunFinished — the state the
+     * results pane's send button turns into a stop button on. A run the
+     * daemon lost (no RunFinished because it died mid-run) keeps this true,
+     * like the conversation row it belongs to stays "running". */
+    Q_PROPERTY(bool runActive READ isRunActive NOTIFY runActiveChanged)
+
+    /*! \brief Whether an agent run is live right now. */
+    bool isRunActive() const { return m_runActive; }
+
     QString sessionTitle() const { return m_sessionTitle; }
 
     QVariantList sessionSummaries() const { return m_sessionSummaries; }
@@ -325,6 +340,15 @@ public:
      * through here. */
     Q_INVOKABLE void stopSpeaking();
 
+    /*! \brief Cancels the live run.
+     *
+     * Cancel(run_id) over D-Bus: the daemon interrupts the current run
+     * (its tools get the cancellation too) and answers with a RunFinished
+     * of its own, status "cancelled". Does nothing while no run is live —
+     * and nothing when no run id is known (a run announced before this
+     * bridge subscribed cannot be named, so it cannot be cancelled). */
+    Q_INVOKABLE void cancelRun();
+
     /*! \brief Applies the speech settings the settings window just
      *  saved (see Speaker::reload), then refreshes this bridge's
      *  speechAvailable / agentSpeaking so the pane reacts at once. */
@@ -385,6 +409,10 @@ Q_SIGNALS:
     /*! \brief Emitted when the pending question changed: asked, answered,
      *  timed out, cancelled — or dropped with its run. */
     void pendingFormChanged();
+
+    /*! \brief Emitted when a run began or ended: the results pane's send
+     *  button is a stop button while a run is live. */
+    void runActiveChanged();
 
     /*! \brief The newest dictated clip's cleaned-up transcript arrived.
      *
@@ -486,6 +514,7 @@ private:
     void setFinalTranscript(const QString &text);
     void setAgentMessage(const QString &text);
     void setPendingForm(const QVariantMap &form);
+    void setRunActive(bool active);
 
     static QString fencedBlock(const QString &text, const QString &language);
     static QString elideOutput(const QString &text, int limit);
@@ -574,6 +603,11 @@ private:
     // rejects the answers.
     QVariantMap m_pendingForm;
     QVariantMap m_lastSubmittedForm;
+    // The live run: its daemon-side id (the name Cancel() cancels) and
+    // whether it is live at all — from RunStarted to RunFinished. Both
+    // reset together.
+    QString m_runId;
+    bool m_runActive = false;
     // The counters of the outstanding session-search requests: a reply
     // that belongs to an older request is dropped, so the list never
     // shows the results of a superseded query.

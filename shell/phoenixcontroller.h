@@ -20,6 +20,7 @@ class AudioCapture;
 class ClipRecorder;
 class Transcriber;
 class ShutterSound;
+class CompletionSound;
 
 /*!
  * \brief The widget's controller, exposed to QML as a singleton.
@@ -291,6 +292,7 @@ private:
     PromptAttachments *m_attachments = nullptr;
     WindowScreenshotPicker *m_screenshotPicker = nullptr;
     ShutterSound *m_shutterSound = nullptr;
+    CompletionSound *m_completionSound = nullptr;
     SettingsStore *m_settings = nullptr;
     QAction *m_toggleShortcut = nullptr;
     QAction *m_searchShortcut = nullptr;

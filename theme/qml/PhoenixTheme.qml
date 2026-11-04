@@ -101,6 +101,12 @@ QtObject {
         ? Qt.rgba(1, 1, 1, 0.16)
         : Qt.rgba(0, 0, 0, 0.12)
 
+    // The outline a prompt field draws while the keyboard is in it: one
+    // accent, keyed to the mode so it reads on either backdrop (the
+    // fields paint their own themed ground, so the desktop's highlight
+    // colour is not consulted).
+    readonly property color focusBorderColor: isDark ? "#3daee9" : "#1793d1"
+
     // ---- Text -------------------------------------------------------------
     // Section headings ("API keys"), the brightest regular text.
     readonly property color headingTextColor: isDark ? "#f2f2f2" : "#1a1a21"

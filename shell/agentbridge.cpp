@@ -198,6 +198,30 @@ void AgentBridge::sendPrompt(const QString &prompt,
     QDBusConnection::sessionBus().asyncCall(message);
 }
 
+void AgentBridge::cancelRun()
+{
+    // Cancel(run_id): the daemon interrupts the live run and reports the
+    // end with a RunFinished of its own (status "cancelled") — the same
+    // signal any finished run sends, so the pane needs no special case.
+    // Without a run, or without its id, there is nothing to name.
+    if (!m_runActive || m_runId.isEmpty()) {
+        return;
+    }
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("Cancel"));
+    message << m_runId;
+    QDBusConnection::sessionBus().asyncCall(message);
+}
+
+void AgentBridge::setRunActive(bool active)
+{
+    if (m_runActive == active) {
+        return;
+    }
+    m_runActive = active;
+    Q_EMIT runActiveChanged();
+}
+
 void AgentBridge::requestTranscriptCleanup(const QString &text)
 {
     // SubmitTranscriptCleanup(text) -> cleanup id; the daemon answers
@@ -645,7 +669,10 @@ void AgentBridge::onActionResult(const QString &text, bool ok)
 
 void AgentBridge::onRunStarted(const QString &runId, const QString &sessionId)
 {
-    Q_UNUSED(runId)
+    // The run is live from here: the pane's send button is a stop button
+    // now, and cancelRun() knows the run by its daemon-side id.
+    m_runId = runId;
+    setRunActive(true);
 
     // A fresh run opens a row in the pane's history. A run submitted as a
     // *new session* (record button on the desktop pane) first drops the
@@ -867,6 +894,11 @@ void AgentBridge::onRunFinished(const QString &runId,
     m_deltaTimer.stop();
     m_pendingDelta.clear();
     m_pendingThinking.clear();
+    // The run is over — completed, failed or cancelled: the send button
+    // is a send button again. The id goes with it, so a later Cancel()
+    // can never name a run that no longer exists.
+    m_runId.clear();
+    setRunActive(false);
     // ...and any form the run was blocked on is over now, answered or
     // not (QuestionAnswered usually got here first).
     setPendingForm(QVariantMap());

@@ -64,6 +64,17 @@ the keyboard in it: nothing is recorded, nothing is transcribed, and the
 query is sent to the agent like a dictated one. The global shortcut
 `Meta+Alt+Return` does the same from any application.
 
+In every prompt editor — the dictation overlay as much as the results
+window's follow-up field — `Return` sends, and `Shift+Return` is the line
+break. A query of several sentences is written without the first `Return`
+sending it away, and the send button is a plain up arrow inside the prompt
+field, doing with a click what `Return` does with the keyboard.
+
+While the agent is working on a query, that same button is a stop button:
+one press interrupts the run (its tools are told too), and the conversation
+shows how far it got. A finished query announces itself with a soft chime —
+the answer can be read when it is heard, without the window being watched.
+
 The button is a toggle — pressing it again puts the editor away, and the
 query stays as a draft, so a mis-click costs nothing. `Esc` is the way to
 throw the draft away: the editor closes and the query is gone.
@@ -97,7 +108,7 @@ corrected; corrections made there are not copied.
 ## Prompts with files
 
 A prompt is not only text: the user can attach files to it. The "+" button
-on the left of the prompt (in the dictation overlay and in the results
+inside the prompt field (in the dictation overlay and in the results
 pane's follow-up field) opens a file picker, and every picked file shows
 up as a chip next to the prompt. The files travel to the agent daemon with
 the prompt and are copied into its own attachment directory, where the

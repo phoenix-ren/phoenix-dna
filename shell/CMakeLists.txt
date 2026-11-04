@@ -45,6 +45,8 @@ plasma_add_applet(org.phoenixdna.agent
         windowscreenshotpicker.h
         shuttersound.cpp
         shuttersound.h
+        completionsound.cpp
+        completionsound.h
         settingsstore.cpp
         settingsstore.h
         transcriber.cpp
@@ -178,3 +180,20 @@ target_link_libraries(sessiontranscriptmodeltest PRIVATE
     Qt6::Qml
 )
 add_test(NAME sessiontranscriptmodeltest COMMAND sessiontranscriptmodeltest)
+
+# Offline check of the completion chime: renders the effect the widget
+# streams through pw-cat when a query completes and checks it is a sound
+# at all — the expected length, a healthy peak, nothing clipped. With an
+# output path it writes the effect as a .wav file, so the chime can be
+# heard without the widget.
+#
+#   completionsoundtest [out.wav]
+#   completionsoundtest --play
+add_executable(completionsoundtest
+    completionsoundtest.cpp
+    completionsound.cpp
+    completionsound.h
+)
+target_include_directories(completionsoundtest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(completionsoundtest PRIVATE Qt6::Core)
+add_test(NAME completionsoundtest COMMAND completionsoundtest)
