@@ -10,7 +10,7 @@
         "Category": "Utilities",
         "Description": "Voice-first AI agent for the Plasma panel",
         "EnabledByDefault": true,
-        "Icon": "applications-system",
+        "Icon": "org.phoenixdna.agent",
         "License": "BSD-2-Clause",
         "Name": "Phoenix DNA",
         "Version": "0.1.0",

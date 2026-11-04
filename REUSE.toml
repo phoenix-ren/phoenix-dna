@@ -13,6 +13,7 @@ path = [
     "live.png",
     "shell/metadata.json",
     "agent/tests/data/**",
+    "icons/*.png",
 ]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Phoenix DNA contributors"

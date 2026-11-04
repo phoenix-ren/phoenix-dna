@@ -61,6 +61,29 @@ plasma_add_applet(org.phoenixdna.agent
 # metadata next to it so the plugin actually carries its metadata.
 configure_file(metadata.json metadata.json COPYONLY)
 
+# The applet's own icon.
+#
+# The widget picker shows an applet under the icon its metadata names, and
+# that name is looked up in the icon theme -- so the artwork goes into the
+# theme, under the name the metadata gives it, and the theme's cache is
+# refreshed afterwards so a running plasmashell finds it.
+#
+# The artwork itself is drawn by icons/make-icon.py.
+install(FILES ${CMAKE_SOURCE_DIR}/icons/phoenix-dna.svg
+        DESTINATION ${KDE_INSTALL_ICONDIR}/hicolor/scalable/apps
+        RENAME org.phoenixdna.agent.svg)
+
+install(CODE "
+    if (NOT DEFINED ENV{DESTDIR})
+        find_program(PHOENIX_ICON_CACHE gtk-update-icon-cache)
+        if (PHOENIX_ICON_CACHE)
+            execute_process(
+                COMMAND \${PHOENIX_ICON_CACHE} -q -t -i .
+                WORKING_DIRECTORY ${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_ICONDIR}/hicolor)
+        endif()
+    endif()
+")
+
 # C++ classes exposed to QML must be declared in a header: qmltyperegistrar
 # warns "Class X is declared in X.cpp ... registration to QML may fail".
 
