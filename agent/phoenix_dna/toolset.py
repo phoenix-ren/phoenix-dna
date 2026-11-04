@@ -51,6 +51,7 @@ def build_toolset(
     home_dir: Path | None = None,
     run_id: str = "",
     ask_coordinator=None,
+    process_notifier=None,
 ) -> dict[str, Tool]:
     """Instantiate the tools for a run.
 
@@ -59,7 +60,8 @@ def build_toolset(
     registered only when their API keys are configured; ask_user is only
     registered when an ``ask_coordinator`` is given (the daemon always
     passes one; bare-loop users get the tool only when they can deliver
-    answers).
+    answers). ``process_notifier`` receives the started/finished pid of
+    every command the bash tool runs, so the UI can meter its CPU usage.
     """
     workdir = working_dir(home_dir)
     workdir.mkdir(parents=True, exist_ok=True)  # ~ exists; cheap insurance
@@ -91,6 +93,7 @@ def build_toolset(
                 max_timeout=config.bash_max_timeout,
                 max_output_chars=config.max_output_chars,
                 confirm=confirm,
+                process_notifier=process_notifier,
             )
         elif name == "read":
             tools["read"] = ReadTool(workdir, max_lines=config.max_read_lines)

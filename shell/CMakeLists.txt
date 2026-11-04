@@ -31,6 +31,8 @@ plasma_add_applet(org.phoenixdna.agent
         agentbridge.h
         conversationmodel.cpp
         conversationmodel.h
+        cpumeter.cpp
+        cpumeter.h
         sessiontranscriptmodel.cpp
         sessiontranscriptmodel.h
         cliprecorder.cpp
@@ -161,6 +163,27 @@ target_link_libraries(conversationmodeltest PRIVATE
     Qt6::Qml
 )
 add_test(NAME conversationmodeltest COMMAND conversationmodeltest)
+
+# The CPU meter of a running bash tool call — the /proc sampling and its
+# peak-meter ballistics — checked without a window: a busy command is
+# tracked until it dies (the meter must stop by itself when the
+# ToolProcessFinished signal never comes), a command whose leader dies
+# with its children alive keeps being metered through the process-group
+# scan, and release() parks the meter. Registers with CTest; run `ctest`
+# from the build directory.
+#
+#   cpumetertest
+add_executable(cpumetertest
+    cpumetertest.cpp
+    cpumeter.cpp
+    cpumeter.h
+)
+target_include_directories(cpumetertest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(cpumetertest PRIVATE
+    Qt6::Core
+    Qt6::Qml
+)
+add_test(NAME cpumetertest COMMAND cpumetertest)
 
 # The transcript of a session — the queries and responses the session
 # search shows — checked without a window: the empty turns are dropped,

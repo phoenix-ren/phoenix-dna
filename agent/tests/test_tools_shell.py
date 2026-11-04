@@ -27,6 +27,55 @@ def make_tool(cwd, **kw):
     return BashTool(cwd, **defaults)
 
 
+class RecordingNotifier:
+    """Collects the (state, pid, command) reports of a run."""
+
+    def __init__(self):
+        self.calls = []
+
+    def __call__(self, state, pid, command):
+        self.calls.append((state, pid, command))
+
+
+def test_process_notifier_reports_start_and_finish(home_dir):
+    notifier = RecordingNotifier()
+    tool = make_tool(home_dir, process_notifier=notifier)
+    tool.execute({"command": "sleep 0.3"})
+    assert [state for state, _, _ in notifier.calls] == ["started", "finished"]
+    started_pid, finished_pid = notifier.calls[0][1], notifier.calls[1][1]
+    assert started_pid > 1 and started_pid == finished_pid
+    assert notifier.calls[0][2] == "sleep 0.3"
+
+
+def test_process_notifier_fires_on_timeout(home_dir):
+    # The finish report must also arrive for a killed command, or the UI
+    # would wait on a process that no longer exists.
+    notifier = RecordingNotifier()
+    tool = make_tool(home_dir, default_timeout=1.0, process_notifier=notifier)
+    with pytest.raises(ToolError, match="timed out"):
+        tool.execute({"command": "sleep 30"})
+    assert [state for state, _, _ in notifier.calls] == ["started", "finished"]
+
+
+def test_process_notifier_fires_on_cancel(home_dir):
+    notifier = RecordingNotifier()
+    tool = make_tool(home_dir, process_notifier=notifier)
+    cancel = threading.Event()
+    threading.Timer(0.4, cancel.set).start()
+    with pytest.raises(ToolError, match="cancelled"):
+        tool.execute({"command": "sleep 30", "timeout": 25}, cancel=cancel)
+    assert [state for state, _, _ in notifier.calls] == ["started", "finished"]
+
+
+def test_broken_notifier_does_not_break_the_tool(home_dir):
+    def boom(state, pid, command):
+        raise RuntimeError("the UI is having a bad day")
+
+    tool = make_tool(home_dir, process_notifier=boom)
+    result = tool.execute({"command": "echo still fine"})
+    assert "still fine" in result.output
+
+
 def test_simple_command(home_dir):
     tool = make_tool(home_dir)
     result = tool.execute({"command": "echo hello"})

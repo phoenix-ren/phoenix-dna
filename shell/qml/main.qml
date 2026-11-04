@@ -337,6 +337,12 @@ PlasmoidItem {
         // results stay, ChatGPT style.
         conversation: Phoenix.PhoenixController.agent.conversation
 
+        // The CPU meter of the command the running bash tool call
+        // executes: the daemon reports the command's process id over
+        // D-Bus, the bridge's meter follows it through /proc, and the
+        // pane draws it as an audio level meter under the running step.
+        cpuMeter: Phoenix.PhoenixController.agent.cpuMeter
+
         // Dictation state for the input bar, mirroring the overlay. The
         // transcript itself is pushed imperatively (see the Connections
         // above) because the pane's editor is editable.
