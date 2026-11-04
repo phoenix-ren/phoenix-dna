@@ -93,103 +93,13 @@ PlasmaCore.Dialog {
         return ++formulaTokens
     }
 
-    // ---- The math under way -------------------------------------------
-    // The bar at the top of the window counts the formulas of the
-    // answers on screen: every answer that wants its math hands its
-    // count in here, and reports how far the compile has come. The
-    // answers themselves only report — the counting is the window's
-    // business, and one bar says more than one per answer.
-    property var mathRequests: ({})
-
-    // The formulas that came back, and the ones there are.
-    property int mathDone: 0
-    property int mathTotal: 0
-
-    // A render of \a count formulas starts: it joins the ones already
-    // under way. Returns the token the answers report against, or -1
-    // when there is no math to render.
-    function beginMath(count) {
-        if (count <= 0) {
-            return -1
-        }
-        const token = nextFormulaToken()
-        mathRequests[token] = {done: 0, total: count}
-        recountMath()
-        return token
-    }
-
-    // \a done of the formulas of \a token are ready.
-    function reportMath(token, done) {
-        const request = mathRequests[token]
-        if (!request) {
-            return
-        }
-        request.done = done
-        recountMath()
-    }
-
-    // The same \a count formulas are asked for again — the theme
-    // changed, so they are typeset in the other ink: the old request
-    // leaves the bar and a new one takes its place, so they are
-    // counted once and not twice.
-    function replaceMath(token, count) {
-        if (mathRequests[token]) {
-            delete mathRequests[token]
-            recountMath()
-        }
-        return beginMath(count)
-    }
-
-    // The render of \a token is over: its formulas are all in, or the
-    // compile failed and there will be none.
-    function endMath(token) {
-        const request = mathRequests[token]
-        if (!request) {
-            return
-        }
-        request.done = request.total
-        recountMath()
-    }
-
-    // Another session was picked: its math is a different count.
-    function resetMath() {
-        mathRequests = ({})
-        mathDone = 0
-        mathTotal = 0
-    }
-
-    function recountMath() {
-        let done = 0
-        let total = 0
-        for (const token in mathRequests) {
-            const request = mathRequests[token]
-            done += request.done
-            total += request.total
-        }
-        mathDone = done
-        mathTotal = total
-    }
-
     // ---- The transcript on its way ------------------------------------
-    // The messages of the selected session: how many have arrived, how
-    // many there are, and whether the handover is still going on.
-    readonly property int transcriptLoaded: transcriptList.count
+    // The messages of the selected session: how many there are, and
+    // whether the handover is still going on.
     readonly property int transcriptTotal: transcript
         ? transcript.totalCount : 0
     readonly property bool transcriptLoading: transcript
         ? transcript.loading : false
-    readonly property real transcriptProgress: transcriptTotal > 0
-        ? Math.round(100 * transcriptLoaded / transcriptTotal) : 0
-
-    // How far the math has come. No formulas in the answers on screen:
-    // the bar is full, for there is nothing left to render.
-    readonly property real mathProgress: mathTotal > 0
-        ? Math.round(100 * mathDone / mathTotal) : 0
-
-    // The width of the progress bars: the same for both of them, so
-    // they can be read against each other, and narrow enough that they
-    // stay a quiet line above the conversation.
-    readonly property int progressBarWidth: 300
 
     // While the query field is cleared on opening, its text change must
     // not trigger a second search.
@@ -296,8 +206,6 @@ PlasmaCore.Dialog {
         const id = summaries[index].id
         if (id !== currentSessionId) {
             currentSessionId = id
-            // Another session's math is another count.
-            resetMath()
             sessionSelected(id)
         }
     }
@@ -445,62 +353,6 @@ PlasmaCore.Dialog {
             anchors.fill: parent
             anchors.margins: Kirigami.Units.gridUnit
             spacing: Kirigami.Units.smallSpacing
-
-            // ---- The progress of what is being loaded -------------------
-            // Two bars, always there: the messages on their way from the
-            // daemon, and the math on its way from the LaTeX engine. The
-            // conversation is below them and fills while they move — the
-            // window says what it is doing instead of freezing without a
-            // word.
-            //
-            // One row each, and the same column for the bars: they stand
-            // under one another, both starting at the same place, so the
-            // two can be read against one another. A grid says that by
-            // itself — the bars share a column, and the rows keep them
-            // apart.
-            //
-            // The bars say it all: how much of the work is done, and
-            // whether there is any. A number beside them would only
-            // repeat what the bar already shows.
-            GridLayout {
-                columns: 2
-                columnSpacing: Kirigami.Units.smallSpacing
-                rowSpacing: 2
-
-                PC3.Label {
-                    text: i18n("Messages:")
-                    color: PhoenixTheme.secondaryTextColor
-                }
-
-                PC3.ProgressBar {
-                    Layout.preferredWidth: searchOverlay.progressBarWidth
-                    Layout.maximumWidth: searchOverlay.progressBarWidth
-                    from: 0
-                    to: 100
-                    value: searchOverlay.transcriptProgress
-                    // Until the first message arrives the daemon is
-                    // still answering, and there is nothing to count.
-                    indeterminate: searchOverlay.transcriptLoading
-                        && searchOverlay.transcriptLoaded === 0
-                }
-
-                PC3.Label {
-                    text: i18n("Math:")
-                    color: PhoenixTheme.secondaryTextColor
-                }
-
-                PC3.ProgressBar {
-                    Layout.preferredWidth: searchOverlay.progressBarWidth
-                    Layout.maximumWidth: searchOverlay.progressBarWidth
-                    from: 0
-                    to: 100
-                    // No formulas in the answers on screen: nothing is
-                    // left to render, and the bar says so by being
-                    // full — an empty bar would read as "waiting".
-                    value: searchOverlay.mathTotal > 0
-                        ? searchOverlay.mathProgress : 100
-                }
-            }
 
             // ---- Header: the query ------------------------------------
             RowLayout {
@@ -757,18 +609,9 @@ PlasmaCore.Dialog {
                             property int formulaToken: -1
                             property string formulaFailedReason: ""
 
-                            // How many formulas the answer carries: the
-                            // bar at the top of the window needs the
-                            // number before the compile starts.
-                            readonly property int formulaCount:
-                                LatexRenderer.available
-                                && message.contentText.length > 0
-                                ? LatexRenderer.countFormulas(
-                                    message.contentText) : 0
-
                             readonly property bool wantsFormulas:
                                 !message.fromUser
-                                && message.formulaCount > 0
+                                && message.contentText.length > 0
                                 // -1: never requested. -2: requested
                                 // and failed — the verbatim view
                                 // stays, and the answer is not asked
@@ -776,6 +619,8 @@ PlasmaCore.Dialog {
                                 // be a storm).
                                 && message.formulaToken === -1
                                 && LatexRenderer.available
+                                && LatexRenderer.containsLatex(
+                                    message.contentText)
 
                             // The delegate is created when the
                             // session is shown, so this is where
@@ -786,16 +631,8 @@ PlasmaCore.Dialog {
                                 if (!message.wantsFormulas) {
                                     return
                                 }
-                                // The window counts the formulas of
-                                // every answer on screen; the answer
-                                // only tells it when its own are
-                                // ready.
-                                const token = searchOverlay.beginMath(
-                                    message.formulaCount)
-                                if (token < 0) {
-                                    return
-                                }
-                                message.formulaToken = token
+                                message.formulaToken =
+                                    searchOverlay.nextFormulaToken()
                                 // The raw source, never
                                 // answerLabel.text: a MarkdownText
                                 // label re-exports its text with
@@ -825,17 +662,11 @@ PlasmaCore.Dialog {
                                     || !answerLabel) {
                                     return
                                 }
-                                // The same formulas, asked for again:
-                                // the old request leaves the bar and a
-                                // new one takes its place, so they are
-                                // counted once.
-                                const token = searchOverlay.replaceMath(
-                                    message.formulaToken,
-                                    message.formulaCount)
-                                if (token < 0) {
-                                    return
-                                }
-                                message.formulaToken = token
+                                // The same formulas, asked for again: the
+                                // theme changed, so they are typeset in
+                                // the other ink.
+                                message.formulaToken =
+                                    searchOverlay.nextFormulaToken()
                                 LatexRenderer.embedFormulas(
                                     message.formulaToken,
                                     answerLabel.textDocument,
@@ -848,26 +679,12 @@ PlasmaCore.Dialog {
                             Connections {
                                 target: LatexRenderer
 
-                                function onEmbedded(token) {
-                                    if (token === message.formulaToken) {
-                                        searchOverlay.endMath(token)
-                                    }
-                                }
-
-                                function onProgress(token, done, total) {
-                                    if (token === message.formulaToken
-                                        && total > 0) {
-                                        searchOverlay.reportMath(token, done)
-                                    }
-                                }
-
                                 function onFailed(token, reason) {
                                     // -2: requested, failed, never
                                     // again for this answer.
                                     if (token === message.formulaToken) {
                                         message.formulaToken = -2
                                         message.formulaFailedReason = reason
-                                        searchOverlay.endMath(token)
                                     }
                                 }
                             }

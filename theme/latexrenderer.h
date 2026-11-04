@@ -69,14 +69,6 @@ public:
      *  commands with braces (\frac{…}, \mathcal{…}, \begin{…}). */
     Q_INVOKABLE bool containsLatex(const QString &text) const;
 
-    /*! \brief How many formula spans \a text carries.
-     *
-     * The very spans embedFormulas() compiles: the delimited ones.
-     * A view that shows a progress bar needs the number before the
-     * compile starts — the renderer only learns it while the compile
-     * is under way. */
-    Q_INVOKABLE int countFormulas(const QString &text) const;
-
     /*! \brief Compiles the math spans of \a markdown and writes the
      *  result into \a document: each span replaced by its tinted image,
      *  paragraphs spaced by \a paragraphSpacing, images scaled from

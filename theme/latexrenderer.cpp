@@ -363,24 +363,6 @@ bool LatexRenderer::containsLatex(const QString &text) const
         || mathSpanMatcher().match(text).hasMatch();
 }
 
-int LatexRenderer::countFormulas(const QString &text) const
-{
-    if (!text.contains(QLatin1Char('$'))
-        && !text.contains(QLatin1Char('\\'))) {
-        return 0;
-    }
-    // The delimited spans — the very ones embedFormulas() compiles. A
-    // braced command without delimiters is left alone by the
-    // renderer, so it is not counted here either.
-    int count = 0;
-    QRegularExpressionMatchIterator it = mathSpanMatcher().globalMatch(text);
-    while (it.hasNext()) {
-        it.next();
-        ++count;
-    }
-    return count;
-}
-
 void LatexRenderer::embedFormulas(int requestId,
                                   QQuickTextDocument *document,
                                   const QString &markdown,
