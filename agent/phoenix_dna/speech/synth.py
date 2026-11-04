@@ -123,6 +123,28 @@ def build_engine(config: Config) -> SynthesisEngine | None:
             sample_rate=32000,
             audio_format=config.tts_format,
         )
+    if provider == "openrouter":
+        # OpenRouter's speech endpoint is the OpenAI one on OpenRouter's
+        # base URL, so the same engine serves it.
+        from .openai_engine import OpenAiEngine
+
+        api_key = config.tts_key()
+        if not api_key:
+            log.warning(
+                "tts_provider is 'openrouter' but no key is set "
+                "(PHOENIX_TTS_API_KEY, OPENROUTER_API_KEY or keys.json); "
+                "speech stays off"
+            )
+            return None
+        return OpenAiEngine(
+            api_key=api_key,
+            model=config.tts_model,
+            endpoint=config.tts_endpoint,
+            voice=config.tts_voice,
+            speed=config.tts_speed,
+            sample_rate=32000,
+            audio_format=config.tts_format,
+        )
     if provider == "local":
         from .local_engine import LocalEngine, venv_python
 

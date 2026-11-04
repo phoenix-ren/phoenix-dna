@@ -9,11 +9,11 @@
 # provider = "minimax"            # or "fake" for a canned-response test provider
 # llm_provider = "minimax"        # which service the model calls go to:
 #                                 # "minimax" (default), "openai", "groq",
-#                                 # or "custom" for any other
-#                                 # OpenAI-compatible server. It brings the
-#                                 # defaults for the endpoint, the model and
-#                                 # the key; the two settings below
-#                                 # override them.
+#                                 # "openrouter", or "custom" for any
+#                                 # other OpenAI-compatible server. It
+#                                 # brings the defaults for the endpoint,
+#                                 # the model and the key; the two
+#                                 # settings below override them.
 # model = "MiniMax-M3"             # multimodal; MiniMax-Text-01 cannot see images
 # vision = true                   # send attached images to the model; "auto"
 #                                 # (the default) decides from the model name -
@@ -40,10 +40,11 @@
 # it.
 # tts_enabled = true
 # tts_provider = "minimax"         # which engine speaks: "minimax"
-#                                 # (default), "openai", "groq" or
-#                                 # "local". Each brings its own endpoint,
-#                                 # model and voices; the three settings
-#                                 # below override them.
+#                                 # (default), "openai", "groq",
+#                                 # "openrouter" or "local". Each brings
+#                                 # its own endpoint, model and voices;
+#                                 # the three settings below override
+#                                 # them.
 # tts_endpoint = "https://api.minimax.io/v1/t2a_v2"
 # tts_model = "speech-2.8-turbo"
 # tts_voice = "English_expressive_narrator"

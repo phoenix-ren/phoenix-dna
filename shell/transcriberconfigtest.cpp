@@ -157,6 +157,25 @@ int main(int argc, char **argv)
     }
     qunsetenv("PHOENIX_STT_PROVIDER");
 
+    // The OpenRouter provider: the OpenAI shape on OpenRouter's base URL,
+// which accepts the same multipart request.
+    writeKeys(configDir, QJsonObject{{QStringLiteral("openrouter_api_key"),
+                                      QStringLiteral("sk-or-test")}});
+    qputenv("PHOENIX_STT_PROVIDER", "openrouter");
+    {
+        const TranscriptionConfig config = Transcriber::resolveConfig();
+        check(config.provider == QStringLiteral("openrouter"),
+              "the openrouter provider is in force");
+        check(config.endpoint
+                  == QStringLiteral("https://openrouter.ai/api/v1/audio/transcriptions"),
+              "openrouter's own endpoint is the default");
+        check(config.model == QStringLiteral("openai/whisper-large-v3-turbo"),
+              "openrouter's own model is the default");
+        check(config.apiKey == QStringLiteral("sk-or-test"),
+              "openrouter's own key is used");
+    }
+    qunsetenv("PHOENIX_STT_PROVIDER");
+
     // The custom provider: no endpoint or model of its own, so they
     // must be named; its key lives in its own entry.
     writeKeys(configDir, QJsonObject{{QStringLiteral("stt_api_key"),

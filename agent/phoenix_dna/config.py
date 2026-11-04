@@ -83,6 +83,29 @@ LLM_PROVIDERS: dict[str, dict] = {
         # names; "gpt-oss" is the one it hosts under an OpenAI name.
         "model_families": ("llama-", "gpt-oss", "mixtral-", "gemma-"),
     },
+    "openrouter": {
+        "base_url": "https://openrouter.ai/api/v1",
+        # OpenRouter carries hundreds of models, each named "vendor/name".
+        # This one is a strong general-purpose one; name another in
+        # "model" (the list is at https://openrouter.ai/models) for a
+        # different trade-off.
+        "model": "anthropic/claude-sonnet-4.5",
+        "key_field": "openrouter_api_key",
+        # OpenRouter names every model "vendor/name", so the families
+        # are the vendors it carries: a model of one of these belongs
+        # to OpenRouter and follows a provider switch.
+        "model_families": (
+            "anthropic/",
+            "openai/",
+            "google/",
+            "meta-llama/",
+            "mistralai/",
+            "qwen/",
+            "deepseek/",
+            "x-ai/",
+            "cohere/",
+        ),
+    },
 }
 
 #: The known speech-synthesis providers: the name the user picks, the
@@ -138,6 +161,19 @@ TTS_PROVIDERS: dict[str, dict] = {
         "key_field": "",
         "formats": (),
     },
+    "openrouter": {
+        # The OpenAI-shaped speech endpoint, on OpenRouter's base URL.
+        "endpoint": "https://openrouter.ai/api/v1/audio/speech",
+        # ElevenLabs' Turbo, which is fast and cheap; the list of what
+        # OpenRouter carries is at
+        # https://openrouter.ai/models?output_modalities=speech
+        "model": "elevenlabs/eleven-turbo-v2",
+        "voice": "george",
+        # This endpoint answers in mp3 or pcm only.
+        "format": "mp3",
+        "key_field": "openrouter_api_key",
+        "formats": ("mp3", "pcm"),
+    },
     "none": {
         "endpoint": "",
         "model": "",
@@ -155,6 +191,7 @@ KEY_ENV = {
     "minimax_api_key": ("PHOENIX_MINIMAX_API_KEY", "MINIMAX_API_KEY"),
     "openai_api_key": ("PHOENIX_OPENAI_API_KEY", "OPENAI_API_KEY"),
     "groq_api_key": ("PHOENIX_GROQ_API_KEY", "GROQ_API_KEY"),
+    "openrouter_api_key": ("PHOENIX_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"),
     # A dedicated key for the agent's own model calls, for a gateway or
     # a self-hosted server that is none of the hosted providers.
     "llm_api_key": ("PHOENIX_LLM_API_KEY",),
@@ -305,6 +342,8 @@ class Config:
             return self.keys.get("openai_api_key", "")
         if provider == "groq":
             return self.keys.get("groq_api_key", "")
+        if provider == "openrouter":
+            return self.keys.get("openrouter_api_key", "")
         return self.keys.get("minimax_api_key", "")
 
 

@@ -137,6 +137,31 @@ int main(int argc, char **argv)
               "the custom speech-to-text provider uses its own key field");
     }
 
+    // OpenRouter: its own key field, for all three functions.
+    writeKeys(configDir, QJsonObject{{QStringLiteral("llm_provider"),
+                                      QStringLiteral("openrouter")},
+                                     {QStringLiteral("openrouter_api_key"),
+                                      QStringLiteral("sk-or-test")},
+                                     {QStringLiteral("stt_provider"),
+                                      QStringLiteral("openrouter")},
+                                     {QStringLiteral("tts_provider"),
+                                      QStringLiteral("openrouter")}});
+    {
+        SettingsStore store(nullptr, nullptr, nullptr, nullptr);
+        check(store.llmProvider() == QStringLiteral("openrouter"),
+              "the openrouter LLM provider comes from the key file");
+        check(store.llmKeyField() == QStringLiteral("openrouter_api_key"),
+              "openrouter's key field is used for the LLM");
+        check(store.llmApiKey() == QStringLiteral("sk-or-test"),
+              "openrouter's key is the LLM key");
+        check(store.sttProvider() == QStringLiteral("openrouter"),
+              "the openrouter speech-to-text provider comes from the key file");
+        check(store.sttKeyField() == QStringLiteral("openrouter_api_key"),
+              "openrouter's key field is used for speech-to-text");
+        check(store.speechProvider() == QStringLiteral("openrouter"),
+              "the openrouter speech provider comes from the key file");
+    }
+
     if (failures) {
         printf("\n%d check(s) failed\n", failures);
         return 1;

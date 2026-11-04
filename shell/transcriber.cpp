@@ -42,6 +42,8 @@ const ProviderSpec kProviders[] = {
      "openai_api_key", "OPENAI_API_KEY", "PHOENIX_OPENAI_API_KEY"},
     {"groq", "https://api.groq.com/openai/v1/audio/transcriptions", "whisper-large-v3-turbo",
      "groq_api_key", "GROQ_API_KEY", "PHOENIX_GROQ_API_KEY"},
+    {"openrouter", "https://openrouter.ai/api/v1/audio/transcriptions", "openai/whisper-large-v3-turbo",
+     "openrouter_api_key", "OPENROUTER_API_KEY", "PHOENIX_OPENROUTER_API_KEY"},
     {"custom", "", "", "stt_api_key", "", "PHOENIX_STT_API_KEY"},
 };
 

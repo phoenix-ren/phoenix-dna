@@ -192,12 +192,24 @@ environment) reaches any other one.
 | `minimax` (default) | `https://api.minimax.io/v1` | `MiniMax-Text-01` | `minimax_api_key` |
 | `openai` | `https://api.openai.com/v1` | `gpt-4o-mini` | `openai_api_key` |
 | `groq` | `https://api.groq.com/openai/v1` | `openai/gpt-oss-120b` | `groq_api_key` |
+| `openrouter` | `https://openrouter.ai/api/v1` | `anthropic/claude-sonnet-4.5` | `openrouter_api_key` |
 | `custom` | — you name it | — you name it | `llm_api_key` |
 
 Groq's models are named by their own family — `openai/gpt-oss-120b`,
 `qwen/qwen3.8-27b`, `meta-llama/…` — and which of them an account may
 use is the account's own business; the ones yours has are listed at
 <https://console.groq.com/keys>. Name the one you want in `model`.
+
+OpenRouter carries hundreds of models, each named `vendor/name`:
+
+```toml
+[agent]
+llm_provider = "openrouter"
+model = "google/gemini-3-flash-preview"
+```
+
+The list is at <https://openrouter.ai/models>. It bills per model, and
+the free ones are marked `:free`.
 
 A provider only supplies *defaults*. `llm_base_url` and `model` override
 them, so a gateway or a self-hosted model is reached by naming its
@@ -249,6 +261,7 @@ mirrors the OpenAI schema, so one code path serves them all.
 | `minimax` (default) | `https://api.minimax.io/v1/speech_to_text` | `asr-1.0` |
 | `openai` | `https://api.openai.com/v1/audio/transcriptions` | `gpt-4o-mini-transcribe` |
 | `groq` | `https://api.groq.com/openai/v1/audio/transcriptions` | `whisper-large-v3-turbo` |
+| `openrouter` | `https://openrouter.ai/api/v1/audio/transcriptions` | `openai/whisper-large-v3-turbo` |
 | `custom` | — you name it | — you name it |
 
 The **custom** provider stands for any other OpenAI-compatible server:
@@ -307,12 +320,18 @@ engine, and each engine brings its own endpoint, model and voice ids.
 | `minimax` (default) | `https://api.minimax.io/v1/t2a_v2` | `speech-2.8-turbo` | `English_expressive_narrator` and the rest of MiniMax's catalogue |
 | `openai` | `https://api.openai.com/v1/audio/speech` | `gpt-4o-mini-tts` | `alloy`, `ash`, `nova`, … |
 | `groq` | `https://api.groq.com/openai/v1/audio/speech` | `canopylabs/orpheus-v1-english` | `troy`, `austin`, `hannah`, … |
+| `openrouter` | `https://openrouter.ai/api/v1/audio/speech` | `elevenlabs/eleven-turbo-v2` | `george`, `sarah`, `adam`, … |
 | `local` | — | — | the local model's own voices (see below) |
 
 Groq's own voices come with a catch: Orpheus asks the organisation's
 admin to accept its terms once
 (<https://console.groq.com/playground?model=canopylabs%2Forpheus-v1-english>),
 and the service refuses the request until they have.
+
+OpenRouter's speech endpoint answers in MP3 or PCM only, and carries
+several voice providers (ElevenLabs, Deepgram, Google, Fish Audio);
+the list is at
+<https://openrouter.ai/models?output_modalities=speech>.
 
 
 The hosted engines speak two protocols — MiniMax answers with a

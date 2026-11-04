@@ -209,6 +209,28 @@ def test_the_speech_format_follows_the_provider(tmp_path):
     assert config.tts_format == "wav"
 
 
+def test_the_openrouter_provider_brings_its_own_defaults(tmp_path):
+    """OpenRouter carries hundreds of models on the OpenAI shape."""
+    config = _config(
+        tmp_path, {"llm_provider": "openrouter", "openrouter_api_key": "sk-or-test"}
+    )
+    assert config.llm_provider == "openrouter"
+    assert config.llm_base_url == "https://openrouter.ai/api/v1"
+    assert config.model == "anthropic/claude-sonnet-4.5"
+    assert config.llm_api_key == "sk-or-test"
+
+
+def test_the_openrouter_speech_provider_brings_its_own_defaults(tmp_path):
+    """OpenRouter's speech endpoint is the OpenAI one on its base URL."""
+    config = _config(
+        tmp_path, {"tts_provider": "openrouter", "openrouter_api_key": "sk-or-test"}
+    )
+    assert config.tts_endpoint == "https://openrouter.ai/api/v1/audio/speech"
+    assert config.tts_model == "elevenlabs/eleven-turbo-v2"
+    assert config.tts_voice == "george"
+    assert config.tts_key() == "sk-or-test"
+
+
 def test_the_speech_key_follows_the_speech_provider(tmp_path):
     """The OpenAI key serves the speech when the provider is OpenAI."""
     config = _config(
@@ -237,8 +259,21 @@ def test_a_dedicated_speech_key_beats_the_provider_key(tmp_path):
 
 
 def test_the_provider_tables_cover_what_the_ui_offers():
-    assert set(LLM_PROVIDERS) == {"minimax", "openai", "groq", "custom"}
-    assert set(TTS_PROVIDERS) == {"minimax", "openai", "groq", "local", "none"}
+    assert set(LLM_PROVIDERS) == {
+        "minimax",
+        "openai",
+        "groq",
+        "openrouter",
+        "custom",
+    }
+    assert set(TTS_PROVIDERS) == {
+        "minimax",
+        "openai",
+        "groq",
+        "openrouter",
+        "local",
+        "none",
+    }
 
 
 def test_the_groq_provider_brings_its_own_defaults(tmp_path):

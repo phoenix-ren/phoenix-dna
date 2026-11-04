@@ -237,12 +237,14 @@ Window {
     }
 
     // The combo's row for a provider ("minimax" → 0, "openai" → 1,
-    // "groq" → 2, "custom" → 3). Both the LLM and the speech-to-text
-    // combo show the same four, so the mapping lives in one place.
+    // "groq" → 2, "openrouter" → 3, "custom" → 4). Both the LLM and
+    // the speech-to-text combo show the same five, so the mapping lives
+    // in one place.
     function providerIndex(provider) {
         return provider === "openai" ? 1
              : provider === "groq" ? 2
-             : provider === "custom" ? 3 : 0
+             : provider === "openrouter" ? 3
+             : provider === "custom" ? 4 : 0
     }
 
     // The speech engine's row ("minimax" → 0, "openai" → 1,
@@ -681,7 +683,8 @@ Window {
                         PC3.ComboBox {
                             id: llmProviderCombo
 
-                            model: [i18n("MiniMax"), i18n("OpenAI"), i18n("Groq"), i18n("Custom")]
+                            model: [i18n("MiniMax"), i18n("OpenAI"), i18n("Groq"),
+                                    i18n("OpenRouter"), i18n("Custom")]
 
                             // The provider decides which key is used and,
                             // in the daemon, which endpoint and model are
@@ -691,8 +694,9 @@ Window {
                                 window.llmProviderChangeRequested(
                                     index === 1 ? "openai"
                                                 : index === 2 ? "groq"
-                                                             : index === 3 ? "custom"
-                                                                          : "minimax")
+                                                             : index === 3 ? "openrouter"
+                                                                          : index === 4 ? "custom"
+                                                                                       : "minimax")
                         }
                     }
 
@@ -775,7 +779,8 @@ Window {
                         PC3.ComboBox {
                             id: sttProviderCombo
 
-                            model: [i18n("MiniMax"), i18n("OpenAI"), i18n("Groq"), i18n("Custom")]
+                            model: [i18n("MiniMax"), i18n("OpenAI"), i18n("Groq"),
+                                    i18n("OpenRouter"), i18n("Custom")]
 
                             // Choosing a provider is a change like any
                             // other: the window reports it, the store
@@ -785,8 +790,9 @@ Window {
                                 window.sttProviderChangeRequested(
                                     index === 1 ? "openai"
                                                 : index === 2 ? "groq"
-                                                             : index === 3 ? "custom"
-                                                                          : "minimax")
+                                                             : index === 3 ? "openrouter"
+                                                                          : index === 4 ? "custom"
+                                                                                       : "minimax")
                         }
                     }
 
@@ -936,19 +942,21 @@ Window {
                         PC3.ComboBox {
                             id: speechProviderCombo
 
-                            // MiniMax, OpenAI and Groq speak
-                            // different protocols, so this picks the
-                            // engine, not just a voice. "Local" is the
-                            // on-device one.
+                            // MiniMax, OpenAI, Groq and OpenRouter
+                            // speak different protocols, so this picks
+                            // the engine, not just a voice. "Local" is
+                            // the on-device one.
                             model: [i18n("MiniMax"), i18n("OpenAI"),
-                                    i18n("Groq"), i18n("Local")]
+                                    i18n("Groq"), i18n("OpenRouter"),
+                                    i18n("Local")]
 
                             onActivated: (index) =>
                                 window.speechProviderChangeRequested(
                                     index === 1 ? "openai"
                                                 : index === 2 ? "groq"
-                                                             : index === 3 ? "local"
-                                                                          : "minimax")
+                                                             : index === 3 ? "openrouter"
+                                                                          : index === 4 ? "local"
+                                                                                       : "minimax")
                         }
                     }
 

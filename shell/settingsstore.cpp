@@ -31,6 +31,7 @@ const QString kPromptRole = QStringLiteral("prompt");
 const QString kSttProviderMiniMax = QStringLiteral("minimax");
 const QString kSttProviderOpenAI = QStringLiteral("openai");
 const QString kSttProviderGroq = QStringLiteral("groq");
+const QString kSttProviderOpenRouter = QStringLiteral("openrouter");
 const QString kSttProviderCustom = QStringLiteral("custom");
 
 // The LLM providers the agent daemon knows. Each brings its own API
@@ -39,6 +40,7 @@ const QString kSttProviderCustom = QStringLiteral("custom");
 const QString kLlmProviderMiniMax = QStringLiteral("minimax");
 const QString kLlmProviderOpenAI = QStringLiteral("openai");
 const QString kLlmProviderGroq = QStringLiteral("groq");
+const QString kLlmProviderOpenRouter = QStringLiteral("openrouter");
 const QString kLlmProviderCustom = QStringLiteral("custom");
 
 // The speech engines the daemon knows; anything else in keys.json
@@ -46,6 +48,7 @@ const QString kLlmProviderCustom = QStringLiteral("custom");
 const QString kSpeechProviderMiniMax = QStringLiteral("minimax");
 const QString kSpeechProviderOpenAI = QStringLiteral("openai");
 const QString kSpeechProviderGroq = QStringLiteral("groq");
+const QString kSpeechProviderOpenRouter = QStringLiteral("openrouter");
 const QString kSpeechProviderLocal = QStringLiteral("local");
 
 /*! \brief The keys.json field the API key of \a provider lives in.
@@ -59,6 +62,9 @@ QString llmKeyFieldFor(const QString &provider)
     }
     if (provider.compare(kLlmProviderGroq, Qt::CaseInsensitive) == 0) {
         return QStringLiteral("groq_api_key");
+    }
+    if (provider.compare(kLlmProviderOpenRouter, Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("openrouter_api_key");
     }
     if (provider.compare(kLlmProviderCustom, Qt::CaseInsensitive) == 0) {
         return QStringLiteral("llm_api_key");
@@ -229,6 +235,9 @@ QString SettingsStore::sttKeyField() const
     if (m_sttProvider == kSttProviderGroq) {
         return QStringLiteral("groq_api_key");
     }
+    if (m_sttProvider == kSttProviderOpenRouter) {
+        return QStringLiteral("openrouter_api_key");
+    }
     if (m_sttProvider == kSttProviderCustom) {
         return QStringLiteral("stt_api_key");
     }
@@ -259,7 +268,7 @@ void SettingsStore::refresh()
     }
     provider = provider.toLower();
     if (provider != kSttProviderOpenAI && provider != kSttProviderGroq
-        && provider != kSttProviderCustom) {
+        && provider != kSttProviderOpenRouter && provider != kSttProviderCustom) {
         provider = kSttProviderMiniMax;
     }
 
@@ -267,9 +276,11 @@ void SettingsStore::refresh()
                                             ? QStringLiteral("openai_api_key")
                                             : provider == kSttProviderGroq
                                                   ? QStringLiteral("groq_api_key")
-                                                  : provider == kSttProviderCustom
-                                                        ? QStringLiteral("stt_api_key")
-                                                        : QStringLiteral("minimax_api_key"))
+                                                  : provider == kSttProviderOpenRouter
+                                                        ? QStringLiteral("openrouter_api_key")
+                                                        : provider == kSttProviderCustom
+                                                              ? QStringLiteral("stt_api_key")
+                                                              : QStringLiteral("minimax_api_key"))
                               .toString();
 
     // The LLM provider decides which key the agent's own model calls
@@ -282,6 +293,7 @@ void SettingsStore::refresh()
     }
     llmProvider = llmProvider.toLower();
     if (llmProvider != kLlmProviderOpenAI && llmProvider != kLlmProviderGroq
+        && llmProvider != kLlmProviderOpenRouter
         && llmProvider != kLlmProviderCustom) {
         llmProvider = kLlmProviderMiniMax;
     }
@@ -328,6 +340,7 @@ void SettingsStore::refresh()
     // names (TTS_PROVIDERS); anything else means MiniMax.
     QString speechProvider = keys.value(QStringLiteral("tts_provider")).toString().toLower();
     if (speechProvider != kSpeechProviderOpenAI && speechProvider != kSpeechProviderGroq
+        && speechProvider != kSpeechProviderOpenRouter
         && speechProvider != kSpeechProviderLocal) {
         speechProvider = kSpeechProviderMiniMax;
     }
@@ -412,15 +425,19 @@ void SettingsStore::refreshEnvironmentFlags()
                       ? overrides("PHOENIX_OPENAI_API_KEY", "OPENAI_API_KEY")
                       : m_llmProvider == kLlmProviderGroq
                             ? overrides("PHOENIX_GROQ_API_KEY", "GROQ_API_KEY")
-                            : overrides("PHOENIX_MINIMAX_API_KEY", "MINIMAX_API_KEY"))
+                            : m_llmProvider == kLlmProviderOpenRouter
+                                  ? overrides("PHOENIX_OPENROUTER_API_KEY", "OPENROUTER_API_KEY")
+                                  : overrides("PHOENIX_MINIMAX_API_KEY", "MINIMAX_API_KEY"))
         || !qEnvironmentVariableIsEmpty("PHOENIX_LLM_API_KEY");
     const bool stt = m_sttProvider == kSttProviderOpenAI
         ? overrides("PHOENIX_OPENAI_API_KEY", "OPENAI_API_KEY")
         : m_sttProvider == kSttProviderGroq
               ? overrides("PHOENIX_GROQ_API_KEY", "GROQ_API_KEY")
-              : m_sttProvider == kSttProviderCustom
-                    ? overrides("PHOENIX_STT_API_KEY", "")
-                    : overrides("PHOENIX_MINIMAX_API_KEY", "MINIMAX_API_KEY");
+              : m_sttProvider == kSttProviderOpenRouter
+                    ? overrides("PHOENIX_OPENROUTER_API_KEY", "OPENROUTER_API_KEY")
+                    : m_sttProvider == kSttProviderCustom
+                          ? overrides("PHOENIX_STT_API_KEY", "")
+                          : overrides("PHOENIX_MINIMAX_API_KEY", "MINIMAX_API_KEY");
     // The speech settings are read by the daemon from keys.json, but the
 // environment overrides them — and with them the key the engine uses,
 // which belongs to the provider in force.
@@ -429,9 +446,11 @@ const bool speech = overrides("PHOENIX_TTS_API_KEY", "TTS_API_KEY")
                 ? overrides("PHOENIX_OPENAI_API_KEY", "OPENAI_API_KEY")
                 : m_speechProvider == kSpeechProviderGroq
                       ? overrides("PHOENIX_GROQ_API_KEY", "GROQ_API_KEY")
-                      : m_speechProvider == kSpeechProviderMiniMax
-                            ? overrides("PHOENIX_MINIMAX_API_KEY", "MINIMAX_API_KEY")
-                            : false)
+                      : m_speechProvider == kSpeechProviderOpenRouter
+                            ? overrides("PHOENIX_OPENROUTER_API_KEY", "OPENROUTER_API_KEY")
+                            : m_speechProvider == kSpeechProviderMiniMax
+                                  ? overrides("PHOENIX_MINIMAX_API_KEY", "MINIMAX_API_KEY")
+                                  : false)
         || !qEnvironmentVariableIsEmpty("PHOENIX_TTS_ENABLED")
         || !qEnvironmentVariableIsEmpty("PHOENIX_TTS_READ_MODE")
         || !qEnvironmentVariableIsEmpty("PHOENIX_TTS_VOICE");
@@ -632,7 +651,8 @@ bool SettingsStore::saveLlmProvider(const QString &provider)
 {
     const QString name = provider.trimmed().toLower();
     if (name != kLlmProviderMiniMax && name != kLlmProviderOpenAI
-        && name != kLlmProviderGroq && name != kLlmProviderCustom) {
+        && name != kLlmProviderGroq && name != kLlmProviderOpenRouter
+        && name != kLlmProviderCustom) {
         setStatus(i18n("Unknown LLM provider: %1", provider), true);
         return false;
     }
@@ -666,7 +686,8 @@ bool SettingsStore::saveSttProvider(const QString &provider)
 {
     const QString name = provider.trimmed().toLower();
     if (name == kSttProviderOpenAI || name == kSttProviderMiniMax
-        || name == kSttProviderGroq || name == kSttProviderCustom) {
+        || name == kSttProviderGroq || name == kSttProviderOpenRouter
+        || name == kSttProviderCustom) {
         if (!writeKeyField(QStringLiteral("stt_provider"), name)) {
             return false;
         }
@@ -675,6 +696,8 @@ bool SettingsStore::saveSttProvider(const QString &provider)
             label = i18n("OpenAI");
         } else if (name == kSttProviderGroq) {
             label = i18n("Groq");
+        } else if (name == kSttProviderOpenRouter) {
+            label = i18n("OpenRouter");
         } else if (name == kSttProviderCustom) {
             label = i18n("Custom");
         } else {
@@ -775,7 +798,8 @@ bool SettingsStore::saveSpeechProvider(const QString &provider)
 {
     const QString name = provider.trimmed().toLower();
     if (name != kSpeechProviderMiniMax && name != kSpeechProviderOpenAI
-        && name != kSpeechProviderGroq && name != kSpeechProviderLocal) {
+        && name != kSpeechProviderGroq && name != kSpeechProviderOpenRouter
+        && name != kSpeechProviderLocal) {
         setStatus(i18n("Unknown speech provider: %1", provider), true);
         return false;
     }
@@ -787,6 +811,8 @@ bool SettingsStore::saveSpeechProvider(const QString &provider)
         label = i18n("OpenAI");
     } else if (name == kSpeechProviderGroq) {
         label = i18n("Groq");
+    } else if (name == kSpeechProviderOpenRouter) {
+        label = i18n("OpenRouter");
     } else if (name == kSpeechProviderLocal) {
         label = i18n("Local");
     } else {

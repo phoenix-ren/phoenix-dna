@@ -28,7 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--llm-provider",
-        choices=["minimax", "openai", "groq", "custom"],
+        choices=["minimax", "openai", "groq", "openrouter", "custom"],
         help="which hosted service the model calls go to (overrides config)",
     )
     parser.add_argument("--config-dir", help="configuration directory")
