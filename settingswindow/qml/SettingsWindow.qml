@@ -811,6 +811,23 @@ Window {
                             Layout.fillWidth: true
                             text: i18n("The agent reads its answers aloud")
                             color: PhoenixTheme.textColor
+
+                            // The label is the checkbox's own label, not a
+                            // caption beside it: clicking it toggles the
+                            // box, as the text of any checkbox does. The
+                            // text cannot be the box's own — its colour is
+                            // fixed with the backdrop, the box's label
+                            // would follow the Plasma theme — so it stands
+                            // apart and clicks itself through.
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+
+                                // The full click, flash and all: the same
+                                // path a click on the box itself takes.
+                                onClicked: speechEnabledBox.animateClick()
+                            }
                         }
 
                         PC3.Button {
