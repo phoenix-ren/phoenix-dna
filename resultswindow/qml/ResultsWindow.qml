@@ -765,7 +765,21 @@ Window {
                                     Layout.fillWidth: true
                                     visible: thinkingSection.expanded
 
-                                    text: exchange.thinking
+                                    // The text follows the fold: a folded
+                                    // section carries no document. A
+                                    // TextEdit imports its Markdown into a
+                                    // QTextDocument on every change of its
+                                    // text, and while the run streams the
+                                    // notes re-imported the whole growing
+                                    // document with every 100 ms delta
+                                    // flush — on the GUI thread, in
+                                    // plasmashell, for text nobody could
+                                    // see. The import happens when the
+                                    // section is expanded instead: once,
+                                    // on demand, and live while it is
+                                    // watched.
+                                    text: thinkingSection.expanded
+                                        ? exchange.thinking : ""
                                     textFormat: TextEdit.MarkdownText
                                     wrapMode: Text.WordWrap
                                     color: PhoenixTheme.secondaryTextColor
@@ -816,7 +830,20 @@ Window {
                                     Layout.fillWidth: true
                                     visible: toolSection.expanded
 
-                                    text: exchange.toolLog
+                                    // Like the notes above: a folded log
+                                    // imports nothing. The log grows twice
+                                    // per tool call of the run (its head at
+                                    // "started", its tail at "finished"),
+                                    // and every growth re-imported the
+                                    // entire log into the document — on the
+                                    // GUI thread, in plasmashell, for a
+                                    // section that starts folded: the
+                                    // field froze on runs that only called
+                                    // tools. Expanded, the log is imported
+                                    // on demand and kept current while it
+                                    // is watched.
+                                    text: toolSection.expanded
+                                        ? exchange.toolLog : ""
                                     textFormat: TextEdit.MarkdownText
                                     wrapMode: Text.WordWrap
                                     color: PhoenixTheme.secondaryTextColor
