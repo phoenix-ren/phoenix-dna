@@ -80,26 +80,28 @@ class SettingsStore : public QObject
 
     /*! \brief The family the agent's answers are set in, in light mode.
      *
-     * Empty when nothing is chosen — the system's own font then. */
+     * Empty when nothing is chosen — the app's own default for the
+     * mode then. The word "system" for the system's own font. */
     Q_PROPERTY(QString lightFont READ lightFont NOTIFY lightFontChanged)
 
     /*! \brief The family the agent's answers are set in, in dark mode.
      *
-     * Empty when nothing is chosen — the system's own font then. */
+     * Empty when nothing is chosen — the app's own default for the
+     * mode then. The word "system" for the system's own font. */
     Q_PROPERTY(QString darkFont READ darkFont NOTIFY darkFontChanged)
 
     /*! \brief The size the agent's answers are set in, in light mode,
      *  in pixels.
      *
-     * Zero when nothing is chosen — the size the window would give the
-     * answer anyway then. */
+     * Zero when nothing is chosen — the app's own size for the mode
+     * then. */
     Q_PROPERTY(int lightFontSize READ lightFontSize NOTIFY lightFontSizeChanged)
 
     /*! \brief The size the agent's answers are set in, in dark mode,
      *  in pixels.
      *
-     * Zero when nothing is chosen — the size the window would give the
-     * answer anyway then. */
+     * Zero when nothing is chosen — the app's own size for the mode
+     * then. */
     Q_PROPERTY(int darkFontSize READ darkFontSize NOTIFY darkFontSizeChanged)
 
     /*! \brief The keys.json field behind llmApiKey, shown by the UI. */
@@ -212,19 +214,21 @@ public:
     Q_INVOKABLE bool saveTheme(const QString &theme);
 
     /*! \brief Stores the family the agent's answers are set in, in light
-     *  mode; an empty family restores the system's own font. */
+     *  mode; an empty family restores the app's own default for the
+     *  mode, and the word "system" the system's own font. */
     Q_INVOKABLE bool saveLightFont(const QString &family);
 
     /*! \brief Stores the family the agent's answers are set in, in dark
-     *  mode; an empty family restores the system's own font. */
+     *  mode; an empty family restores the app's own default for the
+     *  mode, and the word "system" the system's own font. */
     Q_INVOKABLE bool saveDarkFont(const QString &family);
 
     /*! \brief Stores the size the agent's answers are set in, in light
-     *  mode; zero restores the size the window would give them. */
+     *  mode; zero restores the app's own size for the mode. */
     Q_INVOKABLE bool saveLightFontSize(int size);
 
     /*! \brief Stores the size the agent's answers are set in, in dark
-     *  mode; zero restores the size the window would give them. */
+     *  mode; zero restores the app's own size for the mode. */
     Q_INVOKABLE bool saveDarkFontSize(int size);
 
     /*! \brief Stores whether the agent reads its answers aloud. The
