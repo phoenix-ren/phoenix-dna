@@ -14,6 +14,7 @@
 // categorized logging prints nothing in this environment.)
 
 #include "settingsstore.h"
+#include "keysfile.h"
 
 #include <QCoreApplication>
 #include <QJsonDocument>
@@ -207,6 +208,49 @@ int main(int argc, char **argv)
         check(store.sttEndpoint()
                   == QStringLiteral("https://api.groq.com/openai/v1/audio/transcriptions"),
               "the speech-to-text endpoint is shown as it was stored");
+    }
+
+    // What the window writes is what the daemon reads: the endpoint and
+    // the model land in keys.json, under the names the daemon's
+    // config.py reads them by.
+    writeKeys(configDir, QJsonObject{{QStringLiteral("minimax_api_key"),
+                                      QStringLiteral("sk-minimax")}});
+    {
+        SettingsStore store(nullptr, nullptr, nullptr, nullptr);
+        check(store.saveLlmEndpoint(QStringLiteral("https://api.openai.com/v1"),
+                                    QStringLiteral("gpt-4o")),
+              "the endpoint is stored");
+        check(store.saveSttEndpoint(
+                  QStringLiteral("https://api.groq.com/openai/v1/audio/transcriptions"),
+                  QStringLiteral("whisper-large-v3-turbo")),
+              "the speech-to-text endpoint is stored");
+        check(store.saveTtsEndpoint(
+                  QStringLiteral("https://openrouter.ai/api/v1/audio/speech"),
+                  QStringLiteral("elevenlabs/eleven-turbo-v2")),
+              "the speech endpoint is stored");
+
+        const QJsonObject keys = PhoenixKeys::readKeys();
+        check(keys.value(QStringLiteral("llm_base_url")).toString()
+                  == QStringLiteral("https://api.openai.com/v1"),
+              "the model's endpoint is in keys.json under llm_base_url");
+        check(keys.value(QStringLiteral("model")).toString()
+                  == QStringLiteral("gpt-4o"),
+              "the model is in keys.json under model");
+        check(keys.value(QStringLiteral("stt_endpoint")).toString()
+                  == QStringLiteral("https://api.groq.com/openai/v1/audio/transcriptions"),
+              "the speech-to-text endpoint is in keys.json under stt_endpoint");
+        check(keys.value(QStringLiteral("tts_endpoint")).toString()
+                  == QStringLiteral("https://openrouter.ai/api/v1/audio/speech"),
+              "the speech endpoint is in keys.json under tts_endpoint");
+        // The keys that were there before are still there.
+        check(keys.value(QStringLiteral("minimax_api_key")).toString()
+                  == QStringLiteral("sk-minimax"),
+              "the other keys survive the write");
+        // And the store now reads back what it wrote.
+        check(store.llmBaseUrl() == QStringLiteral("https://api.openai.com/v1"),
+              "the endpoint is read back");
+        check(store.llmProvider() == QStringLiteral("openai"),
+              "the endpoint's host decides the provider");
     }
 
     if (failures) {
