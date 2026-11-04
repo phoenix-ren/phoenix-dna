@@ -304,9 +304,9 @@ PlasmoidItem {
     // itself, and persists until closed by hand; closing only hides it, so
     // the compositor keeps it where the user left it.
     //
-    // Its input bar continues the conversation: record and send route
-    // through the controller exactly like the panel's record button and
-    // the overlay's "Send to agent", so a follow-on rides on the session
+    // Its input bar continues the conversation: record, send and stop
+    // route through the controller exactly like the panel's record button
+    // and the overlay's send arrow, so a follow-on rides on the session
     // history the initial voice prompt created (AgentBridge tracks the
     // session id).
     PhoenixResults.ResultsWindow {
@@ -325,6 +325,12 @@ PlasmoidItem {
         listening: Phoenix.PhoenixController.recording
         transcribing: Phoenix.PhoenixController.transcribing
         statusMessage: Phoenix.PhoenixController.statusMessage
+
+        // Whether an agent run is live: the pane's send button is a stop
+        // button while it is, and stopping it goes back the same way —
+        // through the bridge, which speaks the daemon's Cancel(run_id).
+        runActive: Phoenix.PhoenixController.agent.runActive
+        onCancelRequested: Phoenix.PhoenixController.agent.cancelRun()
 
         // The files attached to the prompt being composed - the same list
         // the dictation overlay shows.

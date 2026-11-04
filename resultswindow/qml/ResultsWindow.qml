@@ -149,9 +149,19 @@ Window {
     // shell submits it over the existing session history.
     signal submitted(string text)
 
+    // Whether an agent run is live right now: the send button is a stop
+    // button while it is. Bound by the shell to the agent bridge, which
+    // tracks the run from RunStarted to RunFinished — runs begun anywhere
+    // (the panel's record button as much as a follow-on) count.
+    property bool runActive: false
+
+    // Emitted when the user stops the live run; the shell routes it to
+    // the bridge, which speaks the daemon's Cancel(run_id).
+    signal cancelRequested()
+
     // Whether a follow-on can be submitted right now: there is text, and
-    // no dictation is in flight. The send button and the Shift+Enter
-    // shortcut both consult it, so the two paths can never disagree.
+    // no dictation is in flight. The send button and the Return shortcut
+    // both consult it, so the two paths can never disagree.
     readonly property bool canSubmit: transcript.length > 0
         && !listening && !transcribing
 
@@ -367,7 +377,7 @@ Window {
 
     // Puts the keyboard in the follow-up editor: the window's reason to
     // be open is a conversation, so a shown window is ready to be typed
-    // into (and Shift+Enter submitted) without a click into the field
+    // into (and Return submitted) without a click into the field
     // first.
     function focusInput() {
         if (!followUpEdit.readOnly) {
@@ -432,14 +442,17 @@ Window {
         focus: true
         Keys.onEscapePressed: resultsWindow.dismiss()
 
-        // Shift+Enter submits a follow-on from anywhere in the window: the
+        // Return submits a follow-on from anywhere in the window: the
         // shortcut lives on the window rather than on the editor, because
         // keyboard focus often rests elsewhere (a just-shown window, the
         // send button) and a key handler on the editor would simply never
-        // fire. "Return" covers the main Enter key, "Enter" the numpad's.
-        // Plain Enter keeps inserting the line break — no shortcut for it.
+        // fire — previously the only keyboard way to send was pressing
+        // Space on the focused button. "Return" covers the main Enter
+        // key, "Enter" the numpad's. Shift+Return is *not* a shortcut:
+        // it stays the line break it is in the editor, so a long query
+        // can be written without the first Return sending it away.
         Shortcut {
-            sequences: ["Shift+Return", "Shift+Enter"]
+            sequences: ["Return", "Enter"]
             context: Qt.WindowShortcut
             enabled: resultsWindow.canSubmit
             onActivated: resultsWindow.submitted(resultsWindow.transcript)
@@ -1293,11 +1306,13 @@ Window {
             // conversation can continue right where its result is showing:
             // the compact representation's record button (dictate a
             // follow-on; it becomes a stop button while recording) and the
-            // dictation overlay's editable transcript plus "Send" button
-            // (correct a recognition, or simply type). The window stays
-            // presentational: recordClicked and submitted go to the shell,
-            // which routes both through the controller and thus the same
-            // session history the initial voice prompt created.
+            // dictation overlay's editable transcript (correct a
+            // recognition, or simply type). All of it lives inside the one
+            // rounded prompt field below, and Return — not a click — is
+            // what sends. The window stays presentational: recordClicked,
+            // submitted and cancelRequested go to the shell, which routes
+            // them through the controller and thus the same session
+            // history the initial voice prompt created.
             Kirigami.Separator {
                 Layout.fillWidth: true
                 Layout.topMargin: Kirigami.Units.smallSpacing
@@ -1377,174 +1392,282 @@ Window {
                         }
                     }
 
-                    RowLayout {
+                    // ---- The prompt field -----------------------------------
+                    // One rounded box that holds the whole prompt: the editor
+                    // on top, and inside it — on the row below the text — the
+                    // controls that act on the prompt, with the send (or
+                    // stop) button at the far right. Nothing dangles outside
+                    // the field, so nothing can be mistaken for belonging to
+                    // another part of the window, and the prompt reads as
+                    // the one thing the bar is about.
+                    Rectangle {
+                        id: promptField
+
                         Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
+                        implicitHeight: fieldColumn.implicitHeight
+                                        + 2 * Kirigami.Units.smallSpacing
 
-                        // The record button, as in the compact
-                        // representation: microphone while idle, stop
-                        // while recording. No colour tint.
-                        PC3.ToolButton {
-                            id: recordButton
-                            objectName: "recordButton"
+                        // A large radius: the field is a container, not a
+                        // text box — the controls sit inside it, and a
+                        // shallow corner would read as a border of a row,
+                        // not as the shell of a thing.
+                        radius: Kirigami.Units.largeSpacing * 1.5
+                        color: PhoenixTheme.paneFill
+                        border.width: 1
+                        // The keyboard's place is shown by the outline: the
+                        // accent colour while the editor has it, the quiet
+                        // chip colour otherwise.
+                        border.color: followUpEdit.activeFocus
+                            ? PhoenixTheme.focusBorderColor
+                            : PhoenixTheme.chipBorderColor
 
-                            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
-                            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+                        ColumnLayout {
+                            id: fieldColumn
 
-                            icon.name: resultsWindow.listening ? "media-playback-stop" : "audio-input-microphone"
-                            icon.width: Kirigami.Units.iconSizes.small
-                            icon.height: Kirigami.Units.iconSizes.small
+                            anchors.fill: parent
+                            anchors.margins: Kirigami.Units.smallSpacing
+                            spacing: Kirigami.Units.smallSpacing
 
-                            onClicked: resultsWindow.recordClicked()
+                            // The transcript, editable so a dictated follow-on
+                            // can be corrected before sending — and typeable
+                            // from scratch. The editor is the single source of
+                            // truth for what "Send to agent" submits: engine
+                            // results flow in via onTranscriptChanged above,
+                            // edits flow back into resultsWindow.transcript here
+                            // (guarded, so the two never ping-pong).
+                            PC3.TextArea {
+                                id: followUpEdit
+                                objectName: "followUpEdit"
 
-                            PC3.ToolTip {
-                                text: resultsWindow.listening ? i18n("Stop") : i18n("Record a follow-up")
-                            }
-                        }
+                                Layout.fillWidth: true
+                                // A visibly multi-line field: two text lines
+                                // tall even when empty (one line reads as a
+                                // single-line edit box). Grows with the
+                                // dictated or typed text — follow-ons are
+                                // often longer and need clarifications — but
+                                // never eats the conversation above it: past
+                                // roughly six text lines the editor stops
+                                // growing and its content scrolls inside.
+                                // Measures are content-based, so the shape
+                                // survives font and scale changes.
+                                Layout.preferredHeight: Math.max(
+                                    2 * contentHeight + topPadding + bottomPadding,
+                                    Math.min(
+                                        implicitHeight,
+                                        6 * contentHeight + topPadding + bottomPadding))
 
-                        // The read-aloud stop control: the daemon is
-                        // reading an answer (this exchange's or another
-                        // one's, or an ad-hoc SpeakText) and this cuts
-                        // it off. Shown only while it speaks — pressing
-                        // record also stops the speech (barge-in), so
-                        // the microphone never transcribes the agent's
-                        // own voice.
-                        PC3.ToolButton {
-                            id: stopSpeakingButton
-                            objectName: "stopSpeakingButton"
+                                // The field paints its own frame (see
+                                // promptField above), so the editor inside it
+                                // draws none of its own. Its text takes the
+                                // app's palette for the same reason: the
+                                // window paints its own backdrop (see
+                                // PhoenixTheme), so the text must follow the
+                                // scheme of everything around it, not the
+                                // desktop's.
+                                background: null
+                                color: PhoenixTheme.textColor
+                                placeholderTextColor: PhoenixTheme.secondaryTextColor
 
-                            visible: resultsWindow.agentSpeaking
-                            enabled: visible
+                                wrapMode: Text.Wrap
+                                // Locked while the engine owns the text;
+                                // editable the moment a result has landed.
+                                readOnly: resultsWindow.listening || resultsWindow.transcribing
+                                placeholderText: resultsWindow.transcribing ? i18n("Transcribing…")
+                                                : resultsWindow.listening ? i18n("Speak now…")
+                                                : resultsWindow.formPending ? i18n("Answer the question…")
+                                                : i18n("Ask a follow-up…")
 
-                            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
-                            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+                                onTextChanged: if (text !== resultsWindow.transcript) {
+                                    resultsWindow.transcript = text
+                                }
 
-                            icon.name: "media-playback-stop"
-                            icon.width: Kirigami.Units.iconSizes.small
-                            icon.height: Kirigami.Units.iconSizes.small
-                            display: PC3.AbstractButton.IconOnly
-
-                            onClicked: resultsWindow.stopSpeakingRequested()
-
-                            PC3.ToolTip {
-                                text: i18n("Stop reading")
-                            }
-                        }
-
-                        // Runs while the dictated clip is being transcribed,
-                        // as in the dictation overlay's header.
-                        PC3.BusyIndicator {
-                            Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
-                            Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
-                            visible: resultsWindow.transcribing
-                            running: resultsWindow.transcribing
-                        }
-
-                        // The button that attaches files to the follow-up,
-                        // on the left of the prompt field.
-                        PC3.ToolButton {
-                            id: addAttachmentButton
-                            objectName: "addAttachmentButton"
-
-                            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
-                            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-
-                            icon.name: "list-add"
-                            icon.width: Kirigami.Units.iconSizes.small
-                            icon.height: Kirigami.Units.iconSizes.small
-
-                            onClicked: attachmentDialog.open()
-
-                            PC3.ToolTip {
-                                text: i18n("Attach a file to the prompt")
-                            }
-                        }
-
-                        // The camera: photograph a window of the desktop
-                        // and attach the picture to this follow-up.
-                        PC3.ToolButton {
-                            id: screenshotButton
-                            objectName: "screenshotButton"
-
-                            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
-                            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-
-                            icon.name: "camera-photo"
-                            icon.width: Kirigami.Units.iconSizes.small
-                            icon.height: Kirigami.Units.iconSizes.small
-                            // While the picker waits for a click, the
-                            // button says so.
-                            icon.color: resultsWindow.screenshotPicking
-                                ? PhoenixTheme.strongTextColor
-                                : PhoenixTheme.textColor
-
-                            onClicked: resultsWindow.screenshotRequested()
-
-                            PC3.ToolTip {
-                                text: {
-                                    const shortcut = resultsWindow.screenshotShortcut;
-                                    return shortcut.length > 0
-                                        ? i18n("Screenshot a window (%1)", shortcut)
-                                        : i18n("Screenshot a window");
+                                // Return submits, even with the keyboard in
+                                // the editor: a text edit swallows the key
+                                // before the window's shortcut ever gets to
+                                // see it (it would insert a line break
+                                // instead). The window shortcut above covers
+                                // the case where the focus rests elsewhere;
+                                // this one covers the editor itself, so the
+                                // two can never both fire. Shift is the line
+                                // break: it is simply not handled here, and
+                                // the editor inserts it the way it always has.
+                                Keys.onPressed: (event) => {
+                                    if ((event.key === Qt.Key_Return
+                                         || event.key === Qt.Key_Enter)
+                                        && !(event.modifiers & Qt.ShiftModifier)) {
+                                        event.accepted = true;
+                                        if (resultsWindow.canSubmit) {
+                                            resultsWindow.submitted(
+                                                resultsWindow.transcript);
+                                        }
+                                    }
                                 }
                             }
-                        }
 
-                        // The transcript, editable so a dictated follow-on
-                        // can be corrected before sending — and typeable
-                        // from scratch. The editor is the single source of
-                        // truth for what "Send to agent" submits: engine
-                        // results flow in via onTranscriptChanged above,
-                        // edits flow back into resultsWindow.transcript here
-                        // (guarded, so the two never ping-pong).
-                        PC3.TextArea {
-                            id: followUpEdit
-                            objectName: "followUpEdit"
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
 
-                            Layout.fillWidth: true
-                            // A visibly multi-line field: two text lines
-                            // tall even when empty (one line reads as a
-                            // single-line edit box). Grows with the
-                            // dictated or typed text — follow-ons are
-                            // often longer and need clarifications — but
-                            // never eats the conversation above it: past
-                            // roughly six text lines the editor stops
-                            // growing and its content scrolls inside.
-                            // Measures are content-based, so the shape
-                            // survives font and scale changes.
-                            Layout.preferredHeight: Math.max(
-                                2 * contentHeight + topPadding + bottomPadding,
-                                Math.min(
-                                    implicitHeight,
-                                    6 * contentHeight + topPadding + bottomPadding))
+                                // The record button, as in the compact
+                                // representation: microphone while idle, stop
+                                // while recording. No colour tint.
+                                PC3.ToolButton {
+                                    id: recordButton
+                                    objectName: "recordButton"
 
-                            wrapMode: Text.Wrap
-                            // Locked while the engine owns the text;
-                            // editable the moment a result has landed.
-                            readOnly: resultsWindow.listening || resultsWindow.transcribing
-                            placeholderText: resultsWindow.transcribing ? i18n("Transcribing…")
-                                            : resultsWindow.listening ? i18n("Speak now…")
-                                            : resultsWindow.formPending ? i18n("Answer the question…")
-                                            : i18n("Ask a follow-up…")
+                                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
 
-                            onTextChanged: if (text !== resultsWindow.transcript) {
-                                resultsWindow.transcript = text
-                            }
-                        }
+                                    icon.name: resultsWindow.listening ? "media-playback-stop" : "audio-input-microphone"
+                                    icon.width: Kirigami.Units.iconSizes.small
+                                    icon.height: Kirigami.Units.iconSizes.small
 
-                        // One explicit send, no accidental submissions —
-                        // same contract as the overlay's button. Stays at
-                        // its natural size so the label is never squeezed.
-                        PC3.Button {
-                            objectName: "sendButton"
-                            Layout.alignment: Qt.AlignRight
-                            icon.name: "document-send"
-                            text: i18n("Send to agent")
-                            enabled: resultsWindow.canSubmit
-                            onClicked: resultsWindow.submitted(resultsWindow.transcript)
+                                    onClicked: resultsWindow.recordClicked()
 
-                            PC3.ToolTip {
-                                text: i18n("Send to agent (Shift+Enter)")
+                                    PC3.ToolTip {
+                                        text: resultsWindow.listening ? i18n("Stop") : i18n("Record a follow-up")
+                                    }
+                                }
+
+                                // The read-aloud stop control: the daemon is
+                                // reading an answer (this exchange's or another
+                                // one's, or an ad-hoc SpeakText) and this cuts
+                                // it off. Shown only while it speaks — pressing
+                                // record also stops the speech (barge-in), so
+                                // the microphone never transcribes the agent's
+                                // own voice.
+                                PC3.ToolButton {
+                                    id: stopSpeakingButton
+                                    objectName: "stopSpeakingButton"
+
+                                    visible: resultsWindow.agentSpeaking
+                                    enabled: visible
+
+                                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+                                    icon.name: "media-playback-stop"
+                                    icon.width: Kirigami.Units.iconSizes.small
+                                    icon.height: Kirigami.Units.iconSizes.small
+                                    display: PC3.AbstractButton.IconOnly
+
+                                    onClicked: resultsWindow.stopSpeakingRequested()
+
+                                    PC3.ToolTip {
+                                        text: i18n("Stop reading")
+                                    }
+                                }
+
+                                // Runs while the dictated clip is being transcribed,
+                                // as in the dictation overlay's header.
+                                PC3.BusyIndicator {
+                                    Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                                    Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
+                                    visible: resultsWindow.transcribing
+                                    running: resultsWindow.transcribing
+                                }
+
+                                // The button that attaches files to the follow-up.
+                                PC3.ToolButton {
+                                    id: addAttachmentButton
+                                    objectName: "addAttachmentButton"
+
+                                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+                                    icon.name: "list-add"
+                                    icon.width: Kirigami.Units.iconSizes.small
+                                    icon.height: Kirigami.Units.iconSizes.small
+
+                                    onClicked: attachmentDialog.open()
+
+                                    PC3.ToolTip {
+                                        text: i18n("Attach a file to the prompt")
+                                    }
+                                }
+
+                                // The camera: photograph a window of the desktop
+                                // and attach the picture to this follow-up.
+                                PC3.ToolButton {
+                                    id: screenshotButton
+                                    objectName: "screenshotButton"
+
+                                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+                                    icon.name: "camera-photo"
+                                    icon.width: Kirigami.Units.iconSizes.small
+                                    icon.height: Kirigami.Units.iconSizes.small
+                                    // While the picker waits for a click, the
+                                    // button says so.
+                                    icon.color: resultsWindow.screenshotPicking
+                                        ? PhoenixTheme.strongTextColor
+                                        : PhoenixTheme.textColor
+
+                                    onClicked: resultsWindow.screenshotRequested()
+
+                                    PC3.ToolTip {
+                                        text: {
+                                            const shortcut = resultsWindow.screenshotShortcut;
+                                            return shortcut.length > 0
+                                                ? i18n("Screenshot a window (%1)", shortcut)
+                                                : i18n("Screenshot a window");
+                                        }
+                                    }
+                                }
+
+                                // Everything before the send button hugs the
+                                // field's left edge; this spacer carries the
+                                // rest of the width to the send button, so the
+                                // two ends read independently.
+                                Item {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 1
+                                }
+
+                                // The send — a plain up arrow, the one glyph
+                                // chat inputs have agreed on. While an agent
+                                // run is live the very same button stops it:
+                                // one square, one place to look, and the
+                                // arrow's meaning (more words to the agent)
+                                // is the wrong one mid-run anyway. The shape
+                                // is fixed, so the two icons land in the same
+                                // place and a click means one thing at a
+                                // time.
+                                PC3.Button {
+                                    id: sendButton
+                                    objectName: "sendButton"
+
+                                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+                                    display: PC3.AbstractButton.IconOnly
+
+                                    icon.name: resultsWindow.runActive
+                                        ? "media-playback-stop"
+                                        : "arrow-up"
+                                    icon.width: Kirigami.Units.iconSizes.small
+                                    icon.height: Kirigami.Units.iconSizes.small
+                                    // A run can always be stopped; the arrow
+                                    // only fires when there is something to
+                                    // send and no dictation is in flight.
+                                    enabled: resultsWindow.runActive
+                                        || resultsWindow.canSubmit
+
+                                    onClicked: {
+                                        if (resultsWindow.runActive) {
+                                            resultsWindow.cancelRequested();
+                                        } else {
+                                            resultsWindow.submitted(
+                                                resultsWindow.transcript);
+                                        }
+                                    }
+
+                                    PC3.ToolTip {
+                                        text: resultsWindow.runActive
+                                            ? i18n("Stop the running query")
+                                            : i18n("Send to agent (Return)")
+                                    }
+                                }
                             }
                         }
                     }

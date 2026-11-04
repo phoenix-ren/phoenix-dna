@@ -6,6 +6,7 @@
 #include "audiocapture.h"
 #include "audioringbuffer.h"
 #include "cliprecorder.h"
+#include "completionsound.h"
 #include "settingsstore.h"
 #include "shuttersound.h"
 #include "transcriber.h"
@@ -30,7 +31,8 @@ PhoenixController::PhoenixController(QObject *parent)
       m_transcriber(new Transcriber(this)),
       m_attachments(new PromptAttachments(this)),
       m_screenshotPicker(new WindowScreenshotPicker(this)),
-      m_shutterSound(new ShutterSound(this))
+      m_shutterSound(new ShutterSound(this)),
+      m_completionSound(new CompletionSound(this))
 {
     // A photographed window becomes an attachment of the prompt that is
     // being composed - the next one the user sends. The shutter clicks at
@@ -142,6 +144,13 @@ PhoenixController::PhoenixController(QObject *parent)
     // next recording. (clear() refuses to wipe a live waveform, in case
     // the user is already dictating again when the pane appears.)
     connect(m_agent, &AgentBridge::activityStarted, m_waveform, &AudioRingBuffer::clear);
+
+    // A finished query chimes: the user is free to work elsewhere while
+    // the agent runs, and the chime is what says "the answer is there"
+    // without the window being watched. resultReady is the run's own
+    // completion — an answer with words in it — so a run cancelled before
+    // it said anything stays quiet.
+    connect(m_agent, &AgentBridge::resultReady, this, [this] { m_completionSound->play(); });
 
     // The record button has a system-wide companion so dictation can be
     // toggled from any application, not just while the panel has focus.

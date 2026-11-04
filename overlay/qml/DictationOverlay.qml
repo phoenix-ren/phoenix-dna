@@ -81,7 +81,7 @@ PlasmaCore.Dialog {
 
     // Whether the transcript can be submitted right now: something was
     // dictated, the clip is not mid-recording or mid-transcription. The
-    // send button and the Shift+Enter shortcut both consult it, so the two
+    // send button and the Return shortcut both consult it, so the two
     // paths can never disagree.
     readonly property bool canSubmit: transcript.length > 0
         && !listening && !transcribing
@@ -267,129 +267,204 @@ PlasmaCore.Dialog {
                 }
             }
 
-            // The prompt itself, with the button that attaches files to
-            // it on its left.
-            RowLayout {
+            // The prompt itself: one rounded field with the editor on top
+            // and — inside the field, on the row below the text — the
+            // buttons that act on the prompt, the send at the far right.
+            // Nothing dangles outside the field, so nothing can be
+            // mistaken for belonging to another part of the overlay.
+            Rectangle {
+                id: promptField
+
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                spacing: Kirigami.Units.smallSpacing
 
-                PC3.ToolButton {
-                    id: addAttachmentButton
-                    objectName: "addAttachmentButton"
+                // A large radius: the field is a container, not a text box
+                // — the buttons sit inside it, and a shallow corner would
+                // read as the border of a row, not as the shell of a thing.
+                radius: Kirigami.Units.largeSpacing * 1.5
+                color: PhoenixTheme.paneFill
+                border.width: 1
+                // The keyboard's place is shown by the outline: the accent
+                // colour while the editor has it, the quiet chip colour
+                // otherwise.
+                border.color: transcriptEdit.activeFocus
+                    ? PhoenixTheme.focusBorderColor
+                    : PhoenixTheme.chipBorderColor
 
-                    Layout.alignment: Qt.AlignTop
-                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
-                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+                ColumnLayout {
+                    id: fieldColumn
 
-                    icon.name: "list-add"
-                    icon.width: Kirigami.Units.iconSizes.small
-                    icon.height: Kirigami.Units.iconSizes.small
+                    anchors.fill: parent
+                    anchors.margins: Kirigami.Units.smallSpacing
+                    spacing: Kirigami.Units.smallSpacing
 
-                    onClicked: attachmentDialog.open()
+                    // The live transcript, editable so the user can correct the
+                    // recognition before sending. The editor is the single source
+                    // of truth for what "Send to agent" submits: engine results
+                    // flow in via onTranscriptChanged above, edits flow back into
+                    // dictationOverlay.transcript here (guarded, so the two never ping-pong).
+                    PC3.TextArea {
+                        id: transcriptEdit
+                        objectName: "transcriptEdit"
 
-                    PC3.ToolTip {
-                        text: i18n("Attach a file to the prompt")
-                    }
-                }
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        // "TextArea" is not addressable unqualified here: the
+                        // plasma-components import is namespaced ("as PC3"), and
+                        // an unqualified reference is a ReferenceError at load.
+                        // The field paints its own frame (see promptField
+                        // above), so the editor inside it draws none of its own.
+                        // Its text keeps the plasma palette: the dialog's
+                        // ground is the plasma theme's own, and text and
+                        // ground have to come from the same theme.
+                        background: null
+                        wrapMode: Text.Wrap
+                        // Locked while the engine owns the text; editable the
+                        // moment a result has landed — and editable right
+                        // away when the prompt is typed rather than dictated.
+                        readOnly: dictationOverlay.listening || dictationOverlay.transcribing
+                        placeholderText: dictationOverlay.typing ? i18n("Type your query…")
+                                        : dictationOverlay.transcribing ? i18n("Transcribing…")
+                                        : dictationOverlay.listening ? i18n("Speak now…")
+                                        : i18n("No speech was recognized.")
 
-                // The camera: photograph a window of the desktop and
-                // attach the picture to this prompt.
-                PC3.ToolButton {
-                    id: screenshotButton
-                    objectName: "screenshotButton"
-
-                    Layout.alignment: Qt.AlignTop
-                    Layout.preferredWidth: Kirigami.Units.iconSizes.medium
-                    Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-
-                    icon.name: "camera-photo"
-                    icon.width: Kirigami.Units.iconSizes.small
-                    icon.height: Kirigami.Units.iconSizes.small
-                    // While the picker waits for a click, the button says
-                    // so.
-                    icon.color: dictationOverlay.screenshotPicking
-                        ? Kirigami.Theme.highlightColor
-                        : Kirigami.Theme.textColor
-
-                    onClicked: dictationOverlay.screenshotRequested()
-
-                    PC3.ToolTip {
-                        text: {
-                            const shortcut = dictationOverlay.screenshotShortcut;
-                            return shortcut.length > 0
-                                ? i18n("Screenshot a window (%1)", shortcut)
-                                : i18n("Screenshot a window");
+                        onTextChanged: {
+                            if (text !== dictationOverlay.transcript) {
+                                dictationOverlay.transcript = text
+                            }
+                            // What the user writes is the draft: it is kept
+                            // while the editor is hidden, so the toggle can
+                            // bring the query back.
+                            if (dictationOverlay.typing) {
+                                dictationOverlay.draft = text
+                            }
                         }
-                    }
-                }
 
-                // The live transcript, editable so the user can correct the
-                // recognition before sending. The editor is the single source
-                // of truth for what "Send to agent" submits: engine results
-                // flow in via onTranscriptChanged above, edits flow back into
-                // dictationOverlay.transcript here (guarded, so the two never ping-pong).
-                PC3.TextArea {
-                    id: transcriptEdit
-
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    // "TextArea" is not addressable unqualified here: the
-                    // plasma-components import is namespaced ("as PC3"), and
-                    // an unqualified reference is a ReferenceError at load.
-                    wrapMode: Text.Wrap
-                    // Locked while the engine owns the text; editable the
-                    // moment a result has landed — and editable right
-                    // away when the prompt is typed rather than dictated.
-                    readOnly: dictationOverlay.listening || dictationOverlay.transcribing
-                    placeholderText: dictationOverlay.typing ? i18n("Type your query…")
-                                    : dictationOverlay.transcribing ? i18n("Transcribing…")
-                                    : dictationOverlay.listening ? i18n("Speak now…")
-                                    : i18n("No speech was recognized.")
-
-                    onTextChanged: {
-                        if (text !== dictationOverlay.transcript) {
-                            dictationOverlay.transcript = text
-                        }
-                        // What the user writes is the draft: it is kept
-                        // while the editor is hidden, so the toggle can
-                        // bring the query back.
-                        if (dictationOverlay.typing) {
-                            dictationOverlay.draft = text
+                        // Return submits, even with the keyboard in the
+                        // editor: a text edit swallows the key before the
+                        // window's shortcut ever gets to see it (it would
+                        // insert a line break instead). The window shortcut
+                        // below covers the case where the focus rests
+                        // elsewhere; this one covers the editor itself, so
+                        // the two can never both fire. Shift is the line
+                        // break: it is simply not handled here, and the
+                        // editor inserts it the way it always has.
+                        Keys.onPressed: (event) => {
+                            if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
+                                && !(event.modifiers & Qt.ShiftModifier)) {
+                                event.accepted = true;
+                                if (dictationOverlay.canSubmit) {
+                                    dictationOverlay.submitted(dictationOverlay.transcript);
+                                }
+                            }
                         }
                     }
 
-                    // Shift+Enter submits, even with the keyboard in the
-                    // editor: a text edit swallows the key before the
-                    // window's shortcut ever gets to see it (it would
-                    // insert a line break instead). The window shortcut
-                    // above covers the case where the focus rests
-                    // elsewhere; this one covers the editor itself, so
-                    // the two can never both fire.
-                    Keys.onPressed: (event) => {
-                        if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter)
-                            && (event.modifiers & Qt.ShiftModifier)) {
-                            event.accepted = true;
-                            if (dictationOverlay.canSubmit) {
-                                dictationOverlay.submitted(dictationOverlay.transcript);
+                    // The row of controls that act on the prompt, inside the
+                    // field: the attachments on the left, the send at the
+                    // far right.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        // The button that attaches files to the prompt.
+                        PC3.ToolButton {
+                            id: addAttachmentButton
+                            objectName: "addAttachmentButton"
+
+                            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+                            icon.name: "list-add"
+                            icon.width: Kirigami.Units.iconSizes.small
+                            icon.height: Kirigami.Units.iconSizes.small
+
+                            onClicked: attachmentDialog.open()
+
+                            PC3.ToolTip {
+                                text: i18n("Attach a file to the prompt")
+                            }
+                        }
+
+                        // The camera: photograph a window of the desktop and
+                        // attach the picture to this prompt.
+                        PC3.ToolButton {
+                            id: screenshotButton
+                            objectName: "screenshotButton"
+
+                            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+
+                            icon.name: "camera-photo"
+                            icon.width: Kirigami.Units.iconSizes.small
+                            icon.height: Kirigami.Units.iconSizes.small
+                            // While the picker waits for a click, the button
+                            // says so.
+                            icon.color: dictationOverlay.screenshotPicking
+                                ? Kirigami.Theme.highlightColor
+                                : Kirigami.Theme.textColor
+
+                            onClicked: dictationOverlay.screenshotRequested()
+
+                            PC3.ToolTip {
+                                text: {
+                                    const shortcut = dictationOverlay.screenshotShortcut;
+                                    return shortcut.length > 0
+                                        ? i18n("Screenshot a window (%1)", shortcut)
+                                        : i18n("Screenshot a window");
+                                }
+                            }
+                        }
+
+                        // Everything before the send button hugs the field's
+                        // left edge; this spacer carries the rest of the
+                        // width to the send button, so the two ends read
+                        // independently.
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 1
+                        }
+
+                        // The send: a plain up arrow, the one glyph chat
+                        // inputs have agreed on. One explicit send, no
+                        // accidental submissions — Return does the same from
+                        // the keyboard. The square shape is fixed, so the
+                        // button never changes size with its state.
+                        PC3.Button {
+                            objectName: "sendButton"
+
+                            Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+                            Layout.preferredHeight: Kirigami.Units.iconSizes.medium
+                            display: PC3.AbstractButton.IconOnly
+
+                            icon.name: "arrow-up"
+                            icon.width: Kirigami.Units.iconSizes.small
+                            icon.height: Kirigami.Units.iconSizes.small
+                            enabled: dictationOverlay.canSubmit
+                            onClicked: dictationOverlay.submitted(dictationOverlay.transcript)
+
+                            PC3.ToolTip {
+                                text: i18n("Send to agent (Return)")
                             }
                         }
                     }
                 }
             }
 
-            // Shift+Enter submits the transcript from anywhere in the
-            // overlay window. The shortcut lives on the window rather than
-            // on the editor because keyboard focus often rests elsewhere
-            // (a fresh dictation, the send button after a mouse click) and
-            // a key handler on the editor would simply never fire —
-            // previously the only keyboard way to send was pressing Space
-            // on the focused button. "Return" covers the main Enter key,
-            // "Enter" the numpad's. Plain Enter keeps inserting the line
-            // break — there is no shortcut for it. The canSubmit guard is
-            // shared with the button, so the two paths can never disagree.
+            // Return submits the transcript from anywhere in the overlay
+            // window. The shortcut lives on the window rather than on the
+            // editor because keyboard focus often rests elsewhere (a fresh
+            // dictation, the send button after a mouse click) and a key
+            // handler on the editor would simply never fire — previously
+            // the only keyboard way to send was pressing Space on the
+            // focused button. "Return" covers the main Enter key, "Enter"
+            // the numpad's. Shift+Return is *not* a shortcut: it stays the
+            // line break it is in the editor, so a long query can be
+            // written without the first Return sending it away. The
+            // canSubmit guard is shared with the button, so the two paths
+            // can never disagree.
             Shortcut {
-                sequences: ["Shift+Return", "Shift+Enter"]
+                sequences: ["Return", "Enter"]
                 context: Qt.WindowShortcut
                 enabled: dictationOverlay.canSubmit
                 onActivated: dictationOverlay.submitted(dictationOverlay.transcript)
@@ -443,25 +518,6 @@ PlasmaCore.Dialog {
                 wrapMode: Text.WordWrap
                 text: dictationOverlay.statusMessage
                 color: Kirigami.Theme.negativeTextColor
-            }
-
-            // The user verifies the transcript before it becomes a prompt;
-            // one explicit send, no accidental submissions. The button stays
-            // at its natural size so the label is never squeezed away.
-            RowLayout {
-                Layout.fillWidth: true
-
-                PC3.Button {
-                    Layout.alignment: Qt.AlignRight
-                    icon.name: "document-send"
-                    text: i18n("Send to agent")
-                    enabled: dictationOverlay.canSubmit
-                    onClicked: dictationOverlay.submitted(dictationOverlay.transcript)
-
-                    PC3.ToolTip {
-                        text: i18n("Send to agent (Shift+Enter)")
-                    }
-                }
             }
         }
     }
