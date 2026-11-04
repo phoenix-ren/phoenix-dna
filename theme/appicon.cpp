@@ -4,6 +4,7 @@
 #include "appicon.h"
 
 #include <QFile>
+#include <QGuiApplication>
 #include <QIcon>
 #include <QPixmap>
 #include <QWindow>
@@ -62,4 +63,47 @@ void AppIcon::setWindowIcon(QObject *window)
 QString AppIcon::url() const
 {
     return IconPath + QStringLiteral("/phoenix-dna-avatar.png");
+}
+
+QString AppIcon::desktopFileName()
+{
+    // The name of the app's desktop entry, without the suffix: that is
+    // what a window names itself with, and what the taskbar looks up
+    // among the installed desktop files to find the icon to show.
+    //
+    // It is the same name the applet itself is known by, so the entry
+    // and the widget in the panel agree.
+    return QStringLiteral(PHOENIX_APPICON_DESKTOP_FILE);
+}
+
+void AppIcon::showWindow(QObject *window)
+{
+    // The window comes as a plain object, because QML cannot hand a
+    // QWindow over: the type is not among the ones it knows how to pass.
+    auto *win = qobject_cast<QWindow *>(window);
+    if (!win) {
+        return;
+    }
+    // The window is shown under the app's name: the shell surface, and
+    // with it the app id, is made as the window comes up.
+    withApplicationName([win]() { win->show(); });
+}
+
+void AppIcon::withApplicationName(const std::function<void()> &make)
+{
+    // The name a window carries is read when its shell surface is made.
+    // So the name is put in place first, the surface is made under it,
+    // and the name is put back afterwards - it is the whole process's,
+    // and an applet lives inside plasmashell, whose own windows must keep
+    // their own name. The windows that are already up keep theirs either
+    // way - theirs was read when they were made.
+    const QString shellName = QGuiApplication::desktopFileName();
+    QGuiApplication::setDesktopFileName(desktopFileName());
+    make();
+    QGuiApplication::setDesktopFileName(shellName);
+}
+
+QString AppIcon::applicationName()
+{
+    return QGuiApplication::desktopFileName();
 }

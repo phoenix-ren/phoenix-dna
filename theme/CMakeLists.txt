@@ -110,7 +110,8 @@ qt6_add_resources(org.phoenixdna.theme "appicon"
 # Where the drawings are, for the code that reads them.
 target_compile_definitions(org.phoenixdna.theme PRIVATE
     PHOENIX_LUCIDE_RESOURCE_DIR="/qt/qml/${PHOENIX_THEME_PATH}/lucide"
-    PHOENIX_APPICON_RESOURCE_DIR="/qt/qml/${PHOENIX_THEME_PATH}")
+    PHOENIX_APPICON_RESOURCE_DIR="/qt/qml/${PHOENIX_THEME_PATH}"
+    PHOENIX_APPICON_DESKTOP_FILE="org.phoenixdna.agent")
 
 # A QML singleton by pragma, declared to the build the way qt_add_qml_module
 # wants (the qmldir entry is only generated for flagged files).

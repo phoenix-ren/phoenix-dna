@@ -318,7 +318,7 @@ Window {
     }
 
     function openSettings() {
-        show()
+        AppIcon.showWindow(window)
         raise()
         requestActivate()
     }

@@ -440,7 +440,7 @@ Window {
     // newest content is what the user wants to see.
     function showResult() {
         scroller.pinnedToBottom = true
-        show()
+        AppIcon.showWindow(resultsWindow)
         raise()
         requestActivate()
         Qt.callLater(focusInput)
@@ -450,7 +450,7 @@ Window {
     // arrive as they happen, following the newest content.
     function showLive() {
         scroller.pinnedToBottom = true
-        show()
+        AppIcon.showWindow(resultsWindow)
         raise()
         requestActivate()
         Qt.callLater(focusInput)

@@ -80,7 +80,9 @@ PlasmaCore.Dialog {
         height = cardHeight;
         x = Screen.virtualX + Math.round((Screen.width - width) / 2);
         y = Screen.virtualY + Math.round((Screen.height - height) / 2);
-        visible = true;
+        // The window comes up under the app's own name, so it is the
+        // app's window in the windowing system's eyes too.
+        AppIcon.showWindow(waitingOverlay);
         // The compositor places the window itself, so the position is
         // applied again a tick later - it then wins over the placement
         // the compositor chose.

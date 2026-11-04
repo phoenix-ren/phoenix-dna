@@ -81,6 +81,29 @@ install(FILES ${CMAKE_SOURCE_DIR}/icons/phoenix-dna.svg
         DESTINATION ${KDE_INSTALL_ICONDIR}/hicolor/scalable/apps
         RENAME org.phoenixdna.agent.svg)
 
+# The avatar, under a name of its own: it is the app's own mark, and it
+# is the mark the taskbar entries of the app's windows carry (see the
+# desktop entry below, whose Icon= names this file).
+#
+# A name of its own, and not the one of the scalable drawing above: the
+# two are different pictures - the drawing is the bare helix, the avatar
+# the helix on its dark ground - and the theme would pick the scalable
+# one for both, which is the old mark in the taskbar.
+install(FILES ${CMAKE_SOURCE_DIR}/icons/phoenix-dna-avatar.png
+        DESTINATION ${KDE_INSTALL_ICONDIR}/hicolor/128x128/apps
+        RENAME org.phoenixdna.avatar.png)
+
+# The app's desktop entry.
+#
+# On Wayland a window names the application it belongs to by its app id,
+# and the taskbar entries look that name up among the installed desktop
+# files to find the icon to show. The windows of this applet belong to
+# plasmashell, which runs them inside itself - so without an entry of
+# their own there is nothing to look up, and the taskbar shows whatever
+# it falls back to. This entry is that name and that icon.
+install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/org.phoenixdna.agent.desktop
+        DESTINATION ${KDE_INSTALL_APPDIR})
+
 install(CODE "
     if (NOT DEFINED ENV{DESTDIR})
         find_program(PHOENIX_ICON_CACHE gtk-update-icon-cache)
@@ -89,6 +112,12 @@ install(CODE "
                 COMMAND \${PHOENIX_ICON_CACHE} -q -t -i .
                 WORKING_DIRECTORY ${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_ICONDIR}/hicolor)
         endif()
+    endif()
+    # The desktop entry is new to the system's application database: the
+    # cache is rebuilt so a running taskbar finds it at once.
+    find_program(PHOENIX_KBUILDSYCOCA kbuildsycoca6)
+    if (PHOENIX_KBUILDSYCOCA)
+        execute_process(COMMAND \${PHOENIX_KBUILDSYCOCA})
     endif()
 ")
 

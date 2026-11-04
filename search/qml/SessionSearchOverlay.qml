@@ -163,7 +163,9 @@ PlasmaCore.Dialog {
     // resets the query field and takes the focus - it is the only place
     // that can reach them.
     function open() {
-        visible = true
+        // The window comes up under the app's own name, so it is the
+        // app's window in the windowing system's eyes too.
+        AppIcon.showWindow(searchOverlay)
         opacity = 1
         placeOnDisplay()
         opened()

@@ -122,6 +122,12 @@ PlasmaCore.Dialog {
 
     visible: false
 
+    // Brings the overlay up under the app's own name, so it is the
+    // app's window in the windowing system's eyes too.
+    function showOverlay() {
+        AppIcon.showWindow(dictationOverlay)
+    }
+
     // Puts the keyboard in the editor: a typed prompt is written right
     // away, so the editor takes the focus as soon as the overlay opens.
     // The shell calls this after showing the overlay (the window has to

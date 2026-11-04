@@ -7,6 +7,7 @@
 #include "audioringbuffer.h"
 #include "cliprecorder.h"
 #include "completionsound.h"
+#include "dictationintent.h"
 #include "settingsstore.h"
 #include "shuttersound.h"
 #include "transcriber.h"

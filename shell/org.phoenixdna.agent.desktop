@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
+# SPDX-License-Identifier: BSD-2-Clause
+
+# The applet's own desktop entry.
+#
+# The windows of the app - the conversation window, the settings window,
+# the session search - belong to plasmashell, which runs them inside
+# itself. On Wayland a window names the application it belongs to by its
+# app id, and the desktop that draws the taskbar entries looks that name
+# up among the installed desktop files to find the icon to show.
+#
+# Without this file there is nothing to look up, and the taskbar entry
+# shows whatever it falls back to. The name here is the one the windows
+# carry (see AppIcon: the app names the windows as they come up), and
+# the icon is the app's own mark - the avatar.
+#
+# NoDisplay: the applet is not an application of its own, it lives in
+# the panel. The entry exists to give its windows their name and their
+# icon, not to put anything in the launcher.
+
+[Desktop Entry]
+Type=Application
+Name=Phoenix DNA
+GenericName=Voice-first AI agent
+Comment=Voice-first AI agent for the Plasma panel
+Exec=plasmashell
+Icon=org.phoenixdna.avatar
+Terminal=false
+NoDisplay=true
+X-DBUS-StartupType=Unique
+X-KDE-autostart-phase=0
+StartupWMClass=org.phoenixdna.agent

@@ -84,7 +84,7 @@ PlasmoidItem {
             dictationOverlay.transcribing = Phoenix.PhoenixController.transcribing;
             dictationOverlay.statusMessage = Phoenix.PhoenixController.statusMessage;
             dictationOverlay.inputAnchor = root;
-            dictationOverlay.visible = true;
+            dictationOverlay.showOverlay();
         }
 
         // The keyboard button (or its global hotkey) asks for the prompt
@@ -240,7 +240,7 @@ PlasmoidItem {
         dictationOverlay.transcribing = false;
         dictationOverlay.statusMessage = "";
         dictationOverlay.inputAnchor = root;
-        dictationOverlay.visible = true;
+        dictationOverlay.showOverlay();
         Phoenix.PhoenixController.setPromptEditorOpen(true);
         // The window has to be up before the editor can take the focus.
         Qt.callLater(dictationOverlay.focusEditor);
@@ -531,7 +531,7 @@ PlasmoidItem {
                 dictationOverlay.transcribing = Phoenix.PhoenixController.transcribing;
                 dictationOverlay.statusMessage = Phoenix.PhoenixController.statusMessage;
                 dictationOverlay.inputAnchor = root;
-                dictationOverlay.visible = true;
+                dictationOverlay.showOverlay();
             }
         }
     }
