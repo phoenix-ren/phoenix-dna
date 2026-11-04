@@ -36,6 +36,24 @@ import org.phoenixdna.theme
 PlasmoidItem {
     id: root
 
+    // The widget-level tooltip — the applet's name and the plugin's
+    // description — stands down.
+    //
+    // Plasma draws that tooltip in the very window the buttons' tooltips
+    // are drawn in: the panel's own tooltip area (CompactApplet.qml in the
+    // desktop package) covers the whole applet and hands that window over
+    // to whichever area is hovered. Hover events reach the innermost area
+    // first, so the button's area arms its timer first — and the widget's
+    // area, the outermost one, fires last and overwrites the button's text
+    // with "Phoenix DNA" and the plugin description. Only one of the two
+    // can be seen.
+    //
+    // Emptying both texts leaves the widget's area invalid, and an invalid
+    // area never shows a tooltip (ToolTipArea::isValid()). The buttons keep
+    // their own: they are the widget's only tooltips now.
+    toolTipMainText: ""
+    toolTipSubText: ""
+
     // The overlay pops up by itself the moment dictation starts, and the
     // transcript streams into it as the speech is decoded. When the
     // results pane is up, its own input bar is the transcript surface
