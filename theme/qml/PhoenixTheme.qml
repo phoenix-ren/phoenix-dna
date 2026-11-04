@@ -131,6 +131,13 @@ QtObject {
     // The small grey attributions and footnotes.
     readonly property color secondaryTextColor: isDark ? "#9a9a9a" : "#5f5f6a"
 
+    // The ink of links in the agent's text — the files, folders,
+    // pages, mailboxes and phone numbers the windows turn into what
+    // the desktop opens. The accent blue of the mode, the same family
+    // the focus outline draws from, so a link reads as a link on
+    // either backdrop and never fights the text it stands in.
+    readonly property color linkColor: isDark ? "#3daee9" : "#1793d1"
+
     // ---- Semantics ---------------------------------------------------------
     // Complaints, successes and warnings. The dark values are Breeze's
     // dark-theme text colours; the light ones are the darker shades a

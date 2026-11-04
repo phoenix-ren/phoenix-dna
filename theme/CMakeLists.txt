@@ -9,7 +9,9 @@
 # pushes the user's colour-scheme preference into it — so one property
 # recolours the whole UI, live. The C++ singletons are the presentation
 # workbench for the agent's answers: MarkdownDocument spaces the native
-# Markdown view's paragraphs; LatexRenderer compiles a finished answer
+# Markdown view's paragraphs and turns the bare addresses in it — files,
+# folders, pages, mailboxes, phone numbers — into links the desktop opens;
+# LatexRenderer compiles a finished answer
 # (Markdown + LaTeX math) to PDF via a TeX engine. LucideIcons hands out the
 # app's own icons: Lucide's line drawings, inked in the colour of the place
 # they stand in (see lucideicons.h).
@@ -40,6 +42,7 @@ ecm_add_qml_module(org.phoenixdna.theme
     SOURCES
         latexrenderer.cpp
         latexrenderer.h
+        linkspan.h
         lucideicons.cpp
         lucideicons.h
         markdowndocument.cpp
@@ -107,11 +110,13 @@ ecm_finalize_qml_module(org.phoenixdna.theme)
 
 # QQuickTextDocument (Quick) and QTextDocument (Gui) of the helpers;
 # the formula pixel work runs on the global QThreadPool (Core);
-# QSvgRenderer (Svg) draws the app's own icons.
+# QSvgRenderer (Svg) draws the app's own icons; QDBusConnection (DBus)
+# tells the session's file manager which file a clicked link names.
 target_link_libraries(org.phoenixdna.theme PRIVATE
     Qt6::Gui
     Qt6::Quick
     Qt6::Svg
+    Qt6::DBus
 )
 
 # Offline check of the shared math-span fixture: the speech daemon's
@@ -128,3 +133,45 @@ target_compile_definitions(mathspantest PRIVATE
     MATHSPAN_FIXTURE="${CMAKE_SOURCE_DIR}/agent/tests/data/mathspans.json")
 target_link_libraries(mathspantest PRIVATE Qt6::Core)
 add_test(NAME mathspantest COMMAND mathspantest)
+
+# Offline check of the address-span detector: the results window and
+# the session search turn the files, folders, pages, mailboxes and
+# phone numbers of the agent's words into links, and this target pins
+# the detector (linkspan.h) to a table of sentences — the addresses
+# each one holds, and the near misses (dates, versions, IPs, sed
+# paths) that must stay plain text.
+#
+#   linkspantest
+add_executable(linkspantest linkspantest.cpp)
+target_include_directories(linkspantest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(linkspantest PRIVATE Qt6::Core)
+add_test(NAME linkspantest COMMAND linkspantest)
+
+# Offline check of the link layer of the rendered document: the very
+# widget the windows show their answers in (a TextEdit, the one inside
+# Kirigami.SelectableLabel) is walked by MarkdownDocument::linkify(),
+# and what comes out must be the anchors the windows open — the bare
+# addresses of a plain label, the Markdown's own links in the app's
+# ink, a second pass that changes nothing, and a scheme the desktop
+# must never run.
+#
+# The helper is compiled into the test rather than linked from the
+# QML module: a module library cannot be linked into an executable.
+#
+#   markdowndocumenttest
+add_executable(markdowndocumenttest
+    markdowndocumenttest.cpp
+    markdowndocument.cpp
+    markdowndocument.h
+    linkspan.h
+)
+target_include_directories(markdowndocumenttest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(markdowndocumenttest PRIVATE
+    Qt6::Gui
+    Qt6::Qml
+    Qt6::Quick
+    Qt6::DBus
+)
+add_test(NAME markdowndocumenttest COMMAND markdowndocumenttest)
+set_tests_properties(markdowndocumenttest PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

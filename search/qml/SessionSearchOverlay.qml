@@ -29,6 +29,11 @@ import org.phoenixdna.theme
  * cache the results window uses, so a session that was already read is
  * shown instantly.
  *
+ * The addresses in the stored words — the user's queries as much as
+ * the agent's answers — are links, exactly as the results window makes
+ * them (the same MarkdownDocument.linkify walk), so a session read
+ * from the history opens its files, pages and mailboxes the same way.
+ *
  * The window is a transparent overlay: the dark backdrop is painted by
  * the content itself, the window around it stays bare. Like the
  * dictation overlay it is a Plasma Dialog, because on Wayland an
@@ -677,6 +682,21 @@ PlasmaCore.Dialog {
                             Connections {
                                 target: LatexRenderer
 
+                                function onEmbedded(token) {
+                                    // The embed rebuilt the document
+                                    // from the raw Markdown: the
+                                    // answer's bare addresses are
+                                    // anchors again, and the links of
+                                    // the Markdown itself are back in
+                                    // the palette's ink.
+                                    if (token === message.formulaToken) {
+                                        Qt.callLater(
+                                            MarkdownDocument.linkify,
+                                            answerLabel.textDocument,
+                                            PhoenixTheme.linkColor)
+                                    }
+                                }
+
                                 function onFailed(token, reason) {
                                     // -2: requested, failed, never
                                     // again for this answer.
@@ -692,6 +712,7 @@ PlasmaCore.Dialog {
 
                                 function onIsDarkChanged() {
                                     message.reembedFormulas()
+                                    message.relinkify()
                                 }
                             }
 
@@ -707,6 +728,19 @@ PlasmaCore.Dialog {
                                 repeat: true
                                 running: message.wantsFormulas
                                 onTriggered: message.maybeEmbedFormulas()
+                            }
+
+                            // The links of this message, in the link ink
+                            // of the mode the overlay now runs in: a
+                            // scheme switch changes nothing in the
+                            // documents, only the ink their anchors
+                            // wear.
+                            function relinkify() {
+                                const ink = PhoenixTheme.linkColor
+                                Qt.callLater(MarkdownDocument.linkify,
+                                             queryLabel.textDocument, ink)
+                                Qt.callLater(MarkdownDocument.linkify,
+                                             answerLabel.textDocument, ink)
                             }
 
                             Rectangle {
@@ -738,6 +772,14 @@ PlasmaCore.Dialog {
                                     textFormat: TextEdit.PlainText
                                     wrapMode: Text.WordWrap
                                     color: PhoenixTheme.textColor
+                                    // An address in the user's own
+                                    // words opens like any other.
+                                    onLinkActivated: (link) =>
+                                        MarkdownDocument.openLink(link)
+                                    onTextChanged: Qt.callLater(
+                                        MarkdownDocument.linkify,
+                                        textDocument,
+                                        PhoenixTheme.linkColor)
                                 }
                             }
 
@@ -780,10 +822,24 @@ PlasmaCore.Dialog {
                                 // PhoenixTheme).
                                 font.family: PhoenixTheme.answerFontFamily
                                 font.pixelSize: PhoenixTheme.answerFontSize
-                                onTextChanged: Qt.callLater(
-                                    MarkdownDocument.spaceParagraphs,
-                                    textDocument,
-                                    searchOverlay.paragraphSpacing)
+                                onTextChanged: {
+                                    Qt.callLater(
+                                        MarkdownDocument.spaceParagraphs,
+                                        textDocument,
+                                        searchOverlay.paragraphSpacing)
+                                    // The stored answer's addresses
+                                    // are links, as they are in the
+                                    // results window.
+                                    Qt.callLater(
+                                        MarkdownDocument.linkify,
+                                        textDocument,
+                                        PhoenixTheme.linkColor)
+                                }
+                                // A click goes to the desktop: the
+                                // file manager, the browser, the mail
+                                // client, the dialer.
+                                onLinkActivated: (link) =>
+                                    MarkdownDocument.openLink(link)
                                 // The spacing follows the size
                                 // of the text: when the user
                                 // changes it, the paragraphs are

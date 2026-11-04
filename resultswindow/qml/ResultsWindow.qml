@@ -63,6 +63,14 @@ import org.phoenixdna.theme
  * for how long — the difference between an agent at work and an agent
  * that hung.
  *
+ * The addresses in everything the window shows — the answer, the
+ * notes, the tool log, the user's own prompts — are links: a file or
+ * folder opens in the file manager (a file selected in its folder), a
+ * page in the browser, a mailbox in the mail client, a phone number in
+ * the dialer. The detection is the window's own
+ * (MarkdownDocument.linkify, on the rendered document, after the
+ * Markdown import), so the daemon is untouched by it.
+ *
  * The answer's math takes a two-stage path: while the run streams, the
  * Markdown view shows the LaTeX verbatim; when the run finishes and the
  * answer carries math, the math spans are compiled by LaTeX and swapped
@@ -638,12 +646,42 @@ Window {
                                     resultsWindow.paragraphSpacing)
                             }
 
+                            // The links of this exchange, in the link ink
+                            // of the mode the window now runs in. A scheme
+                            // switch changes nothing in the documents —
+                            // only the ink the anchors wear — so this is
+                            // the one walk linkify() makes again, and its
+                            // idempotence keeps it to exactly that.
+                            function relinkify() {
+                                const ink = PhoenixTheme.linkColor
+                                Qt.callLater(MarkdownDocument.linkify,
+                                             promptLabel.textDocument, ink)
+                                Qt.callLater(MarkdownDocument.linkify,
+                                             trailText.textDocument, ink)
+                                Qt.callLater(MarkdownDocument.linkify,
+                                             trailThought.textDocument, ink)
+                                Qt.callLater(MarkdownDocument.linkify,
+                                             trailTool.textDocument, ink)
+                                Qt.callLater(MarkdownDocument.linkify,
+                                             resultLabel.textDocument, ink)
+                            }
+
                             Connections {
                                 target: LatexRenderer
 
                                 function onEmbedded(token) {
                                     if (token === exchange.formulaToken) {
                                         exchange.renderProgress = -1
+                                        // The embed rebuilt the document
+                                        // from the raw Markdown, so the
+                                        // answer's bare addresses are
+                                        // anchors again — and the
+                                        // Markdown's own links are back
+                                        // in the palette's ink.
+                                        Qt.callLater(
+                                            MarkdownDocument.linkify,
+                                            resultLabel.textDocument,
+                                            PhoenixTheme.linkColor)
                                     }
                                 }
 
@@ -671,6 +709,7 @@ Window {
 
                                 function onIsDarkChanged() {
                                     exchange.reembedFormulas()
+                                    exchange.relinkify()
                                 }
                             }
 
@@ -747,12 +786,23 @@ Window {
                                         textFormat: TextEdit.PlainText
                                         wrapMode: Text.WordWrap
                                         color: PhoenixTheme.textColor
+                                        // A dictated address is a link
+                                        // like any other; the click is
+                                        // handed to the desktop.
+                                        onLinkActivated: (link) =>
+                                            MarkdownDocument.openLink(link)
                                         // Breathing room between the
                                         // paragraphs of a long dictation.
-                                        onTextChanged: Qt.callLater(
-                                            MarkdownDocument.spaceParagraphs,
-                                            textDocument,
-                                            resultsWindow.paragraphSpacing)
+                                        onTextChanged: {
+                                            Qt.callLater(
+                                                MarkdownDocument.spaceParagraphs,
+                                                textDocument,
+                                                resultsWindow.paragraphSpacing)
+                                            Qt.callLater(
+                                                MarkdownDocument.linkify,
+                                                textDocument,
+                                                PhoenixTheme.linkColor)
+                                        }
                                         // The spacing follows the size
                                         // of the text: when the user
                                         // changes it, the paragraphs are
@@ -916,9 +966,20 @@ Window {
                                             color: PhoenixTheme.primaryTextColor
                                             font.family: PhoenixTheme.answerFontFamily
                                             font.pixelSize: PhoenixTheme.answerFontSize
-                                            onTextChanged: Qt.callLater(
-                                                MarkdownDocument.spaceParagraphs,
-                                                textDocument, resultsWindow.paragraphSpacing)
+                                            onTextChanged: {
+                                                Qt.callLater(
+                                                    MarkdownDocument.spaceParagraphs,
+                                                    textDocument, resultsWindow.paragraphSpacing)
+                                                Qt.callLater(
+                                                    MarkdownDocument.linkify,
+                                                    textDocument,
+                                                    PhoenixTheme.linkColor)
+                                            }
+                                            // What these words name — a
+                                            // file, a page, an address —
+                                            // the desktop opens.
+                                            onLinkActivated: (link) =>
+                                                MarkdownDocument.openLink(link)
                                         }
 
                                         // ---- The notes it thinks in ----
@@ -971,9 +1032,20 @@ Window {
                                             // notes are prose, not chrome.
                                             font.family: PhoenixTheme.answerFontFamily
                                             font.pixelSize: PhoenixTheme.notesFontSize
-                                            onTextChanged: Qt.callLater(
-                                                MarkdownDocument.spaceParagraphs,
-                                                textDocument, resultsWindow.paragraphSpacing)
+                                            onTextChanged: {
+                                                Qt.callLater(
+                                                    MarkdownDocument.spaceParagraphs,
+                                                    textDocument, resultsWindow.paragraphSpacing)
+                                                Qt.callLater(
+                                                    MarkdownDocument.linkify,
+                                                    textDocument,
+                                                    PhoenixTheme.linkColor)
+                                            }
+                                            // Even the private notes name
+                                            // files and pages; opened on a
+                                            // click like the answer's own.
+                                            onLinkActivated: (link) =>
+                                                MarkdownDocument.openLink(link)
                                         }
 
                                         // ---- The tools it calls -------
@@ -1061,9 +1133,21 @@ Window {
                                             // to read past.
                                             font.pixelSize: Math.round(
                                                 Qt.application.font.pixelSize * 0.85)
-                                            onTextChanged: Qt.callLater(
-                                                MarkdownDocument.spaceParagraphs,
-                                                textDocument, resultsWindow.paragraphSpacing)
+                                            onTextChanged: {
+                                                Qt.callLater(
+                                                    MarkdownDocument.spaceParagraphs,
+                                                    textDocument, resultsWindow.paragraphSpacing)
+                                                Qt.callLater(
+                                                    MarkdownDocument.linkify,
+                                                    textDocument,
+                                                    PhoenixTheme.linkColor)
+                                            }
+                                            // The commands and their
+                                            // output name files most of
+                                            // all — a click shows them in
+                                            // the file manager.
+                                            onLinkActivated: (link) =>
+                                                MarkdownDocument.openLink(link)
                                         }
                                     }
                                 }
@@ -1126,10 +1210,28 @@ Window {
                                     // document edits of one polish
                                     // must not synchronously begin
                                     // the next.
-                                    onTextChanged: Qt.callLater(
-                                        MarkdownDocument.spaceParagraphs,
-                                        textDocument,
-                                        resultsWindow.paragraphSpacing)
+                                    onTextChanged: {
+                                        Qt.callLater(
+                                            MarkdownDocument.spaceParagraphs,
+                                            textDocument,
+                                            resultsWindow.paragraphSpacing)
+                                        // The answer's addresses become
+                                        // links with the same deferred
+                                        // walk — after the Markdown
+                                        // import, so the sentence's
+                                        // punctuation is known to be
+                                        // decoration, not part of the
+                                        // address.
+                                        Qt.callLater(
+                                            MarkdownDocument.linkify,
+                                            textDocument,
+                                            PhoenixTheme.linkColor)
+                                    }
+                                    // A click goes to the desktop:
+                                    // the file manager, the browser,
+                                    // the mail client, the dialer.
+                                    onLinkActivated: (link) =>
+                                        MarkdownDocument.openLink(link)
                                 }
 
                                 // While the formulas render, a quiet
