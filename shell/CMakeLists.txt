@@ -33,6 +33,8 @@ plasma_add_applet(org.phoenixdna.agent
         conversationmodel.h
         cpumeter.cpp
         cpumeter.h
+        dictationintent.cpp
+        dictationintent.h
         wiremeter.cpp
         wiremeter.h
         sessiontranscriptmodel.cpp
@@ -165,6 +167,23 @@ target_link_libraries(conversationmodeltest PRIVATE
     Qt6::Qml
 )
 add_test(NAME conversationmodeltest COMMAND conversationmodeltest)
+
+# The session intent of a prompt — a new session or a follow-on of the
+# conversation on screen — checked without a window: the button that
+# started the recording decides it, and only it can. Registers with
+# CTest; run `ctest` from the build directory.
+#
+#   dictationintenttest
+add_executable(dictationintenttest
+    dictationintenttest.cpp
+    dictationintent.cpp
+    dictationintent.h
+)
+target_include_directories(dictationintenttest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(dictationintenttest PRIVATE
+    Qt6::Core
+)
+add_test(NAME dictationintenttest COMMAND dictationintenttest)
 
 # The CPU meter of a running bash tool call — the /proc sampling and its
 # peak-meter ballistics — checked without a window: a busy command is

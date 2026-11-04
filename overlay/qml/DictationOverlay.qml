@@ -79,6 +79,11 @@ PlasmaCore.Dialog {
     // agent as a prompt. The shell wires this to the controller.
     signal submitted(string text)
 
+    // Emitted when the user empties the editor: the dictated transcript is
+    // gone, so what is typed in its place is a fresh query rather than the
+    // recording's prompt.
+    signal dictationDiscarded()
+
     // Whether the transcript can be submitted right now: something was
     // dictated, the clip is not mid-recording or mid-transcription. The
     // send button and the Return shortcut both consult it, so the two
@@ -333,6 +338,15 @@ PlasmaCore.Dialog {
                         onTextChanged: {
                             if (text !== dictationOverlay.transcript) {
                                 dictationOverlay.transcript = text
+                                // The user emptied the editor: the
+                                // transcript of the recording is gone, so
+                                // what is typed in its place is a fresh
+                                // query rather than the recording's
+                                // prompt. A correction is not an emptying:
+                                // it keeps the recording's intent.
+                                if (text.length === 0) {
+                                    dictationOverlay.dictationDiscarded()
+                                }
                             }
                             // What the user writes is the draft: it is kept
                             // while the editor is hidden, so the toggle can

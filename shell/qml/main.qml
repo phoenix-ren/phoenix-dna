@@ -116,12 +116,17 @@ PlasmoidItem {
     }
 
     // The answer to the generated query arrives asynchronously from the
-    // agent daemon: activityStarted opens the pane the moment the run
-    // produces its first output, and the bridge streams the answer and
-    // tool log into the pane's conversation as they happen; resultReady —
-    // the finished result — re-pins the scroll to the newest exchange.
+    // agent daemon: runStarted opens the pane the moment the daemon picks
+    // the prompt up — the model has not said anything yet, and it will
+    // not for a while — and the bridge streams the answer and tool log
+    // into the pane's conversation as they happen; resultReady — the
+    // finished result — re-pins the scroll to the newest exchange.
     Connections {
         target: Phoenix.PhoenixController.agent
+
+        function onRunStarted() {
+            resultsWindow.showLive();
+        }
 
         function onActivityStarted() {
             resultsWindow.showLive();
@@ -266,11 +271,23 @@ PlasmoidItem {
         // results pane is not opened here — it appears by itself when the
         // agent's answer comes back.
         onSubmitted: (text) => {
+            // A dictated prompt carries the intent of the button that
+            // started the recording: the panel widget's record button
+            // starts a new session, the results pane's own record button
+            // continues the conversation on screen. The controller
+            // remembers it (it is the only place that can tell the two
+            // apart — a dictation started from the panel widget lands in
+            // the pane's input bar when the pane happens to be open, and
+            // a clip handed over from a dismissed pane was started by the
+            // pane's own button).
+            //
             // A typed query continues the conversation that is on screen
-            // (the window owns the session while it is up); a dictated
-            // one follows the overlay's own follow-up flag.
-            const newSession = !(dictationOverlay.followUp
-                || (dictationOverlay.typing && resultsWindow.visible));
+            // (the window owns the session while it is up).
+            const dictated = !dictationOverlay.typing;
+            const newSession = dictated
+                ? Phoenix.PhoenixController.newSessionIntent(true)
+                    && !dictationOverlay.followUp
+                : !resultsWindow.visible;
             dictationOverlay.visible = false;
             dictationOverlay.typing = false;
             // The query is on its way: it must not come back with the
@@ -288,6 +305,12 @@ PlasmoidItem {
             dictationOverlay.visible = false;
             Phoenix.PhoenixController.setPromptEditorOpen(false);
         }
+
+        // The user emptied the editor: the dictated transcript is gone, so
+        // what is typed in its place is a fresh query — a follow-on of the
+        // conversation on screen, not the new session the recording's
+        // button asked for.
+        onDictationDiscarded: Phoenix.PhoenixController.clearDictatedPrompt()
 
         // The files attached to the prompt: the overlay and the results
         // pane edit the same prompt, so they show the same list.
@@ -309,7 +332,30 @@ PlasmoidItem {
             dictationOverlay.typing = false;
             dictationOverlay.followUp = false;
             Phoenix.PhoenixController.setPromptEditorOpen(false);
+            // The abandoned transcript is not a prompt that is waiting to
+            // be sent: the next one is a fresh beginning.
+            Phoenix.PhoenixController.clearDictatedPrompt();
         }
+    }
+
+    // Component 2b — the waiting overlay.
+    //
+    // The daemon runs one prompt at a time, so a prompt sent while
+    // another run is busy waits its turn in the daemon's queue. The
+    // results pane opens when the daemon *starts* a run — which, for a
+    // queued prompt, is only once the run before it is done. Without
+    // this, the screen does not react at all until then.
+    //
+    // The overlay is that reaction: a spinning wheel and a line of text,
+    // centred on the display. It is up for exactly as long as the
+    // prompt waits — the daemon's queue length says when it is over.
+    PhoenixOverlay.WaitingOverlay {
+        id: waitingOverlay
+
+        // How many prompts wait in the daemon's queue: the overlay is up
+        // while there is one, and gone as soon as the daemon picks the
+        // prompt up (which is when the results pane opens on it).
+        queuedPrompts: Phoenix.PhoenixController.agent.queuedPrompts
     }
 
     // Component 3 — the results window.
@@ -354,6 +400,22 @@ PlasmoidItem {
         listening: Phoenix.PhoenixController.recording
         transcribing: Phoenix.PhoenixController.transcribing
         statusMessage: Phoenix.PhoenixController.statusMessage
+
+        // Whether the prompt in the input bar came from a recording: the
+        // controller knows, because it is the one that produced the
+        // transcript. A dictated prompt carries the intent of the button
+        // that started the recording (see newSessionIntent()).
+        //
+        // The binding follows the controller, which clears the flag when
+        // the user empties the editor (see onDictationDiscarded below) —
+        // the pane itself never writes to it.
+        dictated: Phoenix.PhoenixController.dictatedPromptPending
+
+        // The user emptied the input bar: the dictated transcript is
+        // gone, so what is typed in its place is a fresh query — a
+        // follow-on of the conversation on screen, not the new session
+        // the recording's button asked for.
+        onDictationDiscarded: Phoenix.PhoenixController.clearDictatedPrompt()
 
         // Whether an agent run is live: the pane's send button is a stop
         // button while it is, and stopping it goes back the same way —
@@ -410,10 +472,13 @@ PlasmoidItem {
         // The card's "Show questions" brings the dismissed overlay back.
         onShowQuestionsRequested: wizardOverlay.reopen()
 
-        // The same toggle the panel widget's record button performs.
-        onRecordClicked: Phoenix.PhoenixController.toggleRecording()
+        // The same toggle the panel widget's record button performs, but
+        // with the opposite intent: the pane's own record button
+        // continues the conversation on screen, so the dictation is a
+        // follow-on rather than the start of a new session.
+        onRecordClicked: Phoenix.PhoenixController.toggleFollowUpRecording()
 
-        onSubmitted: (text) => {
+        onSubmitted: (text, dictated) => {
             // While the run is blocked on a form, the input bar answers
             // its first unanswered question — typed or dictated, in the
             // user's own words — instead of queuing another prompt
@@ -435,7 +500,15 @@ PlasmoidItem {
             // query; here we only follow the newest exchange while the
             // answer streams in below the previous ones. A follow-on keeps
             // the session: the daemon continues the conversation on screen.
-            Phoenix.PhoenixController.submitText(text, false);
+            //
+            // The one exception is a dictation the user started from the
+            // panel widget's record button while this pane was open: its
+            // transcript lands in this very input bar, so the surface
+            // cannot tell it from one dictated with the pane's own
+            // record button — only the button that started the recording
+            // can, and the controller remembers its intent.
+            Phoenix.PhoenixController.submitText(text,
+                Phoenix.PhoenixController.newSessionIntent(dictated));
             resultsWindow.showLive();
         }
 

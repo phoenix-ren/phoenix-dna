@@ -7,6 +7,7 @@
 #include <QQmlEngine>
 #include <QString>
 
+#include "dictationintent.h"
 #include "promptattachments.h"
 #include "settingsstore.h"
 #include "windowscreenshotpicker.h"
@@ -56,6 +57,33 @@ class PhoenixController : public QObject
      * The panel's keyboard button is a toggle: it shows the editor while
      * it is pressed, and asking again puts it away. */
     Q_PROPERTY(bool promptEditorOpen READ promptEditorOpen NOTIFY promptEditorOpenChanged)
+
+    /*! \brief Whether the dictation in flight starts a new session.
+     *
+     * The intent of the recording in flight, decided by the button that
+     * started it: the panel widget's record button starts a *new*
+     * session (a fresh conversation), while the results pane's own record
+     * button continues the one on screen (a follow-on).
+     *
+     * The intent is remembered here, at the moment the recording starts,
+     * because that is the only moment the two are distinguishable: the
+     * transcript of a dictation started from the panel widget lands in
+     * the pane's input bar when the pane happens to be open, exactly like
+     * one dictated into the pane itself. Only the button that started it
+     * knows which of the two it was.
+     *
+     * The submission consults it: the shell asks for it when the prompt
+     * is sent, and the flag is cleared as the prompt goes on its way. */
+    Q_PROPERTY(
+        bool dictationStartsNewSession READ dictationStartsNewSession NOTIFY dictationIntentChanged)
+
+    /*! \brief Whether a dictated prompt is waiting to be sent.
+     *
+     * The transcript of a recording sits in the editor until the user
+     * sends it; this says whether the text there came from a recording
+     * (and so carries that recording's session intent) or was typed. */
+    Q_PROPERTY(
+        bool dictatedPromptPending READ dictatedPromptPending NOTIFY dictatedPromptPendingChanged)
 
     /*! \brief Whether the session search is on screen.
      *
@@ -127,6 +155,20 @@ public:
     /*! \brief Whether the prompt editor is on screen. */
     bool promptEditorOpen() const { return m_promptEditorOpen; }
 
+    /*! \brief Whether the dictation in flight starts a new session.
+     *
+     * True for a dictation the panel widget's record button started,
+     * false for one the results pane's own record button started. */
+    bool dictationStartsNewSession() const { return m_intent->startsNewSession(); }
+
+    /*! \brief Whether a dictated prompt is waiting to be sent.
+     *
+     * The transcript of a dictation sits in the editor until the user
+     * sends it; this says whether the text in the editor came from a
+     * recording (and so carries that recording's session intent) or was
+     * typed. */
+    bool dictatedPromptPending() const { return m_intent->promptPending(); }
+
     /*! \brief The files attached to the prompt being composed. */
     PromptAttachments *attachments() const { return m_attachments; }
 
@@ -155,6 +197,14 @@ public:
 
     /*! \brief Toggles capture. Bound to the record button. */
     Q_INVOKABLE void toggleRecording();
+
+    /*! \brief Toggles capture for a follow-on of the conversation on
+     *  screen. Bound to the results pane's own record button.
+     *
+     * The same toggle the panel's record button performs, but with the
+     * opposite intent: the dictation continues the session the pane
+     * shows rather than starting a new one. */
+    Q_INVOKABLE void toggleFollowUpRecording();
 
     /*! \brief Shows the dictation overlay. */
     Q_INVOKABLE void showDictationOverlay();
@@ -232,8 +282,40 @@ public:
      * starts a fresh conversation) the daemon opens a new session and the
      * pane's history restarts; without it the query continues the
      * conversation on screen (follow-ons from the pane's input bar or its
-     * record button). */
+     * record button).
+     *
+     * The shell asks newSessionIntent() for the intent of a dictated
+     * prompt rather than deciding it at the surface: the transcript of a
+     * dictation started from the panel widget lands in the pane's input
+     * bar when the pane happens to be open, exactly like one dictated
+     * into the pane itself — only the button that started the recording
+     * knows which of the two it was. */
     Q_INVOKABLE void submitText(const QString &text, bool newSession);
+
+    /*! \brief The session intent of a prompt composed in a surface.
+     *
+     * \a dictated says whether the prompt came from a dictation (a
+     * recording), as opposed to being typed. A dictated prompt takes the
+     * intent of the button that started the recording — new session for
+     * the panel widget's record button, follow-on for the results pane's
+     * own record button — and a typed prompt continues the conversation
+     * on screen.
+     *
+     * This is what the shell asks when a prompt is submitted, so that
+     * every surface resolves the intent the same way. */
+    Q_INVOKABLE bool newSessionIntent(bool dictated) const;
+
+    /*! \brief Remembers that the prompt being composed is no longer the
+     *  dictated one.
+     *
+     * A surface calls this when the user empties the editor: the
+     * transcript of the recording is gone, so what is typed in its place
+     * is a fresh query — a follow-on of the conversation on screen, not
+     * the new session the recording's button asked for.
+     *
+     * A correction of the transcript is not an emptying: it is still the
+     * recording's prompt, and it keeps the recording's intent. */
+    Q_INVOKABLE void clearDictatedPrompt();
 
     /*! \brief Puts \a text on the system clipboard.
      *
@@ -254,6 +336,8 @@ Q_SIGNALS:
     void promptShortcutChanged();
     void sessionSearchOpenChanged();
     void promptEditorOpenChanged();
+    void dictationIntentChanged();
+    void dictatedPromptPendingChanged();
 
     /*! \brief Emitted when the dictation overlay should be shown. */
     void dictationOverlayRequested();
@@ -280,7 +364,15 @@ Q_SIGNALS:
     void sessionSearchCloseRequested();
 
 private:
-    void setRecording(bool recording);
+    /*! \brief Starts or stops the capture.
+     *
+     * \a startsNewSession is the intent of the dictation that starts
+     * here: true for the panel widget's record button (a new session),
+     * false for the results pane's own record button (a follow-on of the
+     * conversation on screen). It is remembered until the prompt is
+     * submitted. */
+    void setRecording(bool recording, bool startsNewSession);
+
     void setTranscribing(bool transcribing);
     void setStatusMessage(const QString &message);
 
@@ -305,6 +397,12 @@ private:
     // Whether the prompt editor is on screen: the panel's keyboard
     // button is a toggle, and this is its state.
     bool m_promptEditorOpen = false;
+    // The intent of the recording in flight and the dictated prompt
+    // waiting to be sent: which button started the recording, and
+    // whether its transcript is still in the editor. The two decide
+    // whether the next prompt starts a new session or continues the one
+    // on screen.
+    DictationIntent *m_intent = nullptr;
     QString m_partialTranscript;
     QString m_statusMessage;
 };

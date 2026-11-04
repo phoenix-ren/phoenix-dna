@@ -32,8 +32,17 @@ PhoenixController::PhoenixController(QObject *parent)
       m_attachments(new PromptAttachments(this)),
       m_screenshotPicker(new WindowScreenshotPicker(this)),
       m_shutterSound(new ShutterSound(this)),
-      m_completionSound(new CompletionSound(this))
+      m_completionSound(new CompletionSound(this)),
+      m_intent(new DictationIntent(this))
 {
+    // The intent of the recording in flight and the dictated prompt
+    // waiting to be sent are the controller's own state; the QML side
+    // asks about them.
+    connect(m_intent, &DictationIntent::startsNewSessionChanged, this,
+            &PhoenixController::dictationIntentChanged);
+    connect(m_intent, &DictationIntent::promptPendingChanged, this,
+            &PhoenixController::dictatedPromptPendingChanged);
+
     // A photographed window becomes an attachment of the prompt that is
     // being composed - the next one the user sends. The shutter clicks at
     // the same moment, the way Spectacle's does when the shot is taken.
@@ -93,7 +102,9 @@ PhoenixController::PhoenixController(QObject *parent)
     connect(m_capture, &AudioCapture::pcmReady, m_clipRecorder, &ClipRecorder::append);
     connect(m_capture, &AudioCapture::captureFailed, this, [this](const QString &message) {
         qWarning() << "Audio capture failed:" << message;
-        setRecording(false);
+        // The capture is over; the intent of the dictation that never
+        // began is irrelevant, so the one remembered stands.
+        setRecording(false, m_intent->startsNewSession());
     });
 
     // The finished clip comes back as text and lands in the overlay via
@@ -106,6 +117,9 @@ PhoenixController::PhoenixController(QObject *parent)
     connect(m_transcriber, &Transcriber::finished, this, [this](const QString &text) {
         setTranscribing(false);
         m_partialTranscript = text;
+        // The transcript is a dictated prompt waiting to be sent: it
+        // carries the intent of the button that started the recording.
+        m_intent->transcriptArrived(text);
         Q_EMIT partialTranscriptChanged();
         if (!text.trimmed().isEmpty()) {
             m_agent->requestTranscriptCleanup(text);
@@ -254,16 +268,27 @@ PhoenixController *PhoenixController::create(QQmlEngine *, QJSEngine *)
 
 void PhoenixController::toggleRecording()
 {
-    setRecording(!m_recording);
+    setRecording(!m_recording, true);
 }
 
-void PhoenixController::setRecording(bool recording)
+void PhoenixController::toggleFollowUpRecording()
+{
+    setRecording(!m_recording, false);
+}
+
+void PhoenixController::setRecording(bool recording, bool startsNewSession)
 {
     if (m_recording == recording) {
         return;
     }
 
     if (recording) {
+        // The button that starts the dictation decides its intent: the
+        // panel widget's record button starts a new session, the results
+        // pane's own record button continues the one on screen. The
+        // intent is remembered for the submission that follows.
+        m_intent->recordingStarted(startsNewSession);
+
         // Audio focus: the microphone must not transcribe the agent's
         // own voice. Pressing record is a barge-in — whatever is being
         // read aloud stops before capture starts. (The daemon stops
@@ -457,6 +482,16 @@ void PhoenixController::openSessionResults(const QString &sessionId,
     m_agent->openStoredSession(searchUser(), sessionId, mode, title);
 }
 
+bool PhoenixController::newSessionIntent(bool dictated) const
+{
+    return m_intent->newSessionIntent(dictated);
+}
+
+void PhoenixController::clearDictatedPrompt()
+{
+    m_intent->promptDiscarded();
+}
+
 void PhoenixController::submitText(const QString &text, bool newSession)
 {
     if (text.isEmpty()) {
@@ -471,6 +506,7 @@ void PhoenixController::submitText(const QString &text, bool newSession)
     // cleanup: the raw text was already submitted, so its cleaned variant
     // no longer has anything to replace (AgentBridge compares the source).
     m_partialTranscript.clear();
+    m_intent->promptConsumed();
     Q_EMIT partialTranscriptChanged();
 
     // The query is generated and on its way; the pane no longer opens here.

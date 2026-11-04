@@ -45,6 +45,12 @@ import org.phoenixdna.theme
  * routes through the controller, so a follow-on rides on the same session
  * history as the initial voice prompt.
  *
+ * The bar's own record button is a follow-on: it continues the session
+ * the window shows. A dictation started from the panel widget's record
+ * button lands in this very bar when the window happens to be open, and
+ * that one starts a new session — the button that started the recording
+ * decides, and the shell asks the controller about it.
+ *
  * The shell binds the conversation model and the dictation state
  * (transcript/listening/transcribing/statusMessage); the window itself is
  * purely presentational.
@@ -110,6 +116,20 @@ Window {
     property bool transcribing: false
     property string statusMessage: ""
 
+    // Whether the prompt in the editor came from a recording rather than
+    // from the keyboard. Set by the shell when a dictated transcript
+    // lands, and cleared when the user empties the editor: a dictated
+    // prompt carries the intent of the button that started the recording
+    // — a new session for the panel widget's record button, a follow-on
+    // for this window's own record button — while a typed one continues
+    // the conversation on screen.
+    property bool dictated: false
+
+    // Emitted when the user empties the input bar: the dictated
+    // transcript is gone, so what is typed in its place is a fresh
+    // query rather than the recording's prompt.
+    signal dictationDiscarded()
+
     // The files attached to the prompt being composed: a list of maps with
     // "name", "path", "mimeType" and "size" keys. Bound by the shell; the
     // same list the dictation overlay shows, because both edit the same
@@ -167,8 +187,10 @@ Window {
     signal recordClicked()
 
     // Emitted when the user sends a follow-on (typed or dictated); the
-    // shell submits it over the existing session history.
-    signal submitted(string text)
+    // shell submits it over the existing session history. The second
+    // argument says whether the prompt came from a recording, so the
+    // shell can tell a dictated prompt from a typed one.
+    signal submitted(string text, bool dictated)
 
     // Whether an agent run is live right now: the send button is a stop
     // button while it is. Bound by the shell to the agent bridge, which
@@ -475,7 +497,8 @@ Window {
             sequences: ["Return", "Enter"]
             context: Qt.WindowShortcut
             enabled: resultsWindow.canSubmit
-            onActivated: resultsWindow.submitted(resultsWindow.transcript)
+            onActivated: resultsWindow.submitted(resultsWindow.transcript,
+                                                  resultsWindow.dictated)
         }
 
         // The semi-transparent backdrop, painted after the chosen colour
@@ -1687,6 +1710,17 @@ Window {
 
                                 onTextChanged: if (text !== resultsWindow.transcript) {
                                     resultsWindow.transcript = text
+                                    // The user emptied the editor: the
+                                    // transcript of the recording is gone,
+                                    // so what is typed in its place is a
+                                    // fresh query — a follow-on of the
+                                    // conversation on screen, not the new
+                                    // session the recording's button asked
+                                    // for. A correction is not an emptying:
+                                    // it keeps the recording's intent.
+                                    if (text.length === 0) {
+                                        resultsWindow.dictationDiscarded()
+                                    }
                                 }
 
                                 // Return submits, even with the keyboard in
@@ -1706,7 +1740,8 @@ Window {
                                         event.accepted = true;
                                         if (resultsWindow.canSubmit) {
                                             resultsWindow.submitted(
-                                                resultsWindow.transcript);
+                                                resultsWindow.transcript,
+                                                resultsWindow.dictated);
                                         }
                                     }
                                 }
@@ -1866,7 +1901,8 @@ Window {
                                             resultsWindow.cancelRequested();
                                         } else {
                                             resultsWindow.submitted(
-                                                resultsWindow.transcript);
+                                                resultsWindow.transcript,
+                                                resultsWindow.dictated);
                                         }
                                     }
 
