@@ -67,6 +67,14 @@ QtObject {
         ? Qt.rgba(1, 1, 1, 0.18)
         : Qt.rgba(0, 0, 0, 0.12)
 
+    // The session search's own backdrop: black and nearly opaque in the
+    // dark mode, so the window reads as a hole cut into the desktop
+    // rather than as a grey haze over it. The other windows take the
+    // lighter backgroundColor above, which is tinted rather than black.
+    readonly property color searchBackdropColor: isDark
+        ? Qt.rgba(0, 0, 0, 0.96)
+        : Qt.rgba(0.97, 0.97, 0.98, 0.96)
+
     // The fill of a sub-pane on the backdrop (the search's two panes).
     readonly property color paneFill: isDark
         ? Qt.rgba(1, 1, 1, 0.04)
