@@ -181,18 +181,10 @@ PlasmaCore.Dialog {
     readonly property real transcriptProgress: transcriptTotal > 0
         ? Math.round(100 * transcriptLoaded / transcriptTotal) : 0
 
-    // What the two bars say: the messages that have arrived, and the
-    // formulas that have come back.
-    readonly property string transcriptStatus: transcriptTotal > 0
-        ? (transcriptLoading
-           ? i18n("%1 of %2", transcriptLoaded, transcriptTotal)
-           : i18n("%1 messages", transcriptTotal))
-        : i18n("No messages")
+    // How far the math has come. No formulas in the answers on screen:
+    // the bar is full, for there is nothing left to render.
     readonly property real mathProgress: mathTotal > 0
         ? Math.round(100 * mathDone / mathTotal) : 0
-    readonly property string mathStatus: mathTotal > 0
-        ? i18n("%1 of %2 formulas", mathDone, mathTotal)
-        : i18n("No math")
 
     // The width of the progress bars: the same for both of them, so
     // they can be read against each other, and narrow enough that they
@@ -466,9 +458,12 @@ PlasmaCore.Dialog {
             // two can be read against one another. A grid says that by
             // itself — the bars share a column, and the rows keep them
             // apart.
+            //
+            // The bars say it all: how much of the work is done, and
+            // whether there is any. A number beside them would only
+            // repeat what the bar already shows.
             GridLayout {
-                Layout.fillWidth: true
-                columns: 3
+                columns: 2
                 columnSpacing: Kirigami.Units.smallSpacing
                 rowSpacing: 2
 
@@ -490,16 +485,6 @@ PlasmaCore.Dialog {
                 }
 
                 PC3.Label {
-                    Layout.fillWidth: true
-                    Layout.maximumWidth: Kirigami.Units.gridUnit * 12
-                    Layout.minimumWidth: 0
-                    horizontalAlignment: Text.AlignRight
-                    elide: Text.ElideRight
-                    text: searchOverlay.transcriptStatus
-                    color: PhoenixTheme.secondaryTextColor
-                }
-
-                PC3.Label {
                     text: i18n("Math:")
                     color: PhoenixTheme.secondaryTextColor
                 }
@@ -514,16 +499,6 @@ PlasmaCore.Dialog {
                     // full — an empty bar would read as "waiting".
                     value: searchOverlay.mathTotal > 0
                         ? searchOverlay.mathProgress : 100
-                }
-
-                PC3.Label {
-                    Layout.fillWidth: true
-                    Layout.maximumWidth: Kirigami.Units.gridUnit * 12
-                    Layout.minimumWidth: 0
-                    horizontalAlignment: Text.AlignRight
-                    elide: Text.ElideRight
-                    text: searchOverlay.mathStatus
-                    color: PhoenixTheme.secondaryTextColor
                 }
             }
 
