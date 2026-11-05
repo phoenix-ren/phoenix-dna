@@ -36,6 +36,12 @@ TOOL_PROCESS_FINISHED = "tool_process_finished"
 #: The ask_user tool is showing the user a question; the run blocks until
 #: the answer arrives (answer_question), the run is cancelled or it times out.
 QUESTION_ASKED = "question_asked"
+#: The bytes a transfer tool call has moved so far: the cumulative count
+#: of the call's transfer, the total when the far end names one (0 when
+#: it does not). The frontend meters the rate of the transfer from
+#: these (see the UI's TransferMeter), the way WIRE_BYTES feeds the
+#: meter of the conversation itself.
+TRANSFER_PROGRESS = "transfer_progress"
 #: A pending question ended: answered, timed out or cancelled.
 QUESTION_ANSWERED = "question_answered"
 AUTH_REQUESTED = "auth_requested"

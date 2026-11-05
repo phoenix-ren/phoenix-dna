@@ -117,7 +117,12 @@ Window {
                  stepFollowsPolish,
                  stepUnpinsOnUserScroll,
                  stepRepinsOnShow,
-                 stepFormulaSwapRestoresPosition]
+                 stepFormulaSwapRestoresPosition,
+                 stepTransferStepArrives,
+                 stepRunningTransferSaysDoing,
+                 stepUploadSaysDoing,
+                 stepFinishedTransferSaysDone,
+                 stepMixedStepKeepsTheUsedShape]
         step = 0
         done = false
     }
@@ -234,11 +239,100 @@ Window {
                    "the position is restored across the document rewrite")
     }
 
+    // ---- The transfer step's title --------------------------------------
+
+    // A transfer tool call arrives in the trail, still running. The
+    // header is titled by what the step is doing, not by the tool's
+    // name: "Downloading…", not "Used 1 transfer".
+    function stepTransferStepArrives() {
+        setSteps([transferStep(true)])
+    }
+
+    function stepRunningTransferSaysDoing() {
+        const header = findByName(window.contentItem, "toolStepHeader")
+        root.check(header !== null, "the tool step's header is found")
+        if (!header) {
+            return
+        }
+        root.check(header.title.indexOf("Downloading") === 0,
+                   "a running download says what it is doing (" + header.title + ")")
+        // An upload says the other thing.
+        setSteps([transferStep(true, "upload")])
+    }
+
+    function stepUploadSaysDoing() {
+        const header = findByName(window.contentItem, "toolStepHeader")
+        if (!header) {
+            root.check(false, "the tool step's header is found")
+            return
+        }
+        root.check(header.title.indexOf("Uploading") === 0,
+                   "a running upload says what it is doing (" + header.title + ")")
+        // The upload finishes; the title says what came of it.
+        setSteps([transferStep(false, "upload")])
+    }
+
+    function stepFinishedTransferSaysDone() {
+        const header = findByName(window.contentItem, "toolStepHeader")
+        root.check(header !== null && header.title.indexOf("Uploaded") === 0,
+                   "a finished upload says what came of it ("
+                   + (header ? header.title : "no header") + ")")
+        // A step that mixes a transfer with other tools keeps the
+        // "Used n …" shape, the transfer as its verb in the list.
+        setSteps([mixedStep(true)])
+    }
+
+    function stepMixedStepKeepsTheUsedShape() {
+        const header = findByName(window.contentItem, "toolStepHeader")
+        root.check(header !== null && header.title.indexOf("Used ") === 0
+                   && header.title.indexOf("Downloading") > 0,
+                   "a mixed step names its tools and the transfer's doing ("
+                   + (header ? header.title : "no header") + ")")
+        setSteps([])
+    }
+
     // ---- Helpers -------------------------------------------------------
 
     // Replaces the answer of the exchange — the "run" streaming.
     function setResult(text) {
         testConversation.setResult(text)
+    }
+
+    // Replaces the trail of the exchange — the steps the window renders.
+    function setSteps(steps) {
+        testConversation.setSteps(steps)
+    }
+
+    // A tool step in the shape the conversation model gives the
+    // delegate. \a tools and \a directions are parallel, as the model
+    // keeps them; the tools of one stretch are one step.
+    function toolStep(running, tools, directions) {
+        return {
+            id: 1,
+            kind: "tool",
+            body: "#### ⚒ " + tools.join(", ") + "\n\n```json\n{}\n```",
+            count: tools.length,
+            tools: tools,
+            directions: directions,
+            status: running ? "" : "success",
+            running: running,
+            startedAt: 1000,
+            endedAt: running ? 0 : 61000
+        }
+    }
+
+    // A transfer tool step: one call, one direction.
+    function transferStep(running, direction) {
+        const way = direction === undefined ? "download" : direction
+        return toolStep(running, ["transfer"], [way])
+    }
+
+    // A mixed step — a command and the transfer that followed it of one
+    // stretch, grouped the way the conversation model groups consecutive
+    // calls. The transfer is the running call: tool calls run one at a
+    // time, so the last of a step is the one still going.
+    function mixedStep(running) {
+        return toolStep(running, ["bash", "transfer"], ["", "download"])
     }
 
     // A block of text with the given number of lines, so the answer's

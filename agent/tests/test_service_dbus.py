@@ -337,3 +337,51 @@ def test_rename_session_rejects_an_invalid_user(client):
     _bus, iface = client
     with pytest.raises(dbus.exceptions.DBusException, match="invalid user"):
         iface.RenameSession("../etc", "whatever", "A name")
+
+
+def test_transfer_progress_signal_carries_64_bit_counts(client, service):
+    """The bytes of a transfer, over the wire.
+
+    An ISO outruns a 32-bit count, so the signal speaks 64-bit ("tt")
+    and a DVD-sized number must survive the D-Bus boundary whole - the
+    event is fed through the daemon's own funnel, the way the transfer
+    tool's notifier reports through it.
+    """
+    bus, _iface = client
+    from phoenix_dna import events
+    from phoenix_dna.service import INTERFACE
+
+    seen = {}
+    done = threading.Event()
+
+    def on_progress(run_id, call_id, direction, done_bytes, total):
+        seen.update(
+            run_id=str(run_id),
+            call_id=str(call_id),
+            direction=str(direction),
+            done=int(done_bytes),
+            total=int(total),
+        )
+        done.set()
+
+    bus.add_signal_receiver(
+        on_progress, signal_name="TransferProgress", dbus_interface=INTERFACE
+    )
+    service._daemon._emit(
+        events.make(
+            events.TRANSFER_PROGRESS,
+            run_id="run_t",
+            call_id="call_t",
+            direction="download",
+            done=47244640256,
+            total=47244640256,
+        )
+    )
+    assert done.wait(10), "TransferProgress never arrived"
+    assert seen == {
+        "run_id": "run_t",
+        "call_id": "call_t",
+        "direction": "download",
+        "done": 47244640256,
+        "total": 47244640256,
+    }

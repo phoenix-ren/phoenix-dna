@@ -34,6 +34,7 @@ optdepends=(
     'kdialog: ask for the administrator password'
     'sudo: run commands as root on demand'
     'texlive-xetex: render LaTeX formulas to PDF'
+    'python-libtorrent: download torrents from magnet links'
 )
 source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
 sha256sums=('SKIP')

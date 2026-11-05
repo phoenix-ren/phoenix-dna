@@ -37,7 +37,8 @@
  * - \c running   true until the run's final text arrived
  * - \c steps     the trail: one entry per step of the run (see
  *                stepsFor()), each with its kind, its text, the tools it
- *                called and how long it took
+ *                called (and, for transfers, which way they moved) and
+ *                how long it took
  *
  * All mutations run on the GUI thread (the D-Bus layer marshals the
  * daemon's events onto the main loop).
@@ -128,8 +129,12 @@ public:
      *
      * \a markdown is the call's head (its name and its arguments); the
      * output follows with endToolCall(). The calls of one stretch belong
-     * together: they are one step of the trail, not one step each. */
-    void beginToolCall(const QString &tool, const QString &markdown);
+     * together: they are one step of the trail, not one step each.
+     * \a direction names which way a transfer tool call moves its bytes
+     * ("download" or "upload"; empty for every other tool), so the
+     * pane can say what the step is doing instead of naming the tool. */
+    void beginToolCall(const QString &tool, const QString &markdown,
+                       const QString &direction = QString());
 
     /*! \brief Ends the tool call that is running.
      *
@@ -150,15 +155,16 @@ private:
     struct Group
     {
         StepKind kind = StepKind::Text;
-        QStringList tools;    //!< the tools called (Tool steps)
-        QString body;         //!< the step's Markdown
-        int count = 0;        //!< how many parts the step holds
-        QString status;       //!< "success" or "error" (Tool steps)
-        bool running = false; //!< the step is still in flight
-        bool answer = false;  //!< the step holds the answer
-        qint64 id = 0;        //!< the step's own identity
-        qint64 startedAt = 0; //!< when the step began (ms since the epoch)
-        qint64 endedAt = 0;   //!< when it ended (0 while it runs)
+        QStringList tools;      //!< the tools called (Tool steps)
+        QString body;           //!< the step's Markdown
+        int count = 0;          //!< how many parts the step holds
+        QString status;         //!< "success" or "error" (Tool steps)
+        bool running = false;   //!< the step is still in flight
+        bool answer = false;    //!< the step holds the answer
+        qint64 id = 0;          //!< the step's own identity
+        qint64 startedAt = 0;   //!< when the step began (ms since the epoch)
+        qint64 endedAt = 0;     //!< when it ended (0 while it runs)
+        QStringList directions; //!< parallel to tools: a transfer's way ("download"/"upload"), "" for the rest
     };
 
     struct Exchange

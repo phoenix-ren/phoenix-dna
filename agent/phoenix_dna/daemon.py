@@ -527,6 +527,32 @@ class AgentDaemon:
 
         return notify
 
+    def _transfer_notifier(self, run_id: str):
+        """The callback the transfer tool reports its bytes through.
+
+        Runs on the worker thread (from the pump, or the poll loop of a
+        magnet); the event rides the same queue to D-Bus as everything
+        else. ``done`` is cumulative for the call and ``total`` is what
+        the far end promised (0 when it did not), so the UI can meter
+        both the rate and the share. The call id is whatever call is in
+        flight - tool calls are sequential, so it is exactly this
+        transfer's.
+        """
+
+        def notify(direction: str, done: int, total: int) -> None:
+            self._emit(
+                events.make(
+                    events.TRANSFER_PROGRESS,
+                    run_id=run_id,
+                    call_id=self._current_call_id,
+                    direction=str(direction),
+                    done=int(done),
+                    total=int(total),
+                )
+            )
+
+        return notify
+
     def _execute(self, job: PendingPrompt) -> None:
         cancel = self._current_cancel
 
@@ -552,6 +578,7 @@ class AgentDaemon:
             run_id=job.run_id,
             ask_coordinator=self._asks,
             process_notifier=self._bash_process_notifier(job.run_id),
+            transfer_notifier=self._transfer_notifier(job.run_id),
         )
         conversation = self._sessions.get(job.session_id)
         system_prompt = build_system_prompt(

@@ -395,6 +395,12 @@ PlasmoidItem {
         // thought step.
         wireMeter: Phoenix.PhoenixController.agent.wireMeter
 
+        // The progress of the transfer the running transfer tool call
+        // moves: the pace of the bytes and the share of the thing that
+        // is here, as a level meter and a progress bar under the
+        // running transfer step.
+        transferMeter: Phoenix.PhoenixController.agent.transferMeter
+
         // Dictation state for the input bar, mirroring the overlay. The
         // transcript itself is pushed imperatively (see the Connections
         // above) because the pane's editor is editable.

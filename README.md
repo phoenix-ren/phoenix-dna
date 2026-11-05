@@ -25,6 +25,7 @@ By contrast, Phoenix DNA is hyperfocused on desktop use:
 - **hyperlinks**: to quickly open files, URLs, email addresses, phone numbers, etc. outputted during LLM responses
 - **tool CPU usage monitoring**: to confirm the tool that's been running for five minutes isn't dead
 - **wire rate monitoring**: the pace of the conversation with the model in bytes per second, in and out
+- **metered transfers**: the agent's transfer tool downloads (web, FTP, even torrent magnets) and uploads with live progress — the pace of the bytes and how much of the thing is here
 - **back-to-the-future UX and performance**: because in a capable programmer's hands, native is faster, harder, stronger, better
 - **other agents allowed!**: a dictated prompt is automatically copied to the clipboard for easy pasting into prompt boxes of lesser AI agents
 

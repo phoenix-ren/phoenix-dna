@@ -193,21 +193,28 @@ void ConversationModel::appendTrailText(const QString &text)
     touchCurrent({StepsRole});
 }
 
-void ConversationModel::beginToolCall(const QString &tool, const QString &markdown)
+void ConversationModel::beginToolCall(const QString &tool, const QString &markdown,
+                                      const QString &direction)
 {
     if (m_exchanges.isEmpty()) {
         return;
     }
     Exchange &exchange = m_exchanges.last();
     // The calls of one stretch belong together: they are one step of the
-    // trail, not one step each.
+    // trail, not one step each. The transfer tool is listed once per
+    // direction, so a stretch that pulls a file and pushes another shows
+    // both words without repeating the tool's name.
     Group *group = lastGroupOfKind(exchange, StepKind::Tool);
     const bool fresh = !group;
     if (fresh) {
         group = &pushGroup(exchange, StepKind::Tool);
     }
-    if (!group->tools.contains(tool)) {
+    const bool listed = group->tools.contains(tool)
+        && !(tool == QLatin1String("transfer")
+             && !group->directions.contains(direction));
+    if (!listed) {
         group->tools.append(tool);
+        group->directions.append(direction);
     }
     if (!group->body.isEmpty()) {
         group->body += QStringLiteral("\n\n");
@@ -286,6 +293,7 @@ QVariantList ConversationModel::stepsFor(const Exchange &exchange) const
         step.insert(QStringLiteral("body"), group.body);
         step.insert(QStringLiteral("count"), group.count);
         step.insert(QStringLiteral("tools"), group.tools);
+        step.insert(QStringLiteral("directions"), group.directions);
         step.insert(QStringLiteral("status"), group.status);
         step.insert(QStringLiteral("running"), group.running);
         step.insert(QStringLiteral("startedAt"), group.startedAt);

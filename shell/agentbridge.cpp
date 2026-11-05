@@ -135,6 +135,12 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
     QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
                                           QStringLiteral("WireBytes"), this,
                                           SLOT(onWireBytes(QString, uint, uint, uint)));
+    // The bytes a transfer tool call moves: cumulative counts with the
+    // total when the far end named one, which the transfer meter turns
+    // into the pace and the share of the thing that is here.
+    QDBusConnection::sessionBus().connect(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("TransferProgress"), this,
+        SLOT(onTransferProgress(QString, QString, QString, qulonglong, qulonglong)));
     QDBusConnection::sessionBus().connect(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("TranscriptCleaned"), this,
         SLOT(onTranscriptCleaned(QString, QString, QString, QString)));
@@ -970,18 +976,31 @@ void AgentBridge::onToolCallStarted(const QString &runId,
     // block; anything else is shown as the raw JSON arguments.
     QString language = QStringLiteral("json");
     QString body = argsJson;
+    QString direction;
     QJsonParseError parseError;
     const QJsonDocument doc = QJsonDocument::fromJson(argsJson.toUtf8(), &parseError);
-    if (parseError.error == QJsonParseError::NoError && tool == QLatin1String("bash")) {
+    const bool argsParsed = parseError.error == QJsonParseError::NoError;
+    if (argsParsed && tool == QLatin1String("bash")) {
         const QJsonObject args = doc.object();
         if (args.contains(QLatin1String("command"))) {
             language = QStringLiteral("bash");
             body = args.value(QLatin1String("command")).toString();
         }
     }
+    if (argsParsed && tool == QLatin1String("transfer")) {
+        // The arguments say which way the bytes will go: an upload names
+        // the local file it sends (source), a download only the address
+        // it pulls. The rule is the tool's own (tools/transfer.py):
+        // keep the two in step, or the meter and the label disagree.
+        const QJsonObject args = doc.object();
+        const bool upload = args.contains(QLatin1String("source"));
+        direction = upload ? QStringLiteral("upload") : QStringLiteral("download");
+        m_transferMeter.begin(upload, args.value(QLatin1String("url")).toString());
+    }
     m_conversation.beginToolCall(tool,
                                  QStringLiteral("#### %1 %2\n\n%3")
-                                     .arg(QStringLiteral("⚒"), tool, fencedBlock(body, language)));
+                                     .arg(QStringLiteral("⚒"), tool, fencedBlock(body, language)),
+                                 direction);
 }
 
 void AgentBridge::onToolCallFinished(const QString &runId,
@@ -992,7 +1011,6 @@ void AgentBridge::onToolCallFinished(const QString &runId,
 {
     Q_UNUSED(runId)
     Q_UNUSED(callId)
-    Q_UNUSED(tool)
 
     // Tail of the step: outcome plus the command's output, fenced so the
     // pane's Markdown renderer shows it verbatim.
@@ -1001,6 +1019,12 @@ void AgentBridge::onToolCallFinished(const QString &runId,
     m_conversation.endToolCall(
         status, QStringLiteral("%1\n\n%2")
                     .arg(mark, fencedBlock(elideOutput(output, kToolLogOutputLimit), QString())));
+
+    // A finished transfer ends its meter, whatever the outcome: the
+    // counts that still arrive belong to nobody.
+    if (tool == QLatin1String("transfer")) {
+        m_transferMeter.release();
+    }
 }
 
 void AgentBridge::onToolProcessStarted(const QString &runId,
@@ -1031,6 +1055,22 @@ void AgentBridge::onWireBytes(const QString &runId, uint turn, uint bytesSent, u
     Q_UNUSED(runId)
 
     m_wireMeter.addTraffic(int(turn), bytesSent, bytesReceived);
+}
+
+void AgentBridge::onTransferProgress(const QString &runId,
+                                     const QString &callId,
+                                     const QString &direction,
+                                     qulonglong done,
+                                     qulonglong total)
+{
+    Q_UNUSED(runId)
+    Q_UNUSED(callId)
+    Q_UNUSED(direction)
+
+    // The meter knows the transfer it is metering (ToolCallStarted
+    // began it); the counts are cumulative, and it folds the deltas
+    // into the pace itself.
+    m_transferMeter.addProgress(done, total);
 }
 
 QString AgentBridge::senderNameForMode(const QString &mode)
