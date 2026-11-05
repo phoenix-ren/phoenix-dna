@@ -40,10 +40,15 @@ for src in pages/*.typ; do
     "$typst" compile --features html --format html --root "$root" "$src" "$site/$out"
 done
 
+# Assets are versioned by the building commit: GitHub Pages serves them
+# with a ~10-minute cache, and an unversioned site.js would go stale after
+# a deploy. Fall back to a timestamp outside a git checkout.
+asset_v=$(git -C "$root/../.." rev-parse --short HEAD 2>/dev/null || date -u +%Y%m%d%H%M%S)
+
 # typst emits <meta charset> and <title> but no stylesheet links; add ours
 # (plus a no-flash theme bootstrap) to every page.
 for html in "$site"/*.html; do
-    sed -i 's#</head>#<link rel="stylesheet" href="theme.css"><link rel="icon" type="image/svg+xml" href="assets/phoenix-dna.svg"><script>(function(){var t=localStorage.getItem("pd-theme");if(t)document.documentElement.dataset.theme=t})();</script><script src="site.js" defer></script></head>#' "$html"
+    sed -i "s#</head>#<link rel=\"stylesheet\" href=\"theme.css?v=$asset_v\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"assets/phoenix-dna.svg\"><script>(function(){var t=localStorage.getItem(\"pd-theme\");if(t)document.documentElement.dataset.theme=t})();</script><script src=\"site.js?v=$asset_v\" defer></script></head>#" "$html"
 done
 
 cp theme.css site.js "$site"
