@@ -183,6 +183,11 @@ The search is fuzzy and in order — *dt* finds *Disk tuning*, and every
 further character drops the sessions that no longer match. Open one and
 it comes back with its history, ready to carry on.
 
+A session that is in the way — a stray dictation, a question answered
+by accident — carries a trash button, and the confirmation that asks
+names the session it is about: the list is full of similar names, and
+the wrong one must not go.
+
 The archive is a SQLite database in your own home directory. There is no
 account to make, no history to import, and nothing of yours sitting in
 someone else's cloud.

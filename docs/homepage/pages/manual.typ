@@ -385,6 +385,19 @@ sessions on the left, the selected session's conversation on the right.
   history loaded, so you can carry the conversation on.
 - *Up* and *Down* move the selection, *Return* opens, *Esc* closes.
 
+== Throwing a session away
+
+Every entry in the list carries a trash button — *Delete this session* —
+and the click only asks: a session that is gone cannot be brought back,
+so the confirmation names the session it is about. The list is full of
+similar names, and the wrong one must not go.
+
+The question is modal: the window behind it is dimmed, the query field
+and the list are out of reach, and *Esc* declines it rather than closing
+the search. *Cancel* declines it too; *Delete* throws the session away —
+the conversation, and the audit trail of its runs, with it. What is left
+behind would be an orphan nobody ever sees again.
+
 The archive is a SQLite database on your own disk, one per user. There
 is no account to make and nothing to import: the conversations are
 already yours, and the search is the daemon's own fuzzy matcher
@@ -431,8 +444,10 @@ Two roles, each with an endpoint, a model and a key.
   dictations.
 
 Both sections tell you the name the key is stored under, so you can find
-it in the file. The LLM key is read by the daemon at startup — the
-window says exactly when a restart is needed.
+it in the file. The LLM key is read by the daemon at startup — so when
+you save it, Phoenix DNA restarts the daemon for you and tells you so.
+The speech-to-text key needs no such thing: the transcriber re-reads
+its configuration for every clip.
 
 == Read aloud
 
@@ -477,7 +492,8 @@ survive restarts and can be rebound there as well.
   [Colour scheme, answer fonts and sizes], [At once, on the spot],
   [Read-aloud: the switch, the mode, the voice, the provider, the speed], [At once — the speech pipeline is rebuilt for you],
   [Speech-to-text: endpoint, model, key], [On the next dictation],
-  [LLM: the key, the endpoint, the model], [After `systemctl --user restart phoenix.service` — the daemon reads them at startup],
+  [LLM: the key], [At once — the window restarts `phoenix.service` for you, and says so],
+  [LLM: the endpoint and the model], [After `systemctl --user restart phoenix.service` — the daemon reads them at startup, and the window says so when you save them],
   [Global shortcuts], [At once, through KGlobalAccel],
 )
 
@@ -503,7 +519,7 @@ over the stored key.*
   [Wizard], [`Esc`], [Hide the wizard; the agent keeps waiting],
   [Session search], [`Up` / `Down`], [Move the selection],
   [Session search], [`Return`], [Open the selected session],
-  [Session search], [`Esc`], [Close the search],
+  [Session search], [`Esc`], [Declines the delete confirmation first; closes the search otherwise],
   [Settings], [`Esc`], [Close the window (unless a shortcut is being recorded)],
 )
 
@@ -529,8 +545,9 @@ systemctl --user status phoenix.service
 journalctl --user -u phoenix.service -f
 ```)
 
-*A new key does not take effect.* The daemon reads its LLM configuration
-at startup:
+*A new key does not take effect.* Saving the LLM key restarts the daemon
+for you; if that restart fails, the window says so and tells you to run
+it by hand. The *endpoint* and the *model* still need you to do it:
 
 #cmd([restart the daemon], ```bash
 systemctl --user restart phoenix.service

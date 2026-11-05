@@ -39,12 +39,14 @@ confirmation card — Allow/Deny — that you answer before anything runs.
 Elevation is per-command; there is no standing root shell.
 
 #html.elem("h3", attrs: (class: "faq-q"), [Why does a new key want a service restart?])
-The daemon reads its LLM configuration at startup. After changing the key or
-endpoint in the settings window, run `systemctl --user restart
-phoenix.service` — the window says so at the right moment. Dictation and the
-voice are different: a changed speech-to-text key applies to the *next*
-dictation, and the voice pipeline rebuilds the moment you change it, no
-restart.
+The daemon reads its LLM configuration at startup. Saving the LLM *key*
+in the settings window therefore restarts the daemon for you — the
+window says so when it does. The *endpoint* and the *model* are read
+the same way and are not restarted for you: run `systemctl --user
+restart phoenix.service` after changing those, and the window says so
+at the right moment. Dictation and the voice are different: a changed
+speech-to-text key applies to the *next* dictation, and the voice
+pipeline rebuilds the moment you change it, no restart.
 
 #html.elem("h3", attrs: (class: "faq-q"), [What gets sent to the model?])
 Your prompt, the files you deliberately attached, and the screenshots you

@@ -101,9 +101,10 @@ systemctl --user status phoenix.service
 journalctl --user -u phoenix.service -f
 ```)
 
-A changed LLM key or endpoint applies after
-`systemctl --user restart phoenix.service` — the settings window says so
-when it matters.
+Saving the LLM key restarts the daemon for you — the settings window
+says so when it does. A changed LLM *endpoint* or *model* applies after
+`systemctl --user restart phoenix.service`, and the window says so when
+it matters.
 
 = Building from a git checkout
 
