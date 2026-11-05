@@ -128,7 +128,7 @@ The panel's gear button opens the settings window, which configures:
   `~/.config/phoenix-dna/keys.json` (mode 0600), the file the daemon and
   the transcriber already read. A changed speech-to-text key applies to
   the next dictation; the daemon reads its key at startup, so a changed
-  LLM key applies after `systemctl --user restart phoenix.service`.
+  LLM key applies at once — the shell restarts phoenix.service for you.
   Environment variables still take precedence over the file, and the
   window says so when it sees one set.
 

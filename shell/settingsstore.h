@@ -24,8 +24,8 @@ class QTimer;
  * stored as "stt_provider" in the same file and honoured by
  * Transcriber::resolveConfig(). A changed speech-to-text key applies to
  * the very next dictation (the transcriber re-resolves per request); the
- * daemon reads its key once at startup, so a changed LLM key needs
- * "systemctl --user restart phoenix.service".
+ * daemon reads its key once at startup, so a changed LLM key makes the
+ * shell restart phoenix.service for the user (via Boost.Process).
  *
  * Global shortcuts — re-binds the four system-wide hotkeys (recording,
  * screenshot, session search, typed prompt) through KGlobalAccel. The

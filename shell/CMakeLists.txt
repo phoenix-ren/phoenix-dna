@@ -170,6 +170,7 @@ endif()
 
 # Header-only Boost, e.g. <boost/histogram.hpp>.
 phoenixdna_use_boost(org.phoenixdna.agent)
+target_link_libraries(org.phoenixdna.agent PRIVATE Boost::process)
 
 # Check of the screenshot path: it asks KWin for the picture of the
 # active window over D-Bus, reads it out of the pipe the way the picker
@@ -269,7 +270,9 @@ target_link_libraries(settingsstoretest PRIVATE
     KF6::I18n
     KF6::GlobalAccel
     KF6::CoreAddons
+    Boost::process
 )
+phoenixdna_use_boost(settingsstoretest)
 add_test(NAME settingsstoretest COMMAND settingsstoretest)
 
 # The CPU meter of a running bash tool call — the /proc sampling and its
