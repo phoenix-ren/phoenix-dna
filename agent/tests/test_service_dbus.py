@@ -259,6 +259,41 @@ def test_session_transcript_over_dbus(client):
     assert messages[1]["content"] == "D-Bus fake answer, 42."
 
 
+def test_session_context_over_dbus(client):
+    """What a session spent of the model's context window travels over D-Bus."""
+    bus, iface = client
+    from phoenix_dna.sessions import _local_username
+
+    user = _local_username()
+    finished = threading.Event()
+    bus.add_signal_receiver(
+        lambda *_a: finished.set(), signal_name="RunFinished", dbus_interface=None
+    )
+    iface.SubmitPrompt("context probe", "")
+    assert finished.wait(15)
+
+    sessions = json.loads(str(iface.SearchSessions(user, "context probe")))
+    assert sessions
+    session_id = sessions[0]["id"]
+
+    context = json.loads(str(iface.GetSessionContext(user, session_id)))
+    # The session's own shape...
+    assert context["id"] == session_id
+    assert context["userMessages"] == 1
+    assert context["assistantMessages"] == 1
+    # ...the tokens its run spent (the fake provider spends 11 in, 7 out)...
+    assert context["tokensIn"] == 11
+    assert context["tokensOut"] == 7
+    assert context["totalTokens"] == 18
+    # ...and the model in force with the size of its context window.
+    assert context["contextLimit"] >= 0
+    assert "provider" in context
+    assert "model" in context
+
+    # A session that is not there has no context to report.
+    assert json.loads(str(iface.GetSessionContext(user, "no-such-session"))) == {}
+
+
 def test_search_rejects_an_invalid_user(client):
     import dbus
 

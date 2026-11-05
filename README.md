@@ -39,6 +39,7 @@ Made with 🏳️‍⚧️ 💜 and attitude by Phoenix Ren aka Michelle Percoss
 | `resultswindow/` | Fully-fledged results window for conversation output        |
 | `search/`    | Session search: the previous sessions, listed by name           |
 | `settingswindow/` | Settings window: appearance, API keys and global shortcuts |
+| `context/`   | The context view: the ring in the results window's corner and the overlay it opens |
 | `theme/`     | Shared colour-scheme singleton, the app's icon set and Markdown presentation helpers |
 | `waveform/`  | Offline `.wav` → `.png` waveform renderer                       |
 | `widgettest/`| Developer testbench that hosts the widget in a plain window      |
@@ -258,6 +259,44 @@ endpoint applies after `systemctl --user restart phoenix.service`.
 Models that reason out loud (MiniMax's `<think>` blocks) are handled the
 same way whichever service serves them — the reasoning is shown
 separately and never read aloud.
+
+## The context window
+
+The corner of the results window carries a ring: how much of the model's
+context window the session on screen has used. A click on it opens a
+window with the numbers behind that share — which model is in force, how
+much it holds at once, the tokens the session spent (the fresh input, the
+output, the part of the prompt the server answered from its cache, and
+the reasoning), how many queries and answers the session holds, what it
+cost, and when it began. `Esc` — or the **Close** button — puts it away.
+
+The ring belongs to the session, so it lives with the conversation rather
+than in the panel widget: the widget is the app's presence, not any one
+conversation's.
+
+How much the model holds at once is the provider's own number (a million
+tokens for MiniMax's models, 128 000 for OpenAI's and Groq's), and the
+settings window has a **Context window** field for the cases the provider
+does not know: your own server, or another model of a known service.
+`context_window` in `agent.toml` does the same:
+
+```toml
+[agent]
+context_window = 200000
+```
+
+What the tokens cost is the user's own number as well — the daemon does
+not keep a price list. Name the two prices (in US dollars per million
+tokens) and the window quotes the cost of the session:
+
+```toml
+[agent]
+price_input = 0.30
+price_output = 1.20
+```
+
+Without them the window says that the model is not priced, rather than
+quoting a price of nothing.
 
 ## Dictation (speech to text)
 

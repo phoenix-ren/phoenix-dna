@@ -17,6 +17,7 @@ import plasma.applet.org.phoenixdna.agent as Phoenix
 import org.kde.kirigami as Kirigami
 
 // Components 2, 3, 4 and 5 are separate QML modules, installed independently.
+import org.phoenixdna.context as PhoenixContext
 import org.phoenixdna.overlay as PhoenixOverlay
 import org.phoenixdna.resultswindow as PhoenixResults
 import org.phoenixdna.search as PhoenixSearch
@@ -442,6 +443,20 @@ PlasmoidItem {
         // header carries that title.
         sessionTitle: Phoenix.PhoenixController.agent.sessionTitle
 
+        // What the session on screen spent of the model's context
+        // window: the tokens its runs spent and the size of the
+        // window they are measured against. The ring in the corner of
+        // the window reads it.
+        context: Phoenix.PhoenixController.agent.sessionContext
+
+        // The ring was clicked: the details are wanted. The numbers
+        // are asked for afresh - the session has grown since the last
+        // look - and the overlay comes up with them.
+        onContextRequested: {
+            Phoenix.PhoenixController.agent.refreshSessionContext();
+            contextOverlay.open();
+        }
+
         // Read-aloud: the pane's per-message "Read aloud" and its stop
         // control route through the agent bridge to the daemon
         // (SpeakText / StopSpeaking). The daemon owns synthesis — the
@@ -728,6 +743,23 @@ PlasmoidItem {
         }
     }
 
+    // Component 6 — the context view.
+    //
+    // The overlay the ring in the results window's corner opens: what
+    // the session on screen spent of the model's context window — the
+    // model, the size of its window, the tokens spent and what they
+    // cost. A centred, modal window of its own, like the session
+    // search and the wizard; Esc puts it away, and so does its Close
+    // button.
+    PhoenixContext.ContextOverlay {
+        id: contextOverlay
+
+        // The context view's picture of the session on screen: the
+        // daemon's answer, which the shell asks for again whenever the
+        // session grows.
+        context: Phoenix.PhoenixController.agent.sessionContext
+    }
+
     // Component 4 — the session search.
     //
     // A transparent overlay window with two sub-panes: the sessions of
@@ -834,6 +866,9 @@ PlasmoidItem {
         llmProvider: Phoenix.PhoenixController.settings.llmProvider
         llmBaseUrl: Phoenix.PhoenixController.settings.llmBaseUrl
         llmModel: Phoenix.PhoenixController.settings.llmModel
+        // How much the model holds at once: the context window the
+        // conversation is measured against.
+        llmContextWindow: Phoenix.PhoenixController.settings.llmContextWindow
         llmKeyField: Phoenix.PhoenixController.settings.llmKeyField
         llmKeyFromEnvironment: Phoenix.PhoenixController.settings.llmKeyFromEnvironment
         sttApiKey: Phoenix.PhoenixController.settings.sttApiKey
@@ -866,6 +901,8 @@ PlasmoidItem {
             Phoenix.PhoenixController.settings.saveLlmProvider(provider)
         onLlmEndpointSaveRequested: (endpoint, model) =>
             Phoenix.PhoenixController.settings.saveLlmEndpoint(endpoint, model)
+        onLlmContextWindowSaveRequested: (tokens) =>
+            Phoenix.PhoenixController.settings.saveLlmContextWindow(tokens)
         onSttEndpointSaveRequested: (endpoint, model) =>
             Phoenix.PhoenixController.settings.saveSttEndpoint(endpoint, model)
         onTtsEndpointSaveRequested: (endpoint, model) =>

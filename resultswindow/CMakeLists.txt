@@ -20,6 +20,9 @@ ecm_add_qml_module(org.phoenixdna.resultswindow
     URI org.phoenixdna.resultswindow
     VERSION 1.0
     GENERATE_PLUGIN_SOURCE
+    DEPENDENCIES
+        org.kde.kirigami
+        org.phoenixdna.context
 )
 
 ecm_target_qml_sources(org.phoenixdna.resultswindow

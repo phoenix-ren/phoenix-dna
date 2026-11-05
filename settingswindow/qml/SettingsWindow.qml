@@ -81,6 +81,11 @@ Window {
     property string llmProvider: "minimax"
     property string llmBaseUrl: ""
     property string llmModel: ""
+    // How many tokens the model holds at once: its context window.
+    // Zero when nothing is named — the provider's own default is in
+    // force then, and a server of the user's own has none until the
+    // user says how much its model holds.
+    property int llmContextWindow: 0
     property string sttApiKey: ""
     property string sttProvider: "minimax"
     property string sttEndpoint: ""
@@ -137,6 +142,7 @@ Window {
     signal llmKeySaveRequested(string key)
     signal llmProviderChangeRequested(string provider)
     signal llmEndpointSaveRequested(string endpoint, string model)
+    signal llmContextWindowSaveRequested(int tokens)
     signal sttKeySaveRequested(string key)
     signal sttProviderChangeRequested(string provider)
     signal sttEndpointSaveRequested(string endpoint, string model)
@@ -191,6 +197,8 @@ Window {
             sttKeyFieldEdit.text = window.sttApiKey
             llmEndpointEdit.text = window.llmBaseUrl
             llmModelEdit.text = window.llmModel
+            llmContextWindowEdit.text = window.llmContextWindow > 0
+                ? String(window.llmContextWindow) : ""
             sttEndpointEdit.text = window.sttEndpoint
             sttModelEdit.text = window.sttModel
             ttsEndpointEdit.text = window.ttsEndpoint
@@ -265,6 +273,15 @@ Window {
     // "dark" → 2), kept in one place for the two pushes above.
     function themeIndex(theme) {
         return theme === "light" ? 1 : theme === "dark" ? 2 : 0
+    }
+
+    // Whether the context window in the field is one the store does not
+    // hold yet: the field's number and the stored one differ. An empty
+    // field means "the provider's own default", which is the same as
+    // a stored zero.
+    function contextWindowChanged(text) {
+        const entered = Number(text) || 0
+        return entered !== window.llmContextWindow
     }
 
     // The speech engine's row ("minimax" → 0, "local" → 1). The
@@ -744,11 +761,47 @@ Window {
                         }
                     }
 
+                    // How much the model holds at once: the context
+                    // window the conversation is measured against. The
+                    // provider knows the size of the models it serves;
+                    // a server of the user's own knows nothing, so the
+                    // number is the user's to give.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PC3.Label {
+                            text: i18n("Context window")
+                            color: PhoenixTheme.textColor
+                        }
+
+                        PC3.TextField {
+                            id: llmContextWindowEdit
+                            objectName: "llmContextWindowEdit"
+
+                            Layout.fillWidth: true
+                            placeholderText: i18n("the provider's default")
+                            inputMethodHints: Qt.ImhDigitsOnly
+                            validator: IntValidator { bottom: 0; top: 100000000 }
+                            onAccepted: window.llmContextWindowSaveRequested(
+                                Number(text))
+                        }
+
+                        PC3.Button {
+                            text: i18n("Save")
+                            enabled: window.contextWindowChanged(
+                                llmContextWindowEdit.text)
+                            onClicked: window.llmContextWindowSaveRequested(
+                                Number(llmContextWindowEdit.text))
+                        }
+                    }
+
                     HintLabel {
                         Layout.fillWidth: true
                         text: i18n("Any OpenAI-compatible endpoint works — OpenAI, "
                             + "OpenRouter, Groq, MiniMax or your own server. "
-                            + "Leave the model empty to use the service's default.")
+                            + "Leave the model empty to use the service's default, "
+                            + "and the context window empty to use the service's own.")
                     }
 
                     RowLayout {

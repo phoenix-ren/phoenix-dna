@@ -398,6 +398,105 @@ class SessionStore:
             for row in rows
         ]
 
+    # -- the context view ----------------------------------------------------
+
+    def session_context(self, user: str, session_id: str) -> dict:
+        """What one session's context window looks like.
+
+        The session's own shape - its title, when it began, how many
+        queries and answers it holds - and what its runs spent: the
+        tokens of every run the session holds, summed.
+
+        The tokens come from the audit trail: every run records what it
+        spent when it ends. So a session opened from the history
+        reports the same numbers as the one that is running, and the
+        sum covers the whole conversation rather than only its last
+        turn.
+
+        The prompt tokens are split the way the context view shows
+        them: the fresh input (the prompt tokens the server did not
+        answer from its cache) and the cached part apart, so the total
+        is the sum of the three and not of the four.
+        """
+        session_id = (session_id or "").strip()
+        if not session_id:
+            return {}
+
+        with self._lock:
+            db = self._db(user)
+            row = db.execute(
+                "SELECT title, created_at, updated_at FROM sessions "
+                "WHERE id = ? AND user = ?",
+                (session_id, user),
+            ).fetchone()
+            if row is None:
+                # No such session (of this user): there is nothing to
+                # report, and a session of somebody else's is none of
+                # this user's business.
+                return {}
+            counts = db.execute(
+                "SELECT role, COUNT(*) AS n FROM messages WHERE session_id = ? GROUP BY role",
+                (session_id,),
+            ).fetchall()
+            runs = db.execute(
+                "SELECT data_json FROM runs WHERE session_id = ? AND kind = 'run_finished' "
+                "ORDER BY seq",
+                (session_id,),
+            ).fetchall()
+
+        user_messages = 0
+        assistant_messages = 0
+        message_count = 0
+        for count in counts:
+            number = int(count["n"])
+            message_count += number
+            role = str(count["role"])
+            if role == "user":
+                user_messages = number
+            elif role == "assistant":
+                assistant_messages = number
+
+        prompt_tokens = 0
+        output_tokens = 0
+        cache_tokens = 0
+        reasoning_tokens = 0
+        completed = 0
+        for (blob,) in runs:
+            try:
+                data = json.loads(blob)
+            except ValueError:
+                log.warning("skipping corrupt run row in %s/%s", user, session_id)
+                continue
+            if not isinstance(data, dict):
+                continue
+            prompt_tokens += int(data.get("tokens_in", 0) or 0)
+            output_tokens += int(data.get("tokens_out", 0) or 0)
+            cache_tokens += int(data.get("cache_tokens", 0) or 0)
+            reasoning_tokens += int(data.get("reasoning_tokens", 0) or 0)
+            completed += 1
+
+        # The fresh input: the prompt tokens that were not served from
+        # the cache. A server that counts the cached tokens apart from
+        # the prompt ones reports them that way already; the floor
+        # keeps the split honest for one that does not.
+        fresh_input = max(0, prompt_tokens - cache_tokens)
+
+        return {
+            "id": session_id,
+            "title": str(row["title"] or ""),
+            "createdAt": str(row["created_at"] or ""),
+            "updatedAt": str(row["updated_at"] or ""),
+            "userMessages": user_messages,
+            "assistantMessages": assistant_messages,
+            "messageCount": message_count,
+            "runs": completed,
+            "tokensIn": fresh_input,
+            "tokensOut": output_tokens,
+            "cacheTokens": cache_tokens,
+            "reasoningTokens": reasoning_tokens,
+            "totalTokens": fresh_input + output_tokens + cache_tokens,
+        }
+
     # -- deleting a session ---------------------------------------------------
 
     def delete_session(self, user: str, session_id: str) -> bool:

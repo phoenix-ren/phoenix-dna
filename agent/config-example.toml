@@ -15,6 +15,18 @@
 #                                 # server (name a model below, or the
 #                                 # daemon says so).
 # model = "MiniMax-M3"             # multimodal; MiniMax-Text-01 cannot see images
+# context_window = 1000000          # how many tokens the model holds at
+#                                 # once. The provider knows the size of
+#                                 # the models it serves; this is for
+#                                 # your own server, and for another
+#                                 # model of a known service. The
+#                                 # context view (the ring in the corner
+#                                 # of the results window) measures the
+#                                 # conversation against it.
+# price_input = 0.30                # what a million input tokens cost,
+# price_output = 1.20               # in US dollars. Without them the
+#                                 # context view says that the model is
+#                                 # not priced.
 # vision = true                   # send attached images to the model; "auto"
 #                                 # (the default) decides from the model name -
 #                                 # "auto" already covers MiniMax-M3
