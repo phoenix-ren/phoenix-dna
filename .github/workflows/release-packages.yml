@@ -36,9 +36,11 @@ jobs:
     steps:
       - name: Install git for the checkout
         run: dnf -y install git
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.tag || github.ref_name }}
+      - name: Trust the checkout for git archive
+        run: git config --system --add safe.directory "$GITHUB_WORKSPACE"
       - name: Install the BuildRequires from the spec
         run: |
           dnf -y install rpm-build dnf-plugins-core
@@ -66,14 +68,16 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends git ca-certificates
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.tag || github.ref_name }}
+      - name: Trust the checkout for git archive
+        run: git config --system --add safe.directory "$GITHUB_WORKSPACE"
       - name: Install the Build-Depends from debian/control
         run: |
           apt-get install -y --no-install-recommends \
               build-essential devscripts equivs
-          mk-build-deps -ir debian/control
+          mk-build-deps -ir -t 'apt-get -y --no-install-recommends' debian/control
       - name: Build the package
         run: |
           packaging/make-source-archive.sh
@@ -98,9 +102,12 @@ jobs:
     steps:
       - name: Install git for the checkout
         run: pacman -Syu --noconfirm git
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ inputs.tag || github.ref_name }}
+      - name: Trust the checkout for git archive
+        # system-wide so the unprivileged makepkg user inherits it too
+        run: git config --system --add safe.directory "$GITHUB_WORKSPACE"
       - name: Install the dependencies from the PKGBUILD
         run: |
           cd packaging/arch
