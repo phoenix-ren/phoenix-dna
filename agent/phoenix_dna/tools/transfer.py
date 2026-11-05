@@ -201,14 +201,14 @@ class TransferTool:
             "progress the user can watch while it runs. Downloads from "
             "http/https/ftp URLs and torrent magnet: links; uploads a "
             "local file to an http(s) URL (PUT or POST) or onto an FTP "
-            "server. Use this tool for EVERY download and upload, "
-            "however small - a curl or wget through bash hides the "
-            "progress from the user and can outlive the bash timeout, "
-            "and large or slow items (ISO images, torrents) are exactly "
-            "what it is for. The default budget is one hour; pass a "
-            "larger timeout (up to 86400) for very big or slow "
-            "transfers. A download writes <dest>.part and only becomes "
-            "<dest> when it is complete."
+            "server. Use this tool for EVERY download and upload, however "
+            "small - never curl, wget, ftp, aria2c or a torrent client "
+            "through bash: their progress hides from the user, they can "
+            "outlive the bash timeout, and large or slow items (ISO "
+            "images, torrents) are exactly what this tool is for. The "
+            "default budget is one hour; pass a larger timeout (up to "
+            "86400) for very big or slow transfers. A download writes "
+            "<dest>.part and only becomes <dest> when it is complete."
         ),
         parameters={
             "type": "object",
