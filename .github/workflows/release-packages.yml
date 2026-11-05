@@ -157,11 +157,12 @@ jobs:
         run: |
           tag='${{ inputs.tag || github.ref_name }}'
           # download-artifact keeps each artifact's internal directories
-          # (e.g. RPMS/x86_64); flatten with find. The debuginfo/debugsource
-          # RPMs stay in the workflow artifacts, off the release.
+          # (e.g. RPMS/x86_64); flatten with find. The debug packages
+          # (debuginfo RPMs, *-debug.pkg.tar.zst) stay in the workflow
+          # artifacts, off the release.
           rpms=$(find artifacts -name '*.rpm' ! -name '*debug*')
           debs=$(find artifacts -name '*.deb')
-          arch=$(find artifacts -name '*.pkg.tar.zst')
+          arch=$(find artifacts -name '*.pkg.tar.zst' ! -name '*debug*')
           echo "uploading:" $rpms $debs $arch
           gh release upload "$tag" $rpms $debs $arch --clobber
           gh release view "$tag" --json assets --jq '.assets[].name'
