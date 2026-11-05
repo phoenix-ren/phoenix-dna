@@ -63,16 +63,18 @@ wizard's questions and your answers travel the same road.
 
 = Where things live
 
-| Path | Contents |
-|---|---|
-| `shell/` | Panel widget: the plasmoid, audio capture, transcription |
-| `overlay/` | Dictation overlay shown while recording |
-| `resultswindow/` | The conversation window |
-| `search/` | Session search over previous sessions |
-| `settingswindow/` | Settings: appearance, API keys, global shortcuts |
-| `theme/` | Shared colour scheme, icon set, Markdown helpers |
-| `waveform/` | Offline `.wav` → `.png` waveform renderer |
-| `agent/` | The Python agent daemon |
+#table(
+  columns: (1fr, 2fr),
+  table.header([Path], [Contents]),
+  [`shell/`], [Panel widget: the plasmoid, audio capture, transcription],
+  [`overlay/`], [Dictation overlay shown while recording],
+  [`resultswindow/`], [The conversation window],
+  [`search/`], [Session search over previous sessions],
+  [`settingswindow/`], [Settings: appearance, API keys, global shortcuts],
+  [`theme/`], [Shared colour scheme, icon set, Markdown helpers],
+  [`waveform/`], [Offline `.wav` → `.png` waveform renderer],
+  [`agent/`], [The Python agent daemon],
+)
 
 = License
 

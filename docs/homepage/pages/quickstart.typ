@@ -10,12 +10,14 @@
 Phoenix DNA needs *KDE Plasma 6.4 or newer* (that is where `plasma_add_applet`
 first appeared) with *Qt 6.7 or newer*, PipeWire's `pw-cat`, and Python 3.11+.
 
-| Distro | Status |
-|---|---|
-| Fedora 45+ | verified on a fresh Fedora 45 VM |
-| Arch, CachyOS | verified on a CachyOS VM |
-| Kubuntu 26.04, Ubuntu 25.10+, Debian sid | verified on Kubuntu 26.04.1 |
-| Debian 13 (trixie), Ubuntu 24.04 | ✗ Plasma/Qt too old — cannot build |
+#table(
+  columns: (1.4fr, 1fr),
+  table.header([Distro], [Status]),
+  [Fedora 45+], [verified on a fresh Fedora 45 VM],
+  [Arch, CachyOS], [verified on a CachyOS VM],
+  [Kubuntu 26.04, Ubuntu 25.10+, Debian sid], [verified on Kubuntu 26.04.1],
+  [Debian 13 (trixie), Ubuntu 24.04], [✗ Plasma/Qt too old — cannot build],
+)
 
 Recommended companions, installed with the package where the distro allows:
 `ffmpeg` (read answers aloud from files), `kdialog` + `sudo` (administrator

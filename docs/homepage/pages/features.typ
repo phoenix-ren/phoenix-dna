@@ -114,13 +114,15 @@ The settings window names an endpoint and the host in the URL decides the
 service — for the model, the dictation and the voice, each with its own
 field:
 
-| Endpoint | Default model | Key |
-|---|---|---|
-| `https://api.minimax.io/v1` | `MiniMax-Text-01` | `minimax_api_key` |
-| `https://api.openai.com/v1` | `gpt-4o-mini` | `openai_api_key` |
-| `https://api.groq.com/openai/v1` | `openai/gpt-oss-120b` | `groq_api_key` |
-| `https://openrouter.ai/api/v1` | `anthropic/claude-sonnet-4.5` | `openrouter_api_key` |
-| anything else | you name it | `llm_api_key` |
+#table(
+  columns: (1.4fr, 1fr, 1fr),
+  table.header([Endpoint], [Default model], [Key]),
+  [`https://api.minimax.io/v1`], [`MiniMax-Text-01`], [`minimax_api_key`],
+  [`https://api.openai.com/v1`], [`gpt-4o-mini`], [`openai_api_key`],
+  [`https://api.groq.com/openai/v1`], [`openai/gpt-oss-120b`], [`groq_api_key`],
+  [`https://openrouter.ai/api/v1`], [`anthropic/claude-sonnet-4.5`], [`openrouter_api_key`],
+  [anything else], [you name it], [`llm_api_key`],
+)
 
 Models that reason out loud are handled whichever service serves them: the
 reasoning is shown separately, never read aloud. Power users can pin
