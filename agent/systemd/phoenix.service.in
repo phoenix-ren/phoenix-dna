@@ -4,8 +4,10 @@
 # Phoenix DNA agent daemon - systemd *user* service.
 #
 # This is a template: the ExecStart and WorkingDirectory placeholders are
-# substituted by agent/systemd/install-user-service.sh, which writes the
-# finished unit to ~/.config/systemd/user/phoenix.service.
+# substituted by agent/systemd/install-user-service.sh for a checkout, and by
+# CMake for a system install (see PACKAGING.md). The installed unit is
+# ~/.config/systemd/user/phoenix.service in the first case and
+# /usr/lib/systemd/user/phoenix.service in the second.
 #
 # Why a user service and not a system unit:
 #
@@ -43,8 +45,10 @@ Type=simple
 ExecStart=@AGENT_EXEC@
 WorkingDirectory=@AGENT_DIR@
 # The daemon logs to stderr; unbuffered output makes journalctl -f show the
-# stream as it happens.
+# stream as it happens. The package lives under the read-only data directory,
+# so Python must not try to write __pycache__ beside it.
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
 StandardOutput=journal
 StandardError=journal
 Restart=on-failure

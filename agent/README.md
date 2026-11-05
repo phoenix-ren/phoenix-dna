@@ -282,6 +282,13 @@ anything being started by hand. `agent/systemd/phoenix.service.in` is the
 template; the installer fills in the interpreter and the agent directory,
 so the service follows the checkout it was installed from.
 
+A system install (`sudo cmake --install build`) installs the same template
+filled in for the package, together with the `phoenix-dna-agent` launcher and
+a D-Bus activation file. The plasmoid's first call then starts the daemon even
+if the user unit has not been enabled; the checkout installer above remains
+the way to run the agent from a working tree without installing it. See
+[`../PACKAGING.md`](../PACKAGING.md) for the packaging switches.
+
 **Why the user manager and not a root system service:**
 
 - The daemon owns a name on the **session bus** — that bus only exists

@@ -148,7 +148,11 @@ int main(int argc, char **argv)
         killGroup(leader); // as the daemon would: the whole group
         command.kill();
         command.waitForFinished(5000);
-        spin(1500);
+        // The kernel may need a moment to reap every member; poll instead
+        // of assuming one fixed delay fits every distribution.
+        for (int i = 0; i < 50 && meter.isActive(); ++i) {
+            spin(100);
+        }
         check(!meter.isActive(), "the meter stops once the whole group is gone");
     }
 

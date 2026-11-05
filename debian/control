@@ -1,0 +1,63 @@
+Source: phoenix-dna
+Section: kde
+Priority: optional
+Maintainer: Phoenix Ren <ren@phoenixren.space>
+Build-Depends: debhelper-compat (= 13),
+               cmake,
+               extra-cmake-modules,
+               gettext,
+               qt6-base-dev,
+               qt6-declarative-dev,
+               qt6-svg-dev,
+               libkf6coreaddons-dev,
+               libkf6config-dev,
+               libkf6configwidgets-dev,
+               libkf6i18n-dev,
+               libkf6globalaccel-dev,
+               libkf6package-dev,
+               libkf6windowsystem-dev,
+               libkirigami-dev,
+               libkf6svg-dev,
+               libplasma-dev (>= 6.4),
+               libboost-dev,
+               libxkbcommon-dev,
+               libxkbcommon-x11-dev,
+               python3,
+               appstream,
+               desktop-file-utils
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://gitlab.com/junzi/phoenix-dna
+
+Package: phoenix-dna
+Architecture: any
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         plasma-workspace,
+         kwin-common,
+         kwin-wayland,
+         qml6-module-qtcore,
+         qml6-module-qtqml,
+         qml6-module-qtquick,
+         qml6-module-qtquick-controls,
+         qml6-module-qtquick-dialogs,
+         qml6-module-qtquick-layouts,
+         qml6-module-qtquick-window,
+         qml6-module-org-kde-kirigami,
+         qml6-module-org-kde-ksvg,
+         python3,
+         python3-dbus,
+         python3-gi,
+         pipewire-bin
+Recommends: ffmpeg,
+            kdialog,
+            sudo,
+            texlive-xetex
+Description: voice-first AI agent for the KDE Plasma panel
+ Phoenix DNA is a desktop-native AI agent for KDE Plasma. It lives in the
+ panel, takes dictated or typed prompts, runs them through an LLM-driven agent
+ loop and shows the answer in a native window.
+ .
+ The agent works as the desktop user, can attach files and screenshots to a
+ prompt, asks for administrator rights through KDE's password dialog when a
+ command needs them, and can read its answers aloud.

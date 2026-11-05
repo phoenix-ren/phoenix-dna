@@ -137,6 +137,8 @@ target_link_libraries(org.phoenixdna.theme PRIVATE
     Qt6::DBus
 )
 
+if(BUILD_TESTING)
+
 # Offline check of the shared math-span fixture: the speech daemon's
 # Python detector (agent/phoenix_dna/speech/mathspan.py, exercised by
 # the agent test suite) and this renderer must find the same spans and
@@ -193,3 +195,5 @@ target_link_libraries(markdowndocumenttest PRIVATE
 add_test(NAME markdowndocumenttest COMMAND markdowndocumenttest)
 set_tests_properties(markdowndocumenttest PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+endif() # BUILD_TESTING
