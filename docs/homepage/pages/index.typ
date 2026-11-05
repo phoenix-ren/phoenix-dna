@@ -48,6 +48,14 @@
     #html.elem("p", [`Meta+Alt` picks a window, photographs it, and attaches the picture to the prompt you're writing.])
   ])
   #html.elem("div", attrs: (class: "card"), [
+    #html.elem("h4", [Wizards, like it's 1999])
+    #html.elem("p", [When the agent needs a decision, it asks — and the question arrives as a wizard window of its own: one at a time, a progress bar, a Back button, and every answer sent together. Answer your AI like it's 1999.])
+  ])
+  #html.elem("div", attrs: (class: "card"), [
+    #html.elem("h4", [The archive is yours])
+    #html.elem("p", [Every conversation is kept on your own disk, named by the agent, found by a few keystrokes. No account, no vendor cloud, no import button.])
+  ])
+  #html.elem("div", attrs: (class: "card"), [
     #html.elem("h4", [Answers with working links])
     #html.elem("p", [Files, folders, web pages, mailboxes and phone numbers in an answer are clickable, and open where the desktop handles them.])
   ])
@@ -94,5 +102,7 @@
   Then add *Phoenix DNA* to your panel (right-click the panel → *Add widgets*),
   put an API key in the settings window, and you're talking. All the detail is
   on the #html.elem("a", attrs: (href: "quickstart.html"), [Quickstart page]) —
-  including building from source for every supported distro.
+  including building from source for every supported distro — and the
+  #html.elem("a", attrs: (href: "manual.html"), [manual]) walks every button
+  and shortcut in turn.
 ])

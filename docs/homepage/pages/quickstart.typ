@@ -92,6 +92,10 @@ sudo apt install ../phoenix-dna_0.1.0-1_amd64.deb
   Press again to transcribe and send. The typed-prompt window and the session
   search have their own shortcuts, rebindable in *System Settings → Shortcuts*.
 
+Everything above is the short version. The
+#html.elem("a", attrs: (href: "manual.html"), [manual]) walks every window,
+every button and every shortcut in the order a conversation goes.
+
 #cmd([the daemon, when you want to look at it], ```bash
 systemctl --user status phoenix.service
 journalctl --user -u phoenix.service -f

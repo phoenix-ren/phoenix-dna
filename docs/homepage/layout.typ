@@ -12,6 +12,7 @@
   ("", "Overview"),
   ("quickstart", "Quickstart"),
   ("features", "Features"),
+  ("manual", "Manual"),
   ("faq", "FAQ"),
   ("support", "Support development ❤"),
   ("changelog", "Changelog"),

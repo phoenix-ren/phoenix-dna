@@ -5,9 +5,13 @@
 #import "/layout.typ": *
 #show: page.with(title: "Features", subtitle: "What the desktop-native design buys you, in detail.", active: "features")
 
+Every feature below is somewhere in the app: the
+#html.elem("a", attrs: (href: "manual.html"), [manual]) says which window it
+lives in and which button reaches it.
+
 = Voice in
 
-The record button (or its global shortcut, rebindable) starts dictation. A
+The record button (or its global shortcut, rebindable) starts dictation. An
 overlay comes up with the live waveform; press again and the clip is
 transcribed *by whichever endpoint you named* — MiniMax, OpenAI, Groq,
 OpenRouter or your own server, the same multipart request for all. The
@@ -43,6 +47,38 @@ confirmation card (Allow/Deny) that you answer before they run. This is the
 `apt install` experience web agents keep fumbling, done the way the desktop
 intended.
 
+= When the agent asks you something
+
+An agent that only answers is half an agent: some decisions are yours.
+When one comes up, the agent calls its `ask_user` tool and the form
+arrives on your screen — a wizard, walked one question at a time.
+
+- A *single* question arrives as a card in the conversation window: the
+  options as radio buttons, a *…or write your own answer* field, and a
+  *Send answer* button. Nothing leaves before you press it, and the
+  agent waits.
+- *Several* questions arrive as a wizard window of its own — large,
+  centred, taking the keyboard. A progress bar says *Question 2 of 3*;
+  the questions you have answered stay on screen with a tick beside
+  them; *Next* stays disabled until the current one is answered; *Back*
+  revisits an answer without losing it. *Submit answers* sends them
+  all at once.
+
+The whole form arrives in a single call, so the count is exact and
+nothing waits on a round trip — one question at a time, no network ping
+between them.
+
+`Esc` hides the wizard without losing anything: the agent keeps waiting,
+and a *Show questions* button brings the form back with your answers in
+place.
+
+A destructive command that wants root raises a card of its own, written
+by the daemon and not by the model — *System confirmation — required
+before the command runs*, with a fixed *Allow* or *Deny*. Consent to run
+something destructive as root must not come from a model a web page
+might have talked into, so the question is not the model's to ask — and
+it fails closed: a timeout denies the command.
+
 = Answers you can act on
 
 The results window renders Markdown with the agent's own font — light mode
@@ -63,6 +99,16 @@ become clickable:
 - the detection is careful: a path must begin with a system root or `~`, a
   number must actually look like a phone number (a date, a version, an IP
   address are not), and a bare name with no place is left alone.
+
+== The reasoning, shown and never spoken
+
+Models that reason out loud are handled whichever service serves them.
+Their reasoning is *not* mixed into the answer: it gets its own fold in
+the trail — *Used 3 Thought* — dimmed, in the agent's own face, opened
+only if you want to read it. A folded thought costs nothing to display.
+
+And it is never read aloud: the voice speaks the answer, not the
+working.
 
 == The meters
 
@@ -124,18 +170,25 @@ field:
   [anything else], [you name it], [`llm_api_key`],
 )
 
-Models that reason out loud are handled whichever service serves them: the
-reasoning is shown separately, never read aloud. Power users can pin
-everything in `~/.config/phoenix-dna/agent.toml`, which overrides the
-window.
+Power users can pin everything in `~/.config/phoenix-dna/agent.toml`, which
+overrides the window.
+
+= Your conversations, kept
+
+Every conversation is kept, named by the daemon after what it was about,
+and searchable from the panel: the sessions on the left, the selected
+one's transcript on the right.
+
+The search is fuzzy and in order — *dt* finds *Disk tuning*, and every
+further character drops the sessions that no longer match. Open one and
+it comes back with its history, ready to carry on.
+
+The archive is a SQLite database in your own home directory. There is no
+account to make, no history to import, and nothing of yours sitting in
+someone else's cloud.
 
 = The rest of the toolbox
 
-- *Session search* — previous sessions by name, full text, with the
-  addresses in them clickable too.
-- *Ask-user wizard* — when the agent needs a decision mid-run, the
-  questions come back with your answers; Esc always closes, a refused
-  submit hands the questions back.
 - *Global shortcuts* — record, screenshot, session search, typed prompt —
   bound through KGlobalAccel, so System Settings can rebind them and they
   survive restarts.
