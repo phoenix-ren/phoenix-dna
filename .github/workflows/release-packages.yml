@@ -48,14 +48,13 @@ jobs:
       - name: Build the source archive and the RPM
         run: |
           packaging/make-source-archive.sh
-          # %check is skipped here: the CPU-meter test samples real process
-          # groups and does not survive CI containers (deterministic on all
-          # three). The recipes' test phase stays authoritative on the fresh
-          # distro VMs — see PACKAGING.md "Recipes and the test harness".
-          rpmbuild -ba \
+          # --nocheck: the CPU-meter test samples real process groups and
+          # does not survive CI containers (deterministic on all three
+          # distros). The recipes' test phase stays authoritative on the
+          # fresh distro VMs — see PACKAGING.md "Recipes and the test harness".
+          rpmbuild -ba --nocheck \
               --define "_topdir $PWD/rpmbuild" \
               --define "_sourcedir $PWD/dist" \
-              --define "__spec_check_body exit 0" \
               packaging/fedora/phoenix-dna.spec
       - uses: actions/upload-artifact@v4
         with:
