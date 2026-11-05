@@ -188,10 +188,12 @@ class BashTool:
             "explicit timeout for slow commands like package installs. A "
             "command that needs administrator rights is run with sudo: the "
             "user is asked for their password, and destructive commands are "
-            "confirmed by them before they run. Do NOT download or upload "
-            "files with this tool (no curl, wget, ftp or torrent clients): "
-            "use the transfer tool, which meters its progress for the user "
-            "and outlasts this tool's timeout on big transfers."
+            "confirmed by them before they run. Never move a file with "
+            "curl, wget, ftp, aria2c or a torrent client - downloading and "
+            "uploading is the transfer tool's job, whatever the size: it "
+            "meters its progress for the user and its budget outlasts this "
+            "tool's timeout on big transfers. (curl to talk to an API is "
+            "fine; it is a file that makes it the wrong tool.)"
         ),
         parameters={
             "type": "object",

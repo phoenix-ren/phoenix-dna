@@ -46,16 +46,19 @@ _SEARCH_LINE = (
 )
 
 #: Appended when the transfer tool is registered: downloads and uploads
-#: belong to it, not to the shell — a wget through bash hides its
-#: progress from the user and can outlive the command's timeout, which
-#: is how a large download turns into a detached command nobody can see.
+#: belong to it, not to the shell — the advice names the commands the
+#: model reaches for (curl, wget, ...) rather than the activity, because
+#: the decision it has to interrupt is made in commands. curl stays fine
+#: for talking to an API; fetching a file is what makes it the wrong
+#: tool.
 _TRANSFER_LINE = (
-    "- The transfer tool moves bytes over the network - downloads (web, "
-    "FTP, torrent magnets) and uploads both - with progress the user "
-    "can watch. Use it for EVERY download and upload instead of curl, "
-    "wget, ftp or a torrent client through bash, whatever the size: a "
-    "big or slow transfer is a tool call with a metered bar, not a "
-    "command that outgrew its timeout."
+    "- Never move a file with curl, wget, ftp, aria2c or a torrent "
+    "client: a download (a web URL, an FTP server, a magnet link) and "
+    "an upload alike is a transfer tool call, whatever the size - its "
+    "progress is metered for the user while it runs, and a slow "
+    "transfer is a tool call with a budget of its own, not a command "
+    "that outgrew its timeout. curl asking an API is another matter; "
+    "it is fetching a file that makes it the wrong tool."
 )
 
 _STYLE = r"""Tool use:
