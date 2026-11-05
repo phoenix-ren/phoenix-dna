@@ -393,6 +393,34 @@ if dbus is not None:
                     f"{_ERROR}.InvalidArgument", str(exc)
                 )
 
+        @dbus.service.method(INTERFACE, in_signature="ssi", out_signature="s")
+        def ForkSession(self, user, session_id, exchange_index):
+            """Branch a session into a new one, at one of the user's queries.
+
+            ``exchange_index`` counts the user's queries: 1 is the first
+            thing the user asked in that session, 2 the next one. The
+            fork holds the conversation up to that query - the query
+            itself and the answer that followed it - and what came
+            after stays in the session it was forked from.
+
+            The fork is a session of its own: the follow-ups typed after
+            it continue it. Returns the fork's entry as the search
+            lists it (the same shape a search answer carries), or the
+            empty string when there was no such session or no such
+            query.
+            """
+            try:
+                summary = self._daemon.fork_session(
+                    str(user), str(session_id), int(exchange_index)
+                )
+            except ValueError as exc:
+                raise dbus.exceptions.DBusException(
+                    f"{_ERROR}.InvalidArgument", str(exc)
+                )
+            if summary is None:
+                return ""
+            return json.dumps(summary, ensure_ascii=False)
+
         @dbus.service.method(INTERFACE, in_signature="", out_signature="(ssu)")
         def GetState(self):
             state = self._daemon.state()

@@ -204,7 +204,7 @@ void AgentBridge::sendPrompt(const QString &prompt,
     // begin (queued prompts begin in submission order) — the intent
     // decides whether the pane's history restarts.
     if (newSession) {
-        m_sessionId.clear();
+        setSessionId(QString());
     }
     m_pendingPrompts.append({prompt, newSession});
 
@@ -249,6 +249,15 @@ void AgentBridge::setRunActive(bool active)
     }
     m_runActive = active;
     Q_EMIT runActiveChanged();
+}
+
+void AgentBridge::setSessionId(const QString &sessionId)
+{
+    if (m_sessionId == sessionId) {
+        return;
+    }
+    m_sessionId = sessionId;
+    Q_EMIT sessionIdChanged();
 }
 
 void AgentBridge::requestTranscriptCleanup(const QString &text)
@@ -466,6 +475,61 @@ void AgentBridge::requestSessionRename(const QString &user,
             });
 }
 
+void AgentBridge::requestSessionFork(const QString &user,
+                                     const QString &sessionId,
+                                     int exchangeIndex)
+{
+    if (sessionId.isEmpty() || exchangeIndex < 1) {
+        return;
+    }
+
+    // ForkSession(user, session_id, exchange_index) -> JSON summary of
+    // the fork (empty when there was no such session or no such query).
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("ForkSession"));
+    message << user << sessionId << exchangeIndex;
+
+    auto *watcher =
+        new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, exchangeIndex](QDBusPendingCallWatcher *watcher) {
+                const QDBusReply<QString> reply = *watcher;
+                watcher->deleteLater();
+                if (!reply.isValid()) {
+                    qWarning() << "session fork failed:" << reply.error().message();
+                    return;
+                }
+                const QVariantMap summary = parseJsonObject(reply.value());
+                const QString forkId = summary.value(QStringLiteral("id")).toString();
+                if (forkId.isEmpty()) {
+                    // There was no such session, or no such query: the
+                    // conversation stays where it is.
+                    return;
+                }
+
+                // The widget follows the fork from now on: the
+                // follow-ups typed in the pane continue it, not the
+                // session it was forked from.
+                setSessionId(forkId);
+                const QString title = summary.value(QStringLiteral("title")).toString();
+                if (m_sessionTitle != title) {
+                    m_sessionTitle = title;
+                    Q_EMIT sessionTitleChanged();
+                }
+
+                // The pane shows the forked conversation: the exchanges
+                // up to the fork point, and nothing of what came after
+                // it - that stayed in the session the fork was taken
+                // from.
+                const int row = m_conversation.rowOfExchange(exchangeIndex);
+                if (row >= 0) {
+                    m_conversation.truncate(row + 1);
+                }
+
+                Q_EMIT sessionForked(forkId);
+            });
+}
+
 void AgentBridge::openStoredSession(const QString &user,
                                     const QString &sessionId,
                                     const QString &mode,
@@ -473,7 +537,7 @@ void AgentBridge::openStoredSession(const QString &user,
 {
     // The widget follows this session from now on: a follow-on typed in
     // the results pane continues that very conversation.
-    m_sessionId = sessionId;
+    setSessionId(sessionId);
     if (m_sessionTitle != title) {
         m_sessionTitle = title;
         Q_EMIT sessionTitleChanged();
@@ -865,7 +929,7 @@ void AgentBridge::onRunStarted(const QString &runId, const QString &sessionId)
         m_conversation.beginExchange(QString(), QString());
     }
     if (ours && m_sessionId != sessionId) {
-        m_sessionId = sessionId;
+        setSessionId(sessionId);
     }
 
     // The pane opens now, not at the model's first token: the provider

@@ -52,6 +52,8 @@ QVariant ConversationModel::data(const QModelIndex &index, int role) const
         return exchange.running;
     case StepsRole:
         return stepsFor(exchange);
+    case ExchangeRole:
+        return m_exchangeNumbers.value(index.row(), 0);
     default:
         return {};
     }
@@ -60,8 +62,8 @@ QVariant ConversationModel::data(const QModelIndex &index, int role) const
 QHash<int, QByteArray> ConversationModel::roleNames() const
 {
     return {
-        {PromptRole, "prompt"}, {SenderRole, "sender"}, {ResultRole, "result"},
-        {RunningRole, "running"}, {StepsRole, "steps"},
+        {PromptRole, "prompt"},   {SenderRole, "sender"}, {ResultRole, "result"},
+        {RunningRole, "running"}, {StepsRole, "steps"},   {ExchangeRole, "exchangeNumber"},
     };
 }
 
@@ -72,8 +74,45 @@ void ConversationModel::reset()
     }
     beginResetModel();
     m_exchanges.clear();
+    m_exchangeNumbers.clear();
+    m_promptCount = 0;
     endResetModel();
     Q_EMIT countChanged();
+}
+
+void ConversationModel::truncate(int count)
+{
+    if (count < 0) {
+        count = 0;
+    }
+    if (count >= m_exchanges.size()) {
+        return;
+    }
+    beginRemoveRows(QModelIndex(), count, m_exchanges.size() - 1);
+    m_exchanges.resize(count);
+    m_exchangeNumbers.resize(count);
+    // The queries are counted again: the exchanges that are kept keep
+    // their numbers (the history only ever loses its tail), but the
+    // count of them is the one of the shorter history now.
+    m_promptCount = 0;
+    for (int row = 0; row < count; ++row) {
+        m_exchangeNumbers[row] = m_exchanges.at(row).prompt.isEmpty() ? 0 : ++m_promptCount;
+    }
+    endRemoveRows();
+    Q_EMIT countChanged();
+}
+
+int ConversationModel::rowOfExchange(int number) const
+{
+    if (number < 1) {
+        return -1;
+    }
+    for (int row = 0; row < m_exchangeNumbers.size(); ++row) {
+        if (m_exchangeNumbers.at(row) == number) {
+            return row;
+        }
+    }
+    return -1;
 }
 
 void ConversationModel::beginExchange(const QString &prompt, const QString &sender)
@@ -83,6 +122,7 @@ void ConversationModel::beginExchange(const QString &prompt, const QString &send
     exchange.sender = sender;
     beginInsertRows(QModelIndex(), m_exchanges.size(), m_exchanges.size());
     m_exchanges.append(exchange);
+    m_exchangeNumbers.append(prompt.isEmpty() ? 0 : ++m_promptCount);
     endInsertRows();
     Q_EMIT countChanged();
 }

@@ -59,3 +59,24 @@ add_dependencies(scrollfollowtest org.phoenixdna.resultswindow)
 add_test(NAME scrollfollowtest COMMAND scrollfollowtest)
 set_tests_properties(scrollfollowtest PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}/bin")
+
+# Headless check of the window's fork affordance: a fork branches the
+# conversation into a new session at one of the user's queries, so every
+# query carries the button that asks for it — and the button asks for
+# the query it stands next to.
+#
+# The test loads the real window from the module above, not a copy.
+#
+#   forkactionstest
+add_executable(forkactionstest forkactionstest.cpp)
+target_compile_definitions(forkactionstest PRIVATE
+    PHOENIX_FORK_ACTION_TEST="${CMAKE_CURRENT_SOURCE_DIR}/qml/ForkActionTest.qml")
+target_link_libraries(forkactionstest PRIVATE
+    Qt6::Gui
+    Qt6::Qml
+    Qt6::Quick
+)
+add_dependencies(forkactionstest org.phoenixdna.resultswindow)
+add_test(NAME forkactionstest COMMAND forkactionstest)
+set_tests_properties(forkactionstest PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}/bin")

@@ -279,6 +279,19 @@ public:
      */
     Q_INVOKABLE void renameSession(const QString &sessionId, const QString &title);
 
+    /*! \brief Forks the conversation the widget is following.
+     *
+     * The session is branched into a new one at the user's \a
+     * exchangeIndex-th query: the fork holds the conversation up to
+     * that point, and what came after stays in the session it was
+     * forked from. The fork is a session of its own - the widget
+     * follows it from then on, so the follow-ups typed in the results
+     * pane continue the fork.
+     *
+     * The queries are counted as the session holds them: 1 is the first
+     * thing the user asked in it, 2 the next one. */
+    Q_INVOKABLE void forkSession(int exchangeIndex);
+
     /*! \brief Opens a stored session in the results pane.
      *
      * The session's history is loaded into the conversation model and

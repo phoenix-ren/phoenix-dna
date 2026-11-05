@@ -175,6 +175,28 @@ Your prompt sits on the right, in a bubble with a tail, and your login
 name is under the tail. The bubble wraps at four fifths of the width, so
 a long question never runs the width of the window.
 
+== Forking the conversation
+
+Sometimes the answer is a dead end, and the way out is the same question
+asked differently — or asked earlier, before the conversation went off
+the rails.
+
+Move the pointer over one of your own messages, and a little branch
+button appears beside your name. It forks the conversation there: the
+fork holds everything up to that message — the message itself and the
+answer that followed it — and what came after stays where it was. The
+session it was forked from is not touched — the two grow apart, and the
+original keeps its own history.
+
+- *The fork is a session of its own.* The follow-ups typed after it
+  continue the fork, not the conversation it came from. The window says
+  so, under the input bar.
+- *The fork is listed in the session search* under its own name: the
+  name of the session it was forked from, marked as a fork, until the
+  daemon names it after what was said in it.
+- *While the agent works*, the button is greyed out: a conversation
+  that is still being written cannot be forked yet.
+
 == The trail: what the agent did
 
 Between your message and the answer, the window shows the trail: every

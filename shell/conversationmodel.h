@@ -38,6 +38,10 @@
  * - \c steps     the trail: one entry per step of the run (see
  *                stepsFor()), each with its kind, its text, the tools it
  *                called and how long it took
+ * - \c exchangeNumber  the exchange's number: its queries are counted, so
+ *                the first thing the user asked in the session is 1, the
+ *                next one 2 (0 for a row that carries no query - a run
+ *                begun elsewhere)
  *
  * All mutations run on the GUI thread (the D-Bus layer marshals the
  * daemon's events onto the main loop).
@@ -55,7 +59,8 @@ public:
         SenderRole,
         ResultRole,
         RunningRole,
-        StepsRole
+        StepsRole,
+        ExchangeRole
     };
     Q_ENUM(Roles)
 
@@ -82,6 +87,31 @@ public:
      *  restarts with an empty history instead of appending to prior,
      *  unrelated conversations. */
     void reset();
+
+    /*! \brief Keeps the first \a count exchanges and drops the rest.
+     *
+     * The pane's history after a fork: the conversation up to the point
+     * the user forked at, and nothing of what came after it - that
+     * stayed in the session the fork was taken from. The exchanges
+     * that are kept are not touched: their trails and answers stay
+     * as they were.
+     *
+     * A count beyond the history's length changes nothing, and neither
+     * does a negative one (the history is emptied then). */
+    void truncate(int count);
+
+    /*! \brief The row of the exchange numbered \a number, or -1.
+     *
+     * The queries of the conversation are counted (the first thing the
+     * user asked is 1, the next one 2), and this is where that number
+     * sits in the history: the row of the exchange that carries it.
+     * -1 stands for a number the history does not hold - a run begun
+     * elsewhere carries no query and so no number.
+     *
+     * The fork is taken at such a number: the daemon branches the
+     * session at its n-th query, and the pane keeps the exchanges up
+     * to that row. */
+    int rowOfExchange(int number) const;
 
     /*! \brief Starts a new exchange: appends a row with the given prompt
      *  and its sender (the login name, or "root" for the sessions of
@@ -185,6 +215,13 @@ private:
     Group &pushGroup(Exchange &exchange, StepKind kind);
 
     QList<Exchange> m_exchanges;
+    // The number of each exchange: its queries are counted, so the
+    // first thing the user asked in the session is 1. A row that
+    // carries no query (a run begun elsewhere) has none (0).
+    QList<int> m_exchangeNumbers;
+    // How many queries the history holds: the next one is this many
+    // plus one.
+    int m_promptCount = 0;
     // The identity of the last step: it gives every step of every
     // exchange a name of its own, so the pane can remember which ones
     // the user opened while the trail grows under them.

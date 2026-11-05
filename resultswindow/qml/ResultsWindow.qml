@@ -192,6 +192,39 @@ Window {
     // shell can tell a dictated prompt from a typed one.
     signal submitted(string text, bool dictated)
 
+    // Emitted when the user forks the conversation at one of its
+    // queries: the session is branched into a new one at that point,
+    // and the follow-ups continue the fork. The shell routes it to the
+    // agent bridge, which asks the daemon to do the branching.
+    //
+    // The argument counts the user's queries: 1 is the first thing the
+    // user asked in the session, 2 the next one.
+    signal forkRequested(int exchange)
+
+    // A word about what just happened to the conversation - a fork, for
+    // instance. Shown above the input bar for a few seconds and then
+    // gone again; the shell fills it in.
+    property string notice: ""
+
+    // How long the notice stays: long enough to be read, short enough
+    // not to become furniture.
+    property int noticeDuration: 5000
+
+    // Takes the notice away again.
+    Timer {
+        id: noticeTimer
+
+        interval: resultsWindow.noticeDuration
+        repeat: false
+        onTriggered: resultsWindow.notice = ""
+    }
+
+    // Puts a notice on screen.
+    function showNotice(text) {
+        resultsWindow.notice = text;
+        noticeTimer.restart();
+    }
+
     // Whether an agent run is live right now: the send button is a stop
     // button while it is. Bound by the shell to the agent bridge, which
     // tracks the run from RunStarted to RunFinished — runs begun anywhere
@@ -795,11 +828,29 @@ Window {
                             required property bool running
                             required property var steps
 
+                            // The exchange's number: the user's queries
+                            // are counted, so the first thing they asked
+                            // in the session is 1. It is what the fork is
+                            // taken at.
+                            required property int exchangeNumber
+
+                            // Whether the pointer is on the exchange: the
+                            // fork button appears then, and only then.
+                            readonly property bool hovered: exchangeHover.hovered
+
                             // Which steps of the trail are open, keyed by
                             // the step's own id: the trail grows while
                             // the run goes on, and the steps that were
                             // opened stay open.
                             property var openSteps: ({})
+
+                            // The pointer on the exchange. A passive
+                            // handler: it watches, it does not swallow
+                            // anything the prompt's own text does with
+                            // the mouse.
+                            HoverHandler {
+                                id: exchangeHover
+                            }
 
                             // ---- The answer's math, rendered -------------
                             // While the run streams, the answer shows as
@@ -1109,20 +1160,71 @@ Window {
                                     }
                                 }
 
-                                // The sender the tail points at.
-                                Kirigami.SelectableLabel {
-                                    objectName: "senderLabel"
+                                // The sender the tail points at, and the
+                                // fork button beside it.
+                                RowLayout {
+                                    id: promptMeta
 
                                     Layout.alignment: Qt.AlignRight
                                     Layout.topMargin: 2
-                                    visible: exchange.sender.length > 0
+                                    spacing: Kirigami.Units.smallSpacing
 
-                                    text: exchange.sender
-                                    textFormat: TextEdit.PlainText
-                                    font.pixelSize: Math.max(
-                                        9, Math.round(
-                                            Qt.application.font.pixelSize * 0.8))
-                                    color: PhoenixTheme.secondaryTextColor
+                                    Kirigami.SelectableLabel {
+                                        objectName: "senderLabel"
+
+                                        visible: exchange.sender.length > 0
+
+                                        text: exchange.sender
+                                        textFormat: TextEdit.PlainText
+                                        font.pixelSize: Math.max(
+                                            9, Math.round(
+                                                Qt.application.font.pixelSize * 0.8))
+                                        color: PhoenixTheme.secondaryTextColor
+                                    }
+
+                                    // The fork: the conversation on screen,
+                                    // branched into a new session at this
+                                    // very query.
+                                    //
+                                    // The fork is the other way round: the
+                                    // session it was taken from keeps what
+                                    // came after, and the follow-ups typed
+                                    // after the fork continue the fork — a
+                                    // second line of thought, with the
+                                    // first one left alone.
+                                    //
+                                    // It stands quietly until the pointer
+                                    // comes near it, and says what it does
+                                    // in the accent colour then. While a
+                                    // run is live it is disabled: a
+                                    // conversation that is still being
+                                    // written cannot be forked at a query
+                                    // that has not been answered yet.
+                                    PC3.ToolButton {
+                                        id: forkButton
+                                        objectName: "forkButton"
+
+                                        visible: exchange.hovered
+                                        enabled: !resultsWindow.runActive
+                                            && exchange.exchangeNumber > 0
+
+                                        Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                                        Layout.preferredHeight: Kirigami.Units.iconSizes.small
+
+                                        icon.source: LucideIcons.url("git-branch",
+                                            hovered ? PhoenixTheme.linkColor
+                                                    : PhoenixTheme.secondaryTextColor)
+                                        icon.width: Kirigami.Units.iconSizes.small
+                                        icon.height: Kirigami.Units.iconSizes.small
+
+                                        onClicked: resultsWindow.forkRequested(exchange.exchangeNumber)
+
+                                        PC3.ToolTip {
+                                            text: resultsWindow.runActive
+                                                ? i18n("The conversation cannot be forked while the agent is working")
+                                                : i18n("Fork the conversation from here")
+                                        }
+                                    }
                                 }
                             }
 
@@ -1852,6 +1954,23 @@ Window {
                                 }
                             }
                         }
+                    }
+
+                    // What just happened to the conversation: a fork
+                    // taken here, the pane following the new session
+                    // from now on. The notice says so, and goes away
+                    // again by itself.
+                    PC3.Label {
+                        id: noticeLabel
+                        objectName: "noticeLabel"
+
+                        Layout.fillWidth: true
+                        visible: resultsWindow.notice.length > 0
+                        text: resultsWindow.notice
+                        elide: Text.ElideRight
+                        color: PhoenixTheme.secondaryTextColor
+                        font.pixelSize: Math.max(
+                            9, Math.round(Qt.application.font.pixelSize * 0.8))
                     }
 
                     // ---- The prompt field -----------------------------------

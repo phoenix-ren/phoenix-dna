@@ -32,6 +32,7 @@ ICONS = {
     "circle-stop": "ISC",
     "eye": "ISC",
     "eye-off": "ISC",
+    "git-branch": "ISC",
     "keyboard": "ISC",
     "megaphone": "ISC",
     "mic-audio-lines": "ISC",

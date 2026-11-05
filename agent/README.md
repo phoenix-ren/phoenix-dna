@@ -174,6 +174,28 @@ question is answered, times out or its run ends. Answering routes through
 shows in the run's trail. The REPL prints the same question with
 numbered options and answers by number, label or free words.
 
+## Sessions and forks
+
+Every conversation is a **session**: a row in the user's own SQLite
+history (`<data_dir>/users/<user>/sessions.db`), holding the queries and
+the answers, the tool calls in between (for a faithful replay into the
+model) and the audit trail of the runs. The session search lists them;
+the results window continues one.
+
+A session can be **forked** at one of the user's queries: `ForkSession`
+copies the conversation up to that query — the query itself and the
+answer that followed it — into a *new* session, and the session it was
+forked from keeps everything it had, including what came after. The two
+grow apart from there.
+
+The fork is a session of its own: it has its own id, its own name (the
+name of the session it came from, marked as a fork, until the model names
+it after what was said in it) and its own place in the history. The
+follow-ups typed after the fork continue the fork, not the conversation it
+came from. A session knows the one it was forked from (`parent_id`) and
+the query it was forked at (`fork_index`), so the branches can be shown
+as the branches they are.
+
 ## D-Bus API
 
 Bus name `dna.phoenix.Agent`, object path `/dna/phoenix/Agent`,
@@ -191,6 +213,7 @@ interface `dna.phoenix.Agent`.
 | `SearchSessions` | `ss → s` | `(user, query)` → JSON array of the user's sessions whose summary name matches the query. The match is fuzzy — every character of the query must occur in the name, in order — so typing narrows the list down; an empty query lists every session, newest first. Each entry carries `id`, `mode` (the session's mode — `user` today, `root` for the sessions of the older daemon), `title`, `summary` (the name the session is listed under: the title, or the first query when the session was never named), `preview`, `createdAt`, `updatedAt` and `messageCount`. |
 | `GetSessionTranscript` | `ss → s` | `(user, session_id)` → JSON array of the session's messages: `role` (`user` or `assistant`), `content` and `ts`. |
 | `RenameSession` | `sss → s` | `(user, session_id, title)` → the session's entry as the search lists it now (the same shape a search answer carries), or the empty string when there was no such session. The name the user gives stands: the model's own name — which is rewritten after every completed run — never overwrites it. An empty title takes the user's name away, and the session is listed under its first query again. |
+| `ForkSession` | `ssi → s` | `(user, session_id, exchange_index)` → the fork's entry as the search lists it (the same shape a search answer carries), or the empty string when there was no such session or no such query. `exchange_index` counts the user's queries: 1 is the first thing the user asked in the session, 2 the next one. The fork holds the conversation up to that query — the query itself and the answer that followed it — and what came after stays in the session it was forked from. The fork is a session of its own: it has its own id and name, and the follow-ups typed after it continue it. Its entry carries `parentId` (the session it was forked from) and `forkIndex` (the query it was forked at). |
 | `DeleteSession` | `ss → b` | `(user, session_id)` → whether there was a session to delete. The session's messages and the audit trail of its runs go with it: what is left behind would be an orphan nobody ever sees again. A session of another user is not touched. |
 | `SpeakText` | `s → ` | Speak an arbitrary string on demand (the results pane's "Read aloud"). The text is normalized and segmented exactly like an answer — math is spoken as mathematics, code fences are skipped. A no-op when speech is not enabled. |
 | `StopSpeaking` | ` → ` | Interrupt playback immediately and drop what is queued. |
@@ -432,7 +455,9 @@ same connection).
 
 ## Roadmap (not built yet)
 
-- session listing/branching methods for the pane (data model already supports it)
+- a session tree in the pane: the forks are recorded (a session knows the
+  one it was forked from, and the query it was forked at), so the branches
+  can be shown as the branches they are
 - compaction for long conversations
 - MiniMax speech (STT/TTS) — belongs to the plasmoid, not this daemon
 - "claw-like" desktop automation duties (window/clipboard/notification tools)

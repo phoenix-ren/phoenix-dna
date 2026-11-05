@@ -205,6 +205,15 @@ public:
      * heading instead. */
     Q_PROPERTY(QString sessionTitle READ sessionTitle NOTIFY sessionTitleChanged)
 
+    /*! \brief The id of the conversation the widget is following.
+     *
+     * The session the next follow-up continues: the session of the
+     * latest run the widget started, the session the user opened from
+     * the session search, or the fork the user took — a fork is a
+     * session of its own, and the follow-ups continue it. Empty while
+     * no conversation is being followed. */
+    Q_PROPERTY(QString sessionId READ sessionId NOTIFY sessionIdChanged)
+
     /*! \brief The sessions the session search lists.
      *
      * One entry per session of the searched user: its id, mode, title,
@@ -379,6 +388,29 @@ public:
                                           const QString &sessionId,
                                           const QString &title);
 
+    /*! \brief Asks the daemon to fork a session, at one of its queries.
+     *
+     * ForkSession(user, session_id, exchange_index) branches the
+     * session into a new one: the fork holds the conversation up to
+     * that query (the query itself and the answer that followed it),
+     * and what came after stays in the session it was forked from.
+     *
+     * \a exchangeIndex counts the user's queries: 1 is the first thing
+     * the user asked in the session, 2 the next one. The queries are
+     * counted as the session holds them, so the fork lands on the
+     * exchange the user pointed at even when the agent did a dozen
+     * things in between.
+     *
+     * The fork is a session of its own, and the widget follows it from
+     * then on: the follow-ups typed in the pane continue the fork, and
+     * the pane's history keeps the exchanges up to the fork point (and
+     * drops the rest, which stayed where it was). The answer arrives
+     * asynchronously; a fork that did not happen (no such session, no
+     * such query) leaves the conversation where it was. */
+    Q_INVOKABLE void requestSessionFork(const QString &user,
+                                        const QString &sessionId,
+                                        int exchangeIndex);
+
     /*! \brief Opens a stored session in the results pane.
      *
      * The session's messages are fetched from the daemon and loaded into
@@ -484,6 +516,20 @@ Q_SIGNALS:
 
     /*! \brief Emitted when the session title changed (or was dropped). */
     void sessionTitleChanged();
+
+    /*! \brief Emitted when the conversation the widget follows changed
+     *  session: a new session began, a stored one was opened, or a
+     *  fork was taken. */
+    void sessionIdChanged();
+
+    /*! \brief Emitted when a fork was taken: the conversation on screen
+     *  was branched into a new session.
+     *
+     *  \a sessionId is the fork's id - the session the follow-ups
+     *  continue from now on. The pane's history keeps the exchanges up
+     *  to the fork point; what came after stayed in the session the
+     *  fork was taken from. */
+    void sessionForked(const QString &sessionId);
 
     /*! \brief Emitted when the daemon started or stopped reading aloud. */
     void agentSpeakingChanged();
@@ -623,6 +669,13 @@ private:
     void setAgentMessage(const QString &text);
     void setPendingForm(const QVariantMap &form);
     void setRunActive(bool active);
+
+    /*! \brief Follows \a sessionId from now on.
+     *
+     * The session the next follow-up continues. The change is announced,
+     * so the views that name the session (the fork button, which needs
+     * to know what it forks) follow it. */
+    void setSessionId(const QString &sessionId);
 
     static QString fencedBlock(const QString &text, const QString &language);
     static QString elideOutput(const QString &text, int limit);
