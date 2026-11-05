@@ -157,7 +157,7 @@ Build-Depends: debhelper-compat (= 13), cmake, extra-cmake-modules,
  libkf6coreaddons-dev, libkf6config-dev, libkf6configwidgets-dev,
  libkf6i18n-dev, libkf6globalaccel-dev, libkf6package-dev,
  libkf6windowsystem-dev, libkirigami-dev, libkf6svg-dev,
- libplasma-dev (>= 6.4), libboost-dev,
+ libplasma-dev (>= 6.4), libboost-dev, libboost-process-dev,
  libxkbcommon-dev, libxkbcommon-x11-dev, python3,
  appstream, desktop-file-utils
 
