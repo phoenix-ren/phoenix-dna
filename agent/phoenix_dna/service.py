@@ -353,6 +353,21 @@ if dbus is not None:
                 )
             return json.dumps(messages, ensure_ascii=False)
 
+        @dbus.service.method(INTERFACE, in_signature="ss", out_signature="b")
+        def DeleteSession(self, user, session_id):
+            """Delete a session from the user's history.
+
+            The session's queries and responses go with it, and so does
+            the audit trail of the runs it holds. Returns whether there
+            was a session to delete: False means it was already gone.
+            """
+            try:
+                return bool(self._daemon.delete_session(str(user), str(session_id)))
+            except ValueError as exc:
+                raise dbus.exceptions.DBusException(
+                    f"{_ERROR}.InvalidArgument", str(exc)
+                )
+
         @dbus.service.method(INTERFACE, in_signature="", out_signature="(ssu)")
         def GetState(self):
             state = self._daemon.state()

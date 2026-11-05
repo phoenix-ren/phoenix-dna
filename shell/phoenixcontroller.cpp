@@ -476,6 +476,14 @@ void PhoenixController::openSession(const QString &sessionId)
     m_agent->requestSessionTranscript(searchUser(), sessionId);
 }
 
+void PhoenixController::deleteSession(const QString &sessionId)
+{
+    // The daemon owns the history, so it does the deleting: it removes
+    // the session and everything that belongs to it, and the search
+    // overlay's list follows its answer.
+    m_agent->requestSessionDelete(searchUser(), sessionId);
+}
+
 void PhoenixController::openSessionResults(const QString &sessionId,
                                            const QString &mode,
                                            const QString &title)

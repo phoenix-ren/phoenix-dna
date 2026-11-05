@@ -262,6 +262,14 @@ public:
     /*! \brief Shows the queries and responses of one session. */
     Q_INVOKABLE void openSession(const QString &sessionId);
 
+    /*! \brief Deletes a session from the user's history.
+     *
+     * The session's queries and responses go with it, and so does the
+     * audit trail of its runs: what is left behind would be an orphan
+     * nobody ever sees again. The search overlay asks for it when the
+     * user throws a session away. */
+    Q_INVOKABLE void deleteSession(const QString &sessionId);
+
     /*! \brief Opens a stored session in the results pane.
      *
      * The session's history is loaded into the conversation model and

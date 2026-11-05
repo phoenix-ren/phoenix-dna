@@ -398,6 +398,37 @@ class SessionStore:
             for row in rows
         ]
 
+    # -- deleting a session ---------------------------------------------------
+
+    def delete_session(self, user: str, session_id: str) -> bool:
+        """Delete a session and everything that belongs to it.
+
+        The session's messages and its run audit trail go with it: what
+        is left behind would be an orphan nobody ever sees again. A
+        session of another user is not touched - the session id names a
+        row of this user's database, and no other.
+
+        Returns whether there was a session to delete.
+        """
+        session_id = (session_id or "").strip()
+        if not session_id:
+            return False
+        with self._lock:
+            db = self._db(user)
+            row = db.execute(
+                "SELECT id FROM sessions WHERE id = ? AND user = ?",
+                (session_id, user),
+            ).fetchone()
+            if row is None:
+                # Nothing there: the session was already deleted, or it
+                # belongs to somebody else.
+                return False
+            db.execute("DELETE FROM messages WHERE session_id = ?", (session_id,))
+            db.execute("DELETE FROM runs WHERE session_id = ?", (session_id,))
+            db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+        log.info("deleted session %s of user %s", session_id, user)
+        return True
+
     # -- legacy JSONL import --------------------------------------------------
 
     def _migrate_legacy(self) -> None:
@@ -539,3 +570,19 @@ class SessionManager:
 
     def title(self, conversation: Conversation) -> str:
         return self.store.title(conversation.user, conversation.id)
+
+    def delete(self, user: str, session_id: str) -> bool:
+        """Delete a session from the store and drop it from the cache.
+
+        The cache would otherwise hand the deleted conversation back to
+        whoever names its id again - a session that is no longer there
+        would go on living in the daemon's memory. Returns whether
+        there was a session to delete.
+        """
+        deleted = self.store.delete_session(user, session_id)
+        # The cache is keyed by (user, session id), but a session is
+        # cached under the user that opened it, which is not always the
+        # one that owns it: every entry naming this session goes.
+        for key in [key for key in self._cache if key[1] == session_id]:
+            del self._cache[key]
+        return deleted
