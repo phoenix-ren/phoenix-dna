@@ -237,6 +237,19 @@ public:
      * progress) and submits all answers together. */
     Q_PROPERTY(QVariantMap pendingForm READ pendingForm NOTIFY pendingFormChanged)
 
+    /*! \brief What the session on screen spent of the model's context.
+     *
+     * One map: the session's title and timestamps, how many queries and
+     * answers it holds, the tokens its runs spent (the fresh input, the
+     * output, the cached part of the prompt and the reasoning), the
+     * model in force with the size of its context window, the share of
+     * that window the session has used, and what the tokens cost.
+     *
+     * The daemon owns the numbers (it keeps the audit trail every run
+     * writes its tokens into); refreshSessionContext() asks for them.
+     * The map is empty while no session is being followed. */
+    Q_PROPERTY(QVariantMap sessionContext READ sessionContext NOTIFY sessionContextChanged)
+
     bool isAvailable() const { return m_available; }
     QString partialTranscript() const { return m_partialTranscript; }
     QString finalTranscript() const { return m_finalTranscript; }
@@ -299,6 +312,9 @@ public:
     /*! \brief The form the running prompt is blocked on ({ } when none
      *  is). */
     QVariantMap pendingForm() const { return m_pendingForm; }
+
+    /*! \brief What the session on screen spent of the model's context. */
+    QVariantMap sessionContext() const { return m_sessionContext; }
 
     QString proposedAction() const { return m_proposedAction; }
 
@@ -439,6 +455,22 @@ public:
      */
     Q_INVOKABLE bool submitAnswers(const QVariantList &answers);
 
+    /*! \brief Asks the daemon what the session on screen spent of the
+     *  model's context window.
+     *
+     * GetSessionContext(user, session_id) answers with the session's
+     * own numbers — its messages, the tokens its runs spent — and with
+     * the model in force: the size of its context window, the share of
+     * it the session has used, and what the tokens cost. The answer
+     * arrives asynchronously, and one that belongs to a superseded
+     * request is dropped.
+     *
+     * The bridge asks on its own whenever the session changes (a run
+     * has ended, a stored session has been opened); this is the way to
+     * ask again on purpose — the view does it when it is opened, so
+     * the numbers it shows are the ones of the moment. */
+    Q_INVOKABLE void refreshSessionContext();
+
 Q_SIGNALS:
     void availabilityChanged();
     void partialTranscriptChanged();
@@ -498,6 +530,11 @@ Q_SIGNALS:
     /*! \brief Emitted when a run began or ended: the results pane's send
      *  button is a stop button while a run is live. */
     void runActiveChanged();
+
+    /*! \brief Emitted when the context of the session on screen
+     *  changed: its tokens, the model in force, the share of the
+     *  model's context window the session has used. */
+    void sessionContextChanged();
 
     /*! \brief Emitted when the number of prompts waiting in the daemon's
      *  queue changed. */
@@ -694,6 +731,10 @@ private:
     // The session id reported by RunStarted for the latest run this widget
     // started: the conversation that following sendPrompt() calls continue.
     QString m_sessionId;
+    // The user whose history that session belongs to: the local one,
+    // except for the sessions of the older daemon, which keep their own
+    // (the daemon files a session of the "root" mode under that user).
+    QString m_sessionUser;
     // The daemon-generated title of that session, shown in the pane's
     // header; emptied when the session changes until the new session's
     // first title arrives.
@@ -736,4 +777,9 @@ private:
     quint64 m_transcriptRequest = 0;
     // The same, for the session the results pane is opened on.
     quint64 m_storedRequest = 0;
+    // What the session on screen spent of the model's context window,
+    // and the counter of the request that fills it: an answer that
+    // belongs to an older request is dropped.
+    QVariantMap m_sessionContext;
+    quint64 m_contextRequest = 0;
 };

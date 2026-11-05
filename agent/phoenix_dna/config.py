@@ -60,12 +60,17 @@ LLM_PROVIDERS: dict[str, dict] = {
         # another provider's family is stale once the provider
         # changes (see load_config).
         "model_families": ("minimax",),
+        # How many tokens the model holds at once: the context window
+        # the context view measures the conversation against. Zero means
+        # "not known" - the user names it (context_window).
+        "context_window": 1_000_000,
     },
     "openai": {
         "base_url": "https://api.openai.com/v1",
         "model": "gpt-4o-mini",
         "key_field": "openai_api_key",
         "model_families": ("gpt-", "o1", "o3", "o4", "chatgpt-"),
+        "context_window": 128_000,
     },
     "custom": {
         "base_url": "",
@@ -74,6 +79,9 @@ LLM_PROVIDERS: dict[str, dict] = {
         # "custom" owns no family: it is the user's own server, so
         # whatever model they name is theirs.
         "model_families": (),
+        # A server of the user's own: only they know how much its
+        # model holds at once.
+        "context_window": 0,
     },
     "groq": {
         "base_url": "https://api.groq.com/openai/v1",
@@ -82,6 +90,7 @@ LLM_PROVIDERS: dict[str, dict] = {
         # Groq serves Llama and the open-weight models, under their own
         # names; "gpt-oss" is the one it hosts under an OpenAI name.
         "model_families": ("llama-", "gpt-oss", "mixtral-", "gemma-"),
+        "context_window": 128_000,
     },
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
@@ -91,6 +100,8 @@ LLM_PROVIDERS: dict[str, dict] = {
         # different trade-off.
         "model": "anthropic/claude-sonnet-4.5",
         "key_field": "openrouter_api_key",
+        # Every model carries its own window, so none is named here.
+        "context_window": 0,
         # OpenRouter names every model "vendor/name", so the families
         # are the vendors it carries: a model of one of these belongs
         # to OpenRouter and follows a provider switch.
@@ -272,6 +283,17 @@ _ENDPOINT_KEY_FIELDS = (
     "tts_model",
 )
 
+#: The fields that describe the model itself rather than where it is
+#: reached: how much it holds at once (its context window) and what a
+#: million of its tokens cost. They are read from keys.json, agent.toml
+#: and the environment; the settings window writes the context window
+#: of its own accord.
+_MODEL_INFO_KEY_FIELDS = (
+    "context_window",
+    "price_input",
+    "price_output",
+)
+
 
 @dataclass(frozen=True)
 class Config:
@@ -286,6 +308,20 @@ class Config:
     model: str = DEFAULT_MODEL
     request_timeout: float = 120.0
     max_turns: int = 24
+
+    #: How many tokens the model holds at once: its context window.
+    #: The context view (the ring in the results window's corner) reads
+    #: it to say how much of the window the conversation has used.
+    #: Zero means "not known" - the provider's own default fills it in
+    #: where there is one, and the user names it otherwise.
+    context_window: int = 0
+
+    #: What a million tokens cost, in US dollars: the model's price
+    #: for the input it reads and the output it writes. Zero means "not
+    #: priced" - the context view then says so instead of quoting a
+    #: price of nothing.
+    price_input: float = 0.0
+    price_output: float = 0.0
 
     # Whether the model may be sent image parts. None means "decide from
     # the model name" (see attachments.vision_enabled): a text-only model
@@ -545,7 +581,7 @@ def load_config(
     # the environment.
     from_keys = {
         field: keys[field]
-        for field in _TTS_KEY_FIELDS + _ENDPOINT_KEY_FIELDS
+        for field in _TTS_KEY_FIELDS + _ENDPOINT_KEY_FIELDS + _MODEL_INFO_KEY_FIELDS
         if keys.get(field)
     }
     config = _apply_overrides(config, from_keys)
@@ -601,6 +637,12 @@ def load_config(
         env_overrides["llm_base_url"] = env["PHOENIX_BASE_URL"]
     if env.get("PHOENIX_LLM_API_KEY"):
         env_overrides["llm_api_key"] = env["PHOENIX_LLM_API_KEY"]
+    if env.get("PHOENIX_CONTEXT_WINDOW"):
+        env_overrides["context_window"] = env["PHOENIX_CONTEXT_WINDOW"]
+    if env.get("PHOENIX_PRICE_INPUT"):
+        env_overrides["price_input"] = env["PHOENIX_PRICE_INPUT"]
+    if env.get("PHOENIX_PRICE_OUTPUT"):
+        env_overrides["price_output"] = env["PHOENIX_PRICE_OUTPUT"]
     for name in _TTS_ENV_FIELDS:
         env_name = "PHOENIX_" + name.upper()
         if env.get(env_name):
@@ -692,6 +734,22 @@ def load_config(
             provider = LLM_PROVIDERS["custom"]
             config = replace(config, llm_provider="custom")
 
+    # The context window: how much the model holds at once. The
+    # provider knows the size of the models it serves, so it supplies
+    # the default - but only when the user named none, for a model of
+    # their own the number is theirs to give.
+    #
+    # This runs late, after the provider in force is the final one: a
+    # server of the user's own must not inherit the window of the
+    # service the endpoint used to point at.
+    named_context_window = (
+        env.get("PHOENIX_CONTEXT_WINDOW", "")
+        or str(toml_table.get("context_window", ""))
+        or str(keys.get("context_window", ""))
+    )
+    if not named_context_window and provider.get("context_window"):
+        config = replace(config, context_window=int(provider["context_window"]))
+
     # The key: a dedicated one (llm_api_key in keys.json, or
     # PHOENIX_LLM_API_KEY in the environment) beats the provider's own.
     # PHOENIX_LLM_API_KEY was already applied above as an environment
@@ -768,6 +826,8 @@ def describe(config: Config) -> str:
         f"provider        : {config.provider}",
         f"llm provider    : {config.llm_provider}",
         f"model           : {config.model}",
+        f"context window  : {config.context_window or 'unknown'}",
+        f"price per 1M    : {config.price_input:g} in / {config.price_output:g} out",
         f"vision          : {config.vision if config.vision is not None else 'auto'}",
         f"llm_base_url    : {config.llm_base_url}",
         f"llm api key     : {mask(config.llm_api_key)}",

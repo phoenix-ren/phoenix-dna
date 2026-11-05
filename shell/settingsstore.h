@@ -90,6 +90,16 @@ class SettingsStore : public QObject
      *  Empty when the provider's own default is in force. */
     Q_PROPERTY(QString llmModel READ llmModel NOTIFY llmEndpointChanged)
 
+    /*! \brief How many tokens the model holds at once: its context
+     *  window.
+     *
+     *  The context view (the ring in the results window's corner)
+     *  measures the conversation against it. Zero when nothing is
+     *  named — the provider's own default is in force then, and a
+     *  server of the user's own has none until the user says how
+     *  much its model holds. */
+    Q_PROPERTY(int llmContextWindow READ llmContextWindow NOTIFY llmContextWindowChanged)
+
     /*! \brief The endpoint the dictation is transcribed at. */
     Q_PROPERTY(QString sttEndpoint READ sttEndpoint NOTIFY sttEndpointChanged)
 
@@ -210,6 +220,7 @@ public:
     QString llmProvider() const { return m_llmProvider; }
     QString llmBaseUrl() const { return m_llmBaseUrl; }
     QString llmModel() const { return m_llmModel; }
+    int llmContextWindow() const { return m_llmContextWindow; }
     QString sttEndpoint() const { return m_sttEndpoint; }
     QString sttModel() const { return m_sttModel; }
     QString ttsEndpoint() const { return m_ttsEndpoint; }
@@ -281,6 +292,13 @@ public:
      *  service brings its own model and key with it. */
     Q_INVOKABLE bool saveLlmEndpoint(const QString &endpoint, const QString &model);
 
+    /*! \brief Stores how many tokens the model holds at once.
+     *
+     *  Zero removes the entry: the provider's own default is in force
+     *  then. The daemon reads it when it starts, so the change needs a
+     *  restart of the daemon to take effect. */
+    Q_INVOKABLE bool saveLlmContextWindow(int tokens);
+
     /*! \brief Stores the endpoint the dictation is transcribed at. */
     Q_INVOKABLE bool saveSttEndpoint(const QString &endpoint, const QString &model);
 
@@ -342,6 +360,9 @@ Q_SIGNALS:
     void llmApiKeyChanged();
     void llmProviderChanged();
     void llmEndpointChanged();
+
+    /*! \brief Emitted when the model's context window changed. */
+    void llmContextWindowChanged();
     void sttEndpointChanged();
     void ttsEndpointChanged();
     void sttApiKeyChanged();
@@ -412,6 +433,7 @@ private:
     QString m_llmProvider = QStringLiteral("minimax");
     QString m_llmBaseUrl;
     QString m_llmModel;
+    int m_llmContextWindow = 0;
     QString m_sttEndpoint;
     QString m_sttModel;
     QString m_ttsEndpoint;

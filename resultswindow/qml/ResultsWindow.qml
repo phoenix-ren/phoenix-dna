@@ -8,6 +8,7 @@ import QtQuick.Layouts
 import QtCore
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
+import org.phoenixdna.context as PhoenixContext
 import org.phoenixdna.theme
 
 /*
@@ -105,6 +106,15 @@ Window {
     // running thought step. Bound by the shell to the agent bridge's
     // meter; null leaves the meters out.
     property var wireMeter: null
+
+    // What the session on screen spent of the model's context window: the
+    // map the daemon answered with (see AgentBridge::sessionContext).
+    // Bound by the shell; the ring in the corner of the window reads it.
+    property var context: null
+
+    // Emitted when the context ring is clicked: the details are wanted.
+    // The shell opens the context overlay, which has them.
+    signal contextRequested()
 
     // ---- Follow-on input, mirroring the dictation overlay ---------------
     // The transcript of a follow-on being dictated into the window, and the
@@ -532,6 +542,44 @@ Window {
             // that) made the text hug the window's edges and read cramped.
             anchors.margins: Kirigami.Units.gridUnit
             spacing: Kirigami.Units.smallSpacing
+
+            // ---- Top: the session's name and its context ring ------------
+            // The ring says how much of the model's context window this
+            // session has used; a click on it opens the context overlay,
+            // which has the numbers behind that share. The context of a
+            // session belongs to the session, so it is here and not in
+            // the panel widget: the widget is the app's presence, not
+            // any one conversation's.
+            RowLayout {
+                id: headerBar
+
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                Kirigami.Heading {
+                    Layout.fillWidth: true
+                    // KF6 6.31 has no Kirigami.Heading.Level enum; levels are plain ints.
+                    level: 6
+                    elide: Text.ElideRight
+
+                    text: resultsWindow.sessionTitle.length > 0
+                        ? resultsWindow.sessionTitle
+                        : i18n("Conversation")
+                    color: PhoenixTheme.subheadingTextColor
+                }
+
+                PhoenixContext.ContextRing {
+                    id: contextRing
+                    objectName: "contextRing"
+
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.large
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.large
+
+                    context: resultsWindow.context
+
+                    onClicked: resultsWindow.contextRequested()
+                }
+            }
 
             Flickable {
                 id: scroller

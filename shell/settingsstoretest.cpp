@@ -253,6 +253,36 @@ int main(int argc, char **argv)
               "the endpoint's host decides the provider");
     }
 
+    // The context window: how much the model holds at once. It lands in
+    // keys.json under the name the daemon's config.py reads it by, and
+    // a window of zero removes the entry again — the provider's own
+    // default is in force then.
+    writeKeys(configDir, QJsonObject{{QStringLiteral("minimax_api_key"),
+                                      QStringLiteral("sk-minimax")}});
+    {
+        SettingsStore store(nullptr, nullptr, nullptr, nullptr);
+        store.refresh();
+
+        check(store.llmContextWindow() == 0,
+              "no context window is named at the start");
+
+        check(store.saveLlmContextWindow(32000),
+              "the context window is stored");
+        check(PhoenixKeys::readKeys().value(QStringLiteral("context_window")).toString()
+                  == QStringLiteral("32000"),
+              "the context window is in keys.json under context_window");
+        check(store.llmContextWindow() == 32000,
+              "the context window is read back");
+
+        // Zero removes it: the provider's own default takes over.
+        check(store.saveLlmContextWindow(0),
+              "the context window is removed");
+        check(!PhoenixKeys::readKeys().contains(QStringLiteral("context_window")),
+              "the context window is out of keys.json again");
+        check(store.llmContextWindow() == 0,
+              "no context window is named any more");
+    }
+
     if (failures) {
         printf("\n%d check(s) failed\n", failures);
         return 1;

@@ -393,6 +393,27 @@ if dbus is not None:
                     f"{_ERROR}.InvalidArgument", str(exc)
                 )
 
+        @dbus.service.method(INTERFACE, in_signature="ss", out_signature="s")
+        def GetSessionContext(self, user, session_id):
+            """One session's context window, as the context view shows it.
+
+            Returns a JSON object: the session's title and timestamps,
+            how many queries and answers it holds, the tokens its runs
+            spent (the fresh input, the output, the cached part of the
+            prompt and the reasoning), the model in force with the size
+            of its context window, the share of that window the session
+            has used, and what the tokens cost.
+
+            An empty object means there is no such session.
+            """
+            try:
+                context = self._daemon.session_context(str(user), str(session_id))
+            except ValueError as exc:
+                raise dbus.exceptions.DBusException(
+                    f"{_ERROR}.InvalidArgument", str(exc)
+                )
+            return json.dumps(context, ensure_ascii=False)
+
         @dbus.service.method(INTERFACE, in_signature="", out_signature="(ssu)")
         def GetState(self):
             state = self._daemon.state()
