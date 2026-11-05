@@ -1,0 +1,149 @@
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# Builds the distribution packages for a tag and attaches them to the
+# matching GitHub release, in the distro containers the recipes were
+# verified on (PACKAGING.md):
+#
+#   fedora:45          -> phoenix-dna-<ver>-1.fc45.x86_64.rpm
+#   ubuntu:26.04       -> phoenix-dna_<ver>-1_amd64.deb
+#   archlinux:base     -> phoenix-dna-<ver>-1-x86_64.pkg.tar.zst (+ .SRCINFO
+#                         as a workflow artifact, for AUR updates)
+#
+# Runs on every v* tag push. workflow_dispatch with a `tag` input rebuilds an
+# older tag; the tag itself need not contain this file — the recipes are
+# checked out from it, the workflow runs from the branch it was dispatched on.
+
+name: release-packages
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build and upload (e.g. v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  fedora-rpm:
+    runs-on: ubuntu-latest
+    container: fedora:45
+    steps:
+      - name: Install git for the checkout
+        run: dnf -y install git
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - name: Install the BuildRequires from the spec
+        run: |
+          dnf -y install rpm-build dnf-plugins-core
+          dnf -y builddep packaging/fedora/phoenix-dna.spec
+      - name: Build the source archive and the RPM
+        run: |
+          packaging/make-source-archive.sh
+          rpmbuild -ba \
+              --define "_topdir $PWD/rpmbuild" \
+              --define "_sourcedir $PWD/dist" \
+              packaging/fedora/phoenix-dna.spec
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fedora-rpm
+          path: rpmbuild/RPMS/**/*.rpm
+          if-no-files-found: error
+
+  ubuntu-deb:
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - name: Install git for the checkout
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - name: Install the Build-Depends from debian/control
+        run: |
+          apt-get install -y --no-install-recommends \
+              build-essential devscripts equivs
+          mk-build-deps -ir debian/control
+      - name: Build the package
+        run: |
+          packaging/make-source-archive.sh
+          version=$(sed -n \
+              's/^__version__[[:space:]]*=[[:space:]]*"\([^"]*\)".*$/\1/p' \
+              agent/phoenix_dna/__init__.py)
+          mkdir -p pkg
+          tar -xzf "dist/phoenix-dna-$version.tar.gz" -C pkg
+          # 3.0 (quilt) layout: the orig tarball sits next to the source dir
+          cp "dist/phoenix-dna-$version.tar.gz" "pkg/phoenix-dna_$version.orig.tar.gz"
+          cd "pkg/phoenix-dna-$version"
+          dpkg-buildpackage -us -uc -b
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-deb
+          path: pkg/*.deb
+          if-no-files-found: error
+
+  arch-pkg:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install git for the checkout
+        run: pacman -Syu --noconfirm git
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - name: Install the dependencies from the PKGBUILD
+        run: |
+          cd packaging/arch
+          source ./PKGBUILD
+          pacman -Syu --noconfirm --needed --asdeps \
+              "${depends[@]}" "${makedepends[@]}"
+      - name: Build the package as an unprivileged user
+        run: |
+          packaging/make-source-archive.sh
+          useradd -m builder
+          chown -R builder:builder "$PWD" /home/builder
+          cd packaging/arch
+          # makepkg refuses to run as root; SRCDEST keeps it on the archive
+          # built from this tag instead of downloading the release asset
+          runuser -u builder -- env \
+              SRCDEST="$GITHUB_WORKSPACE/dist" \
+              makepkg -f -C --noconfirm
+          runuser -u builder -- makepkg --printsrcinfo > .SRCINFO
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-pkg
+          path: |
+            packaging/arch/*.pkg.tar.zst
+            packaging/arch/.SRCINFO
+          if-no-files-found: error
+
+  publish:
+    needs: [fedora-rpm, ubuntu-deb, arch-pkg]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Attach the packages to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag='${{ inputs.tag || github.ref_name }}'
+          gh release upload "$tag" \
+              artifacts/*.rpm \
+              artifacts/*.deb \
+              artifacts/*.pkg.tar.zst \
+              --clobber
+          gh release view "$tag" --json assets --jq '.assets[].name'
