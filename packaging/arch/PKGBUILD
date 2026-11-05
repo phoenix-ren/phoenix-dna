@@ -15,7 +15,7 @@ pkgver=0.1.0
 pkgrel=1
 pkgdesc='Voice-first AI agent for the KDE Plasma panel'
 arch=('x86_64' 'aarch64')
-url='https://gitlab.com/junzi/phoenix-dna'
+url='https://github.com/phoenix-ren/phoenix-dna'
 license=('BSD-2-Clause' 'ISC' 'MIT' 'FSFAP')
 depends=(
     'libplasma' 'plasma-workspace' 'kwin'
@@ -35,7 +35,7 @@ optdepends=(
     'sudo: run commands as root on demand'
     'texlive-xetex: render LaTeX formulas to PDF'
 )
-source=("$pkgname-$pkgver.tar.gz::$url/-/releases/v$pkgver/downloads/$pkgname-$pkgver.tar.gz")
+source=("$pkgname-$pkgver.tar.gz::$url/releases/download/v$pkgver/$pkgname-$pkgver.tar.gz")
 sha256sums=('SKIP')
 
 build() {

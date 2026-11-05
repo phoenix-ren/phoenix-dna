@@ -1,7 +1,7 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: Phoenix DNA
 Upstream-Contact: Phoenix Ren <ren@phoenixren.space>
-Source: https://gitlab.com/junzi/phoenix-dna
+Source: https://github.com/phoenix-ren/phoenix-dna
 
 Files: *
 Copyright: 2026 Phoenix DNA contributors

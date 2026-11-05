@@ -27,7 +27,7 @@ Build-Depends: debhelper-compat (= 13),
                desktop-file-utils
 Standards-Version: 4.7.0
 Rules-Requires-Root: no
-Homepage: https://gitlab.com/junzi/phoenix-dna
+Homepage: https://github.com/phoenix-ren/phoenix-dna
 
 Package: phoenix-dna
 Architecture: any

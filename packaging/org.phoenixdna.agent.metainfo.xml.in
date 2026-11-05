@@ -22,7 +22,7 @@ SPDX-License-Identifier: FSFAP
     </p>
   </description>
   <extends>org.kde.plasmashell</extends>
-  <url type="homepage">https://gitlab.com/junzi/phoenix-dna</url>
+  <url type="homepage">https://github.com/phoenix-ren/phoenix-dna</url>
   <developer id="org.phoenixdna">
     <name>Phoenix DNA contributors</name>
   </developer>

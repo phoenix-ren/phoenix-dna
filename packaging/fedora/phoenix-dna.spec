@@ -17,8 +17,8 @@ Version:        0.1.0
 Release:        1%{?dist}
 Summary:        Voice-first AI agent for the KDE Plasma panel
 License:        BSD-2-Clause AND FSFAP AND ISC AND MIT
-URL:            https://gitlab.com/junzi/phoenix-dna
-Source0:        %{url}/-/releases/v%{version}/downloads/%{name}-%{version}.tar.gz
+URL:            https://github.com/phoenix-ren/phoenix-dna
+Source0:        %{url}/releases/download/v%{version}/%{name}-%{version}.tar.gz
 
 BuildRequires:  cmake
 BuildRequires:  extra-cmake-modules
