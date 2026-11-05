@@ -36,6 +36,7 @@ ICONS = {
     "megaphone": "ISC",
     "mic-audio-lines": "ISC",
     "paperclip": "ISC",
+    "pencil": "ISC",
     "send": "ISC",
     "settings": "ISC",
     # MIT -- Feather's, carried over by Lucide.

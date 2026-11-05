@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     user TEXT NOT NULL,
     mode TEXT NOT NULL,
     title TEXT NOT NULL DEFAULT '',
+    title_manual INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
@@ -103,6 +104,35 @@ CREATE TABLE IF NOT EXISTS meta (
     value TEXT NOT NULL
 );
 """
+
+#: The columns the tables gained after they were first written, and how
+#: a database that predates one of them gets it.
+#:
+#: The tables are created with "IF NOT EXISTS", so a database that
+#: already has them keeps the shape it has - which means a column added
+#: later has to be added to the old databases too.
+_MIGRATIONS = (
+    ("sessions", "title_manual", "INTEGER NOT NULL DEFAULT 0"),
+)
+
+#: The query that reads a user's sessions with everything the search
+#: lists them by: their id, mode, title, the summary name they are
+#: listed under (computed from the title and the first query), the
+#: timestamps and how many messages they hold.
+#:
+#: The summary name itself is computed in Python, not in SQL, so the
+#: same rule names a session in the list and in the answer to a
+#: rename.
+_SESSION_SUMMARY_SQL = (
+    "SELECT s.id AS id, s.mode AS mode, s.title AS title, "
+    "       s.created_at AS created_at, s.updated_at AS updated_at, "
+    "       (SELECT m.content FROM messages m "
+    "         WHERE m.session_id = s.id AND m.role = 'user' "
+    "         ORDER BY m.seq LIMIT 1) AS first_query, "
+    "       (SELECT COUNT(*) FROM messages m "
+    "         WHERE m.session_id = s.id) AS message_count "
+    "FROM sessions s WHERE s.user = ?"
+)
 
 
 @dataclass
@@ -250,9 +280,26 @@ class SessionStore:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA journal_mode=WAL")
         connection.executescript(_SCHEMA)
+        self._migrate(connection)
         connection.commit()
         self._dbs[user] = connection
         return connection
+
+    @staticmethod
+    def _migrate(db: sqlite3.Connection) -> None:
+        """Gives a database written by an older daemon the columns it lacks.
+
+        The tables are created with "IF NOT EXISTS", so a database that
+        already has them keeps its own shape - which means a column
+        added later has to be added to the old databases as well. The
+        names in _MIGRATIONS are the daemon's own constants, never
+        anything the user can supply.
+        """
+        for table, column, definition in _MIGRATIONS:
+            columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table})")}
+            if column not in columns:
+                db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                log.info("added the column %s.%s to the session store", table, column)
 
     @staticmethod
     def _ensure_session(
@@ -309,18 +356,24 @@ class SessionStore:
 
     # -- titles ---------------------------------------------------------------
 
-    def set_title(self, user: str, session_id: str, title: str) -> None:
+    def set_title(self, user: str, session_id: str, title: str) -> bool:
         """Persist the session's (re)generated title.
 
         Unlike the usual one-shot providers, the title is rewritten after
         every completed run: a follow-on can pull the conversation onto new
         ground, and the stored name must follow it.
+
+        A name the user gave the session stands: the automatic one never
+        overwrites it. Returns whether the name was stored - false when
+        the session carries a name of the user's own, or is not there.
         """
         with self._lock:
             db = self._db(user)
-            db.execute(
-                "UPDATE sessions SET title = ? WHERE id = ?", (title, session_id)
+            cursor = db.execute(
+                "UPDATE sessions SET title = ? WHERE id = ? AND title_manual = 0",
+                (title, session_id),
             )
+        return cursor.rowcount > 0
 
     def title(self, user: str, session_id: str) -> str:
         """The stored title, or '' when none was generated (yet)."""
@@ -330,6 +383,51 @@ class SessionStore:
                 "SELECT title FROM sessions WHERE id = ?", (session_id,)
             ).fetchone()
         return str(row[0]) if row is not None else ""
+
+    def is_manual_title(self, user: str, session_id: str) -> bool:
+        """Whether the session's name is the user's own.
+
+        A session the user named is never named again by the model: the
+        name they gave is the one they meant.
+        """
+        with self._lock:
+            db = self._db(user)
+            row = db.execute(
+                "SELECT title_manual FROM sessions WHERE id = ?", (session_id,)
+            ).fetchone()
+        return bool(row is not None and row[0])
+
+    def rename_session(self, user: str, session_id: str, title: str) -> dict | None:
+        """Give a session the user's own name, or take that name back.
+
+        The name stands from now on: the model's own name - which is
+        rewritten after every run - never overwrites it. An empty name
+        takes the user's name away, and the session is listed under its
+        first query again, to be named afresh by the next run.
+
+        A session of another user is not touched: the session id names a
+        row of this user's database, and no other.
+
+        Returns the session's entry as the search lists it now, or None
+        when there was no such session.
+        """
+        title = " ".join((title or "").split())
+        with self._lock:
+            db = self._db(user)
+            row = db.execute(
+                "SELECT id FROM sessions WHERE id = ? AND user = ?",
+                (session_id, user),
+            ).fetchone()
+            if row is None:
+                return None
+            db.execute(
+                "UPDATE sessions SET title = ?, title_manual = ? WHERE id = ?",
+                (title, 1 if title else 0, session_id),
+            )
+            updated = db.execute(
+                _SESSION_SUMMARY_SQL + " AND s.id = ?", (user, session_id)
+            ).fetchone()
+        return self._summary_of(updated)
 
     # -- session search --------------------------------------------------------
 
@@ -345,34 +443,30 @@ class SessionStore:
         with self._lock:
             db = self._db(user)
             rows = db.execute(
-                "SELECT s.id AS id, s.mode AS mode, s.title AS title, "
-                "       s.created_at AS created_at, s.updated_at AS updated_at, "
-                "       (SELECT m.content FROM messages m "
-                "         WHERE m.session_id = s.id AND m.role = 'user' "
-                "         ORDER BY m.seq LIMIT 1) AS first_query, "
-                "       (SELECT COUNT(*) FROM messages m "
-                "         WHERE m.session_id = s.id) AS message_count "
-                "FROM sessions s WHERE s.user = ? "
-                "ORDER BY s.updated_at DESC",
-                (user,),
+                _SESSION_SUMMARY_SQL + " ORDER BY s.updated_at DESC", (user,)
             ).fetchall()
+        return [self._summary_of(row) for row in rows]
 
-        sessions = []
-        for row in rows:
-            first_query = str(row["first_query"] or "")
-            sessions.append(
-                {
-                    "id": str(row["id"]),
-                    "mode": str(row["mode"]),
-                    "title": str(row["title"] or ""),
-                    "summary": summary_name(str(row["title"] or ""), first_query),
-                    "preview": " ".join(first_query.split())[:_PREVIEW_LENGTH],
-                    "createdAt": str(row["created_at"]),
-                    "updatedAt": str(row["updated_at"]),
-                    "messageCount": int(row["message_count"]),
-                }
-            )
-        return sessions
+    @staticmethod
+    def _summary_of(row) -> dict:
+        """One session's entry, as the search lists it.
+
+        The summary name is the title when the session has one - the
+        user's own or the model's - and its first query when it has
+        none, so a session that was never named is still findable.
+        """
+        first_query = str(row["first_query"] or "")
+        title = str(row["title"] or "")
+        return {
+            "id": str(row["id"]),
+            "mode": str(row["mode"]),
+            "title": title,
+            "summary": summary_name(title, first_query),
+            "preview": " ".join(first_query.split())[:_PREVIEW_LENGTH],
+            "createdAt": str(row["created_at"]),
+            "updatedAt": str(row["updated_at"]),
+            "messageCount": int(row["message_count"]),
+        }
 
     def session_messages(self, user: str, session_id: str) -> list[dict]:
         """The session's queries and responses, oldest first.
@@ -565,11 +659,24 @@ class SessionManager:
             conversation.user, conversation.mode, conversation.id, kind, data
         )
 
-    def set_title(self, conversation: Conversation, title: str) -> None:
-        self.store.set_title(conversation.user, conversation.id, title)
+    def set_title(self, conversation: Conversation, title: str) -> bool:
+        """Store the session's (re)generated name.
+
+        A name the user gave the session stands: the automatic one
+        never overwrites it. Returns whether the name was stored.
+        """
+        return self.store.set_title(conversation.user, conversation.id, title)
 
     def title(self, conversation: Conversation) -> str:
         return self.store.title(conversation.user, conversation.id)
+
+    def rename(self, user: str, session_id: str, title: str) -> dict | None:
+        """Give a session the user's own name, or take that name back.
+
+        Returns the session's entry as the search lists it now, or None
+        when there was no such session.
+        """
+        return self.store.rename_session(user, session_id, title)
 
     def delete(self, user: str, session_id: str) -> bool:
         """Delete a session from the store and drop it from the cache.

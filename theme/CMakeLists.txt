@@ -75,6 +75,7 @@ set(PHOENIX_LUCIDE_ICONS
     megaphone
     mic-audio-lines
     paperclip
+    pencil
     plus
     search
     send

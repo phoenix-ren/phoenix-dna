@@ -331,11 +331,20 @@ class AgentDaemon:
         providers, whose titles are frozen at the first message). A
         failure keeps the previous title; naming must never disturb the
         conversation itself.
+
+        A session the user named is left alone: their name stands, and
+        the model is not even asked for another one.
         """
         if self._title_provider is None or not session_id:
             return
         try:
             conversation = self._sessions.get(session_id)
+            if self._sessions.store.is_manual_title(
+                conversation.user, conversation.id
+            ):
+                # The user named this session: their name stands, and
+                # there is nothing to ask the model for.
+                return
             exchanges = [
                 (
                     str(message.get("role") or ""),
@@ -360,7 +369,10 @@ class AgentDaemon:
             title = title.rstrip(".").strip()
             if not title:
                 return
-            self._sessions.set_title(conversation, title)
+            if not self._sessions.set_title(conversation, title):
+                # The user named the session while the model was
+                # thinking: their name stands, not this one.
+                return
             self._emit(
                 events.make(
                     events.SESSION_TITLE_CHANGED,
@@ -395,6 +407,31 @@ class AgentDaemon:
     def session_transcript(self, user: str, session_id: str) -> list[dict]:
         """The queries and responses of one session, oldest first."""
         return self._sessions.store.session_messages(user, session_id)
+
+    def rename_session(self, user: str, session_id: str, title: str) -> dict | None:
+        """Give a session the user's own name, or take that name back.
+
+        The name stands from now on: the model's own name - which is
+        rewritten after every completed run - never overwrites it. An
+        empty name takes the user's name away, and the session is listed
+        under its first query again, to be named afresh by the next run.
+
+        Returns the session's entry as the search lists it now, or None
+        when there was no such session.
+        """
+        summary = self._sessions.rename(user, session_id, title)
+        if summary is None:
+            return None
+        # The name is announced, so a conversation pane open on the
+        # session shows the name the user gave it.
+        self._emit(
+            events.make(
+                events.SESSION_TITLE_CHANGED,
+                session_id=session_id,
+                title=str(summary.get("title") or ""),
+            )
+        )
+        return summary
 
     def delete_session(self, user: str, session_id: str) -> bool:
         """Delete a session from the user's history.

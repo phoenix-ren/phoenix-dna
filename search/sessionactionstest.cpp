@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: BSD-2-Clause
 
 //
-// The session search's delete flow, run headless.
+// The session search's session actions, run headless.
 //
 // The overlay under test is the real one, loaded from the session-search
-// QML module (see DeleteFlowTest.qml) — not a copy of it — so what the
-// test measures is what the user sees.
+// QML module (see SessionActionsTest.qml) — not a copy of it — so what
+// the test measures is what the user sees.
 //
 // A session that is thrown away cannot be brought back, so the delete
 // button only asks: the confirmation names the session, and only the
-// confirmation hands the session over to be deleted. The test walks that
-// round trip and checks that the right session is asked for — and that
-// declining the question throws nothing away.
+// confirmation hands the session over to be deleted. A session can also
+// be named the user's way, and the field for it comes up with the name
+// the session has. The test walks both round trips.
 //
-//   deleteflowtest
+//   sessionactionstest
 //
 // Exits non-zero when a check fails. (Plain printf, not qInfo: the
 // categorized logging prints nothing in this environment.)
@@ -76,7 +76,7 @@ int main(int argc, char **argv)
 
     // The test itself is a QML file, loaded from the source tree so that
     // it runs against the same build of the overlay the app runs.
-    const QString testPath = QString::fromLatin1(PHOENIX_DELETE_FLOW_TEST);
+    const QString testPath = QString::fromLatin1(PHOENIX_SESSION_ACTIONS_TEST);
 
     {
         QFile probe(testPath);
@@ -127,4 +127,4 @@ int main(int argc, char **argv)
     return 0;
 }
 
-#include "deleteflowtest.moc"
+#include "sessionactionstest.moc"

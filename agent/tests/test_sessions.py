@@ -233,6 +233,101 @@ def test_the_manager_forgets_a_deleted_session(tmp_path):
     assert manager.get("sess42").messages == []
 
 
+def test_a_manual_name_stands_against_the_model(tmp_path):
+    """The name the user gave the session is never overwritten."""
+    store = SessionStore(tmp_path / "users")
+    user = store.local_user
+    store.append_message(
+        user, "user", "s1", {"role": "user", "content": "how much disk is left?"}
+    )
+
+    entry = store.rename_session(user, "s1", "Disk tuning")
+    assert entry["summary"] == "Disk tuning"
+    assert entry["title"] == "Disk tuning"
+    assert store.is_manual_title(user, "s1") is True
+
+    # The model's own name never overwrites it.
+    assert store.set_title(user, "s1", "Disk usage") is False
+    assert store.title(user, "s1") == "Disk tuning"
+
+    # The name the session is listed under is the user's own.
+    listed = store.list_sessions(user)
+    assert [s["summary"] for s in listed] == ["Disk tuning"]
+
+
+def test_taking_the_manual_name_back(tmp_path):
+    """An empty name gives the session back to the model."""
+    store = SessionStore(tmp_path / "users")
+    user = store.local_user
+    store.append_message(
+        user, "user", "s1", {"role": "user", "content": "how much disk is left?"}
+    )
+    store.rename_session(user, "s1", "Disk tuning")
+
+    entry = store.rename_session(user, "s1", "")
+    assert entry["title"] == ""
+    # Without a name of its own, the session is listed under its first
+    # query again.
+    assert entry["summary"] == "how much disk is left?"
+    assert store.is_manual_title(user, "s1") is False
+
+    # And the model may name it again.
+    assert store.set_title(user, "s1", "Disk usage") is True
+    assert store.title(user, "s1") == "Disk usage"
+
+
+def test_rename_touches_no_other_user(tmp_path):
+    """A session id names one user's session: the others are not touched."""
+    store = SessionStore(tmp_path / "users")
+    user = store.local_user
+    store.append_message(user, "user", "mine", {"role": "user", "content": "mine"})
+    store.append_message(
+        "root", "root", "theirs", {"role": "user", "content": "theirs"}
+    )
+
+    assert store.rename_session(user, "theirs", "Not yours") is None
+    assert store.title("root", "theirs") == ""
+
+    assert store.rename_session("root", "theirs", "Yours")["summary"] == "Yours"
+    assert store.title(user, "mine") == ""
+
+
+def test_rename_of_a_session_that_is_not_there(tmp_path):
+    """Renaming a session that is gone is not an error: it says so."""
+    store = SessionStore(tmp_path / "users")
+    assert store.rename_session(store.local_user, "missing", "A name") is None
+
+
+def test_the_store_gains_the_manual_name_column(tmp_path):
+    """A database written by the older daemon gets the column it lacks.
+
+    The tables are created with "IF NOT EXISTS", so a database that
+    already has them keeps its own shape - the column added later has
+    to be added to it as well.
+    """
+    users = tmp_path / "users"
+    user = _local_username()
+    (users / user).mkdir(parents=True)
+    connection = sqlite3.connect(users / user / "sessions.db")
+    connection.executescript(
+        "CREATE TABLE sessions ("
+        "  id TEXT PRIMARY KEY, user TEXT NOT NULL, mode TEXT NOT NULL,"
+        "  title TEXT NOT NULL DEFAULT '',"
+        "  created_at TEXT NOT NULL, updated_at TEXT NOT NULL);"
+    )
+    connection.execute(
+        "INSERT INTO sessions VALUES ('s1', ?, 'user', 'Old name', 'x', 'x')",
+        (user,),
+    )
+    connection.commit()
+    connection.close()
+
+    store = SessionStore(users)
+    entry = store.rename_session(user, "s1", "New name")
+    assert entry["summary"] == "New name"
+    assert store.title(user, "s1") == "New name"
+
+
 def test_legacy_jsonl_import(tmp_path):
     legacy = tmp_path / "sessions"
     for mode, sid, contents in (
