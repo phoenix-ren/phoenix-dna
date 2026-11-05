@@ -112,12 +112,48 @@ working.
 
 == The meters
 
-Two meters tell you what the agent is doing:
+Three meters tell you what the agent is doing:
 
 - a *CPU meter* on the running tool — so the command that has been going
   for five minutes proves it is alive;
 - a *wire meter* — bytes per second, in and out, the pace of the
-  conversation with the model.
+  conversation with the model;
+- a *transfer meter* on the running download or upload — the pace of the
+  bytes (`DL` / `UL`) and how much of the thing is here, `1.2 GB of
+  4.4 GB (27%)`. When the far end does not say how big the thing is, the
+  bar travels instead of filling, and the count stands alone.
+
+== The context, in the corner
+
+Beside the session's name the conversation window carries a ring: the
+share of the model's context window the session has used — the number a
+long conversation runs into before anything else. A click opens the
+numbers behind it: the model in force and how much it holds at once, the
+tokens the session spent (the fresh input, the output, the part the
+server answered from its cache, the reasoning), the turns it holds, what
+it cost, and when it began. What the daemon does not know is said so —
+a limit nobody named, a model nobody priced.
+
+= Transfers you can watch
+
+An ISO that takes twenty minutes is not a command; it is a transfer. A
+download — a web URL, an FTP server, a torrent magnet — or an upload is
+a tool call of its own, metered while it runs: the pace of the bytes and
+how much of the thing has arrived, right where the tools are logged.
+
+- a download writes `<name>.part` and is renamed into place only when it
+  is complete, so an interrupted transfer never passes for the finished
+  thing;
+- the budget defaults to an hour and caps at a day, and a socket that
+  says nothing for ninety seconds is a stalled transfer, not a slow one;
+- the agent is told to reach for it *by name*: never `curl`, `wget`,
+  `ftp`, `aria2c` or a torrent client to move a file, whatever the size
+  — `curl` asking an API is another matter; it is fetching a file that
+  makes it the wrong tool.
+
+Torrent magnets need `libtorrent` (optional, and reported clearly
+without it); HTTP and FTP come from the standard library, keeping the
+daemon dependency-free.
 
 = Voice out: read-aloud answers
 

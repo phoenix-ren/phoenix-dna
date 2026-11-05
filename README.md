@@ -25,8 +25,10 @@ By contrast, Phoenix DNA is hyperfocused on desktop use:
 - **hyperlinks**: to quickly open files, URLs, email addresses, phone numbers, etc. outputted during LLM responses
 - **tool CPU usage monitoring**: to confirm the tool that's been running for five minutes isn't dead
 - **wire rate monitoring**: the pace of the conversation with the model in bytes per second, in and out
+- **context metering**: a ring in the corner of the conversation window says how much of the model's context window the session has used — the numbers behind that share one click away
 - **forks**: a conversation can be branched into a session of its own at any of your own prompts, so another way through the problem can be tried without losing the first one
 - **metered transfers**: the agent's transfer tool downloads (web, FTP, even torrent magnets) and uploads with live progress — the pace of the bytes and how much of the thing is here
+- **session tending**: name a session yourself — the name stands — and throw away the ones in the way, with a confirmation that names them
 - **back-to-the-future UX and performance**: because in a capable programmer's hands, native is faster, harder, stronger, better
 - **other agents allowed!**: a dictated prompt is automatically copied to the clipboard for easy pasting into prompt boxes of lesser AI agents
 

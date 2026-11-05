@@ -262,6 +262,37 @@ that fill up like a level meter in a sound editor.
 The meters fade in while a step runs and fade out when it is done. The
 CPU meter turns amber past 60 % and red past 85 %.
 
+== The ring in the corner
+
+Beside the session's name, in the corner of the window, sits a small
+ring: how much of the model's context window the session on screen has
+used. A conversation runs into that window before it runs into anything
+else, and the ring is the thing that says so — filling as the session
+grows, without a word spoken. The tooltip says it in numbers (*Context:
+42% used — 210 000 of 500 000 tokens*).
+
+A click on the ring opens the context window, where the numbers behind
+the share are written out:
+
+- the *provider* and *model* in force, and how much it holds at once —
+  the *context limit*, or *not known* when nothing names it;
+- the *tokens the session spent*: the total, the fresh input, the
+  output, the reasoning, and the part of the prompt the server answered
+  from its cache;
+- how many *user* and *assistant* messages the session holds;
+- what it *cost* — or *the model is not priced*, rather than a price of
+  nothing — and when the *session was created*.
+
+*Esc* puts the window away, and so does its *Close* button.
+
+The ring belongs to the session, not to the run, which is why it lives
+here and not in the panel widget: the widget is the app's presence, not
+any one conversation's. The limit it measures against is the provider's
+own number; for the cases the provider does not know — your own server,
+another model of a known service — the settings window's *Context
+window* field names it, and the prices behind the cost line come from
+`price_input` and `price_output` in `agent.toml`.
+
 == Follow-ups
 
 At the bottom of the window is the follow-up bar — the same field the
@@ -564,6 +595,7 @@ over the stored key.*
   [Conversation window], [`Return`], [Send the follow-up],
   [Conversation window], [`Shift+Return`], [A line break],
   [Conversation window], [`Esc`], [Hide the window, and stop the reading],
+  [Context window], [`Esc`], [Close the context window — or the *Close* button, which does the same],
   [Wizard], [`Esc`], [Hide the wizard; the agent keeps waiting],
   [Session search], [`Up` / `Down`], [Move the selection],
   [Session search], [`Return`], [Open the selected session],

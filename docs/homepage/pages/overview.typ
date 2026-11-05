@@ -54,12 +54,14 @@ wizard's questions and your answers travel the same road.
   typed-prompt window) and the clip goes to the speech-to-text endpoint.
 + *The prompt can carry more than words* — files from the picker, a
   screenshot of the window you pointed at, each shown as a chip.
-+ *The agent loop runs as you* — commands, file reads, whatever the task
-  needs, streamed back as it goes. The CPU meter shows the running tool,
-  the wire meter the pace of the talk with the model.
++ *The agent loop runs as you* — commands, file reads, transfers,
+  whatever the task needs, streamed back as it goes. The CPU meter shows
+  the running tool, the wire meter the pace of the talk with the model,
+  and a download in progress gets a meter of its own.
 + *The answer lands in a native window* — Markdown with formulas rendered,
-  addresses clickable, an optional voice reading it aloud, and the whole
-  session kept for the session search.
+  addresses clickable, an optional voice reading it aloud, a ring in the
+  corner saying how much of the model's context the session has used —
+  and the whole session kept for the session search.
 
 = Where things live
 
@@ -69,6 +71,7 @@ wizard's questions and your answers travel the same road.
   [`shell/`], [Panel widget: the plasmoid, audio capture, transcription],
   [`overlay/`], [Dictation overlay shown while recording],
   [`resultswindow/`], [The conversation window],
+  [`context/`], [The context ring in its corner, and the window behind it],
   [`search/`], [Session search over previous sessions],
   [`settingswindow/`], [Settings: appearance, API keys, global shortcuts],
   [`theme/`], [Shared colour scheme, icon set, Markdown helpers],
