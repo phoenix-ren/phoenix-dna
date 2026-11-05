@@ -83,6 +83,16 @@ PlasmaCore.Dialog {
     readonly property int contextLimit: context
         ? Number(context.contextLimit || 0) : 0
 
+    // How much of that window the session takes up: the size of the
+    // biggest prompt it sent.
+    readonly property int contextUsed: context
+        ? Number(context.contextUsed || 0) : 0
+
+    // Whether that number is measured (the provider counted it) or
+    // estimated from the size of the conversation.
+    readonly property bool contextUsedEstimated: context
+        ? context.contextUsedEstimated === true : false
+
     // The share of the window the session has used, in per cent; the
     // daemon works it out, and it is zero when the window's size is
     // not known.
@@ -106,10 +116,13 @@ PlasmaCore.Dialog {
             ? context.model : "") },
         { label: i18n("Context limit"), value: contextLimit > 0
             ? formatCount(contextLimit) : i18n("not known") },
-        { label: i18n("Total tokens"), value: formatCount(context
+        { label: i18n("Context used"), value: contextLimit > 0
+            ? (formatCount(contextUsed)
+               + (contextUsedEstimated ? i18n(" (estimated)") : "")
+               + " — " + formatPercent(usage))
+            : i18n("not known") },
+        { label: i18n("Tokens spent"), value: formatCount(context
             ? context.totalTokens : 0) },
-        { label: i18n("Usage"), value: contextLimit > 0
-            ? formatPercent(usage) : i18n("not known") },
         { label: i18n("Input tokens"), value: formatCount(context
             ? context.tokensIn : 0) },
         { label: i18n("Output tokens"), value: formatCount(context

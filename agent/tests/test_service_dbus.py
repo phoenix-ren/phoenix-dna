@@ -287,6 +287,10 @@ def test_session_context_over_dbus(client):
     assert context["tokensIn"] == 11
     assert context["tokensOut"] == 7
     assert context["totalTokens"] == 18
+    # ...and how full the model's window was: the size of the prompt,
+    # which is not the sum of the prompts.
+    assert context["contextUsed"] == 11
+    assert context["contextUsedEstimated"] is False
     # ...and the model in force with the size of its context window.
     assert context["contextLimit"] >= 0
     assert "provider" in context
