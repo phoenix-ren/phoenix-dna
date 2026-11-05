@@ -376,7 +376,7 @@ sessions on the left, the selected session's conversation on the right.
 - *A session's name* is written by the daemon after the conversation,
   from what it was about, and rewritten as the session grows. A session
   it never named is listed under its first question, so nothing is ever
-  unfindable.
+  unfindable. You can name a session yourself, and your name stands.
 - *The right pane* shows the conversation as it was: your messages as
   bubbles, the agent's answers as Markdown, formulas rendered, addresses
   clickable.
@@ -402,6 +402,22 @@ The archive is a SQLite database on your own disk, one per user. There
 is no account to make and nothing to import: the conversations are
 already yours, and the search is the daemon's own fuzzy matcher
 answering over them.
+
+== Naming a session yourself
+
+Every entry of the list carries a pencil button — *Rename this session* —
+and the field that comes up holds the name the session has now, so you
+change it rather than write it from scratch.
+
+The name you type stands: the daemon is not asked for a name for that
+session again, and its own naming never overwrites yours. An empty name
+is an answer too — the session goes back to the name the daemon gives
+it, and the next run names it afresh.
+
+The question is modal, like the delete's: the window behind it is dimmed
+and *Esc* declines it rather than closing the search. The name is the
+daemon's to compute, so the list shows the name you typed and the search
+matches it right away.
 
 = The settings window
 
@@ -519,7 +535,7 @@ over the stored key.*
   [Wizard], [`Esc`], [Hide the wizard; the agent keeps waiting],
   [Session search], [`Up` / `Down`], [Move the selection],
   [Session search], [`Return`], [Open the selected session],
-  [Session search], [`Esc`], [Declines the delete confirmation first; closes the search otherwise],
+  [Session search], [`Esc`], [Declines the question that is up first; closes the search otherwise],
   [Settings], [`Esc`], [Close the window (unless a shortcut is being recorded)],
 )
 
