@@ -79,6 +79,7 @@ set(PHOENIX_LUCIDE_ICONS
     search
     send
     settings
+    trash
     x
 )
 

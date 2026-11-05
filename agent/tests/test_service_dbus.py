@@ -85,7 +85,7 @@ def service(bus_address, tmp_path_factory):
     bus.release_name(BUS_NAME)
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def client(service, bus_address):
     import dbus
     import dbus.bus
@@ -95,6 +95,15 @@ def client(service, bus_address):
     # A second connection to the private bus: the plasmoid is a separate
     # process, and sharing one connection between server and client would
     # deadlock (call_blocking vs. dispatch on the same connection).
+    #
+    # One connection for the whole module, not one per test: a fresh
+    # connection is created while the service's main loop runs in
+    # another thread, and the two of them fight over the default GLib
+    # main context - which crashes the interpreter now and then, in the
+    # middle of the next test's setup. The tests share one connection
+    # instead, and the signal receivers they add to it keep working:
+    # each of them waits for its own event, and an event that is set
+    # twice is still set.
     bus = dbus.bus.BusConnection(bus_address)
     proxy = bus.get_object(BUS_NAME, OBJECT_PATH)
     return bus, dbus.Interface(proxy, INTERFACE)
@@ -256,3 +265,37 @@ def test_search_rejects_an_invalid_user(client):
     _bus, iface = client
     with pytest.raises(dbus.exceptions.DBusException, match="invalid user"):
         iface.SearchSessions("../etc", "")
+
+
+def test_delete_session_over_dbus(client):
+    """A session is deleted from the user's history, and stays deleted."""
+    bus, iface = client
+    from phoenix_dna.sessions import _local_username
+
+    user = _local_username()
+    finished = threading.Event()
+    bus.add_signal_receiver(
+        lambda *_a: finished.set(), signal_name="RunFinished", dbus_interface=None
+    )
+    iface.SubmitPrompt("doomed session", "")
+    assert finished.wait(15)
+
+    sessions = json.loads(str(iface.SearchSessions(user, "doomed")))
+    assert sessions
+    session_id = sessions[0]["id"]
+
+    assert bool(iface.DeleteSession(user, session_id)) is True
+    # The session is gone from the history...
+    assert json.loads(str(iface.SearchSessions(user, "doomed"))) == []
+    # ...and its transcript with it.
+    assert json.loads(str(iface.GetSessionTranscript(user, session_id))) == []
+    # Deleting it again says there was nothing to delete.
+    assert bool(iface.DeleteSession(user, session_id)) is False
+
+
+def test_delete_session_rejects_an_invalid_user(client):
+    import dbus
+
+    _bus, iface = client
+    with pytest.raises(dbus.exceptions.DBusException, match="invalid user"):
+        iface.DeleteSession("../etc", "whatever")

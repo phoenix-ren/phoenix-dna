@@ -769,6 +769,12 @@ PlasmoidItem {
                 sessionId, mode, title);
         }
 
+        // A session the user threw away: the daemon removes it and
+        // everything that belongs to it, and the list follows.
+        onSessionDeleteRequested: (sessionId) => {
+            Phoenix.PhoenixController.deleteSession(sessionId);
+        }
+
         // The panel's search button is a toggle: it shows the search
         // while it is pressed.
         onOpened: Phoenix.PhoenixController.setSessionSearchOpen(true);

@@ -396,6 +396,16 @@ class AgentDaemon:
         """The queries and responses of one session, oldest first."""
         return self._sessions.store.session_messages(user, session_id)
 
+    def delete_session(self, user: str, session_id: str) -> bool:
+        """Delete a session from the user's history.
+
+        The session's queries and responses go with it, and so does the
+        audit trail of the runs it holds: what is left behind would be
+        an orphan nobody ever sees again. Returns whether there was a
+        session to delete.
+        """
+        return self._sessions.delete(user, session_id)
+
     def shutdown(self, timeout: float = 2.0) -> None:
         with self._cond:
             self._stop = True

@@ -190,6 +190,7 @@ interface `dna.phoenix.Agent`.
 | `GetState` | ` → (ssu)` | `(state, current_run_id, queue_length)`; state is `idle` or `running`. |
 | `SearchSessions` | `ss → s` | `(user, query)` → JSON array of the user's sessions whose summary name matches the query. The match is fuzzy — every character of the query must occur in the name, in order — so typing narrows the list down; an empty query lists every session, newest first. Each entry carries `id`, `mode` (the session's mode — `user` today, `root` for the sessions of the older daemon), `title`, `summary` (the name the session is listed under: the title, or the first query when the session was never named), `preview`, `createdAt`, `updatedAt` and `messageCount`. |
 | `GetSessionTranscript` | `ss → s` | `(user, session_id)` → JSON array of the session's messages: `role` (`user` or `assistant`), `content` and `ts`. |
+| `DeleteSession` | `ss → b` | `(user, session_id)` → whether there was a session to delete. The session's messages and the audit trail of its runs go with it: what is left behind would be an orphan nobody ever sees again. A session of another user is not touched. |
 | `SpeakText` | `s → ` | Speak an arbitrary string on demand (the results pane's "Read aloud"). The text is normalized and segmented exactly like an answer — math is spoken as mathematics, code fences are skipped. A no-op when speech is not enabled. |
 | `StopSpeaking` | ` → ` | Interrupt playback immediately and drop what is queued. |
 | `GetSpeechState` | ` → bs` | `(enabled, state)`; state is `idle` or `speaking`. |
