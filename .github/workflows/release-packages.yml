@@ -95,9 +95,11 @@ jobs:
           cd "pkg/phoenix-dna-$version"
           # nocheck: the CPU-meter test does not survive CI containers; the
           # recipe's own test phase is verified on fresh distro VMs (PACKAGING.md)
-          # -S as well: the .debian.tar.gz is a release asset the quickstart
+          # -S as a second run: dpkg-buildpackage will not take -b with -S,
+          # and the .debian.tar.gz it makes is a release asset the quickstart
           # walks users through building from
-          DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -us -uc -b -S
+          DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -us -uc -b
+          DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -us -uc -S
       - uses: actions/upload-artifact@v4
         with:
           name: ubuntu-deb
