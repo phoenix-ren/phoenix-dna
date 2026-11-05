@@ -241,9 +241,11 @@ build.
   database; add a `kbuildsycoca6` scriptlet only if the distribution does not
   already trigger it.
 * `phoenix-dna-agent` restarts cleanly with
-  `systemctl --user restart phoenix.service`; the settings window tells the
-  user this after an LLM key change. Keep the unit name if you can, or patch
-  that message and the D-Bus `SystemdService=` entry together.
+  `systemctl --user restart phoenix.service`. The settings window runs that
+  command itself when the LLM key is saved, and tells the user to run it by
+  hand when the endpoint or the model changes. Keep the unit name if you can,
+  or patch the restart call in `shell/settingsstore.cpp`, that message and the
+  D-Bus `SystemdService=` entry together.
 
 ## Versioning
 

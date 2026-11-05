@@ -22,9 +22,9 @@ import org.phoenixdna.theme
  *
  *   * API keys — the LLM key (the agent daemon's MiniMax key) and the
  *     speech-to-text key, with the speech-to-text provider chosen here
- *     too. They are stored in ~/.config/phoenix-dna/keys.json; the LLM key
- *     applies after a daemon restart, the speech-to-text key with the
- *     next dictation.
+ *     too. They are stored in ~/.config/phoenix-dna/keys.json; saving the
+ *     LLM key restarts the daemon to put it in force, the speech-to-text
+ *     key with the next dictation.
  *
  *   * Global shortcuts — the four system-wide hotkeys (recording,
  *     screenshot, session search, typed prompt), captured with the
@@ -748,7 +748,10 @@ Window {
                         Layout.fillWidth: true
                         text: i18n("Any OpenAI-compatible endpoint works — OpenAI, "
                             + "OpenRouter, Groq, MiniMax or your own server. "
-                            + "Leave the model empty to use the service's default.")
+                            + "Leave the model empty to use the service's default. "
+                            + "The daemon reads the endpoint and the model when it "
+                            + "starts, so saving them needs a restart: systemctl "
+                            + "--user restart phoenix.service")
                     }
 
                     RowLayout {
@@ -790,12 +793,11 @@ Window {
                     }
 
                     // Stored-as note, the environment warning and the
-                    // restart hint: what a saved key means for the daemon.
+                    // restart note: what a saved key means for the daemon.
                     HintLabel {
                         Layout.fillWidth: true
                         text: i18n("Stored as %1 in %2. The agent daemon reads it when "
-                            + "it starts — restart it to apply: systemctl --user "
-                            + "restart phoenix.service",
+                            + "it starts — saving this restarts the daemon for you.",
                             window.llmKeyField, window.keysFilePath)
                     }
                     HintLabel {
@@ -942,7 +944,7 @@ Window {
                     // on/off switch and the two choices that shape it.
                     // Every change applies at once (the shell asks the
                     // daemon to rebuild its speech pipeline after
-                    // saving) — no restart, unlike the keys above.
+                    // saving) — no daemon restart, unlike the keys above.
                     Kirigami.Heading {
                         level: 2
                         text: i18n("Read aloud")

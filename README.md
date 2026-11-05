@@ -252,8 +252,9 @@ The keys live in `~/.config/phoenix-dna/keys.json`, or in the
 environment (`OPENAI_API_KEY`, `GROQ_API_KEY`, `OPENROUTER_API_KEY`,
 `MINIMAX_API_KEY`, `PHOENIX_LLM_API_KEY`); `PHOENIX_BASE_URL` and
 `PHOENIX_MODEL` name the endpoint and the model from the environment.
-The daemon reads all of this when it starts, so a changed key or
-endpoint applies after `systemctl --user restart phoenix.service`.
+The daemon reads all of this when it starts. Saving the LLM key in the
+settings window restarts the daemon for you; a changed endpoint or model
+applies after `systemctl --user restart phoenix.service`.
 
 Models that reason out loud (MiniMax's `<think>` blocks) are handled the
 same way whichever service serves them — the reasoning is shown

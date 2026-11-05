@@ -260,7 +260,12 @@ public:
      *
      *  The key belongs to the active provider's field (see
      *  llmKeyField), so switching providers and then storing a key
-     *  fills in the new one's slot. */
+     *  fills in the new one's slot.
+     *
+     *  The daemon reads its key when it starts, so this restarts
+     *  phoenix.service for the user: the new key is in force at once.
+     *  A restart that fails is reported in the status line, which then
+     *  tells the user to run it by hand. */
     Q_INVOKABLE bool saveLlmApiKey(const QString &apiKey);
 
     /*! \brief Stores the LLM provider ("minimax"/"openai"/"custom").
