@@ -15,6 +15,8 @@ QString kindName(ConversationModel::StepKind kind)
         return QStringLiteral("thought");
     case ConversationModel::StepKind::Tool:
         return QStringLiteral("tool");
+    case ConversationModel::StepKind::Compaction:
+        return QStringLiteral("compaction");
     case ConversationModel::StepKind::Text:
         break;
     }
@@ -285,6 +287,25 @@ void ConversationModel::endToolCall(const QString &status, const QString &markdo
     }
     group.body += QStringLiteral("\n\n") + markdown;
     group.status = status;
+    group.running = false;
+    group.endedAt = now();
+    touchCurrent({StepsRole});
+}
+
+void ConversationModel::appendCompaction(int summarised)
+{
+    if (m_exchanges.isEmpty()) {
+        return;
+    }
+    Exchange &exchange = m_exchanges.last();
+    // The step stands alone: it says what happened to the conversation,
+    // not what the agent said.
+    Group &group = pushGroup(exchange, StepKind::Compaction);
+    group.body = summarised > 0
+        ? QStringLiteral("The conversation was summarised to make room — %1 earlier "
+                         "messages became a summary.")
+              .arg(summarised)
+        : QStringLiteral("The conversation was summarised to make room.");
     group.running = false;
     group.endedAt = now();
     touchCurrent({StepsRole});

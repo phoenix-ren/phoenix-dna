@@ -112,6 +112,9 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
     QDBusConnection::sessionBus().connect(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("RunFinished"), this,
         SLOT(onRunFinished(QString, QString, QString, uint, uint, uint)));
+    QDBusConnection::sessionBus().connect(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("Compaction"), this,
+        SLOT(onCompaction(QString, QString, uint)));
     QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
                                           QStringLiteral("AuthFinished"), this,
                                           SLOT(onAuthFinished(QString, bool)));
@@ -1301,6 +1304,16 @@ void AgentBridge::onRunFinished(const QString &runId,
     // context view asks the daemon for the numbers again, and the ring
     // in the pane's corner moves with them.
     refreshSessionContext();
+}
+
+void AgentBridge::onCompaction(const QString &runId, const QString &sessionId, uint summarised)
+{
+    Q_UNUSED(runId)
+    Q_UNUSED(sessionId)
+
+    // The conversation was summarised: the trail says so, so the user
+    // sees why the agent no longer remembers what was said long ago.
+    m_conversation.appendCompaction(static_cast<int>(summarised));
 }
 
 void AgentBridge::onAuthFinished(const QString &runId, bool success)

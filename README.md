@@ -337,8 +337,25 @@ quoting a price of nothing.
 
 The conversation grows with every turn and is never shortened, so a
 session that goes on long enough will fill the window whatever the
-model's limit is. Compacting it — summarising the older turns and going
-on with the summary — is the next thing to build.
+model's limit is. Three things keep that in hand:
+
+* **A tool's output is cut** to what the conversation may carry (the
+  head and the tail of it, the middle dropped): the conversation is
+  sent again with every turn, so what a tool brings back is paid for
+  over and over.
+* **A run that comes near the window answers.** When the turns are
+  spent, or the prompt fills the window, the agent is asked to stop
+  working and say what it has — with no tool within reach. The work
+  done so far is an answer, not a run that ends in nothing.
+* **A conversation that outgrows the window is summarised.** When it
+  passes `compact_at` (half the window by default), the older turns
+  go into a summary and the agent goes on with that; the pane says so
+  in the run's trail. The history keeps everything — the session
+  search and the transcript still show the whole conversation — and
+  only what the *model* is sent changes. MiniMax's window is a million
+  tokens, so the summary comes late there; `compact_at = 0.1` keeps the
+  context to a tenth of it, and the ring in the corner shows the
+  difference.
 
 ## Dictation (speech to text)
 

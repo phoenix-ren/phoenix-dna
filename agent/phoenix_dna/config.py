@@ -316,6 +316,26 @@ class Config:
     #: where there is one, and the user names it otherwise.
     context_window: int = 0
 
+    #: The share of the context window at which the conversation is
+    #: summarised: the older turns go into a summary, the recent ones
+    #: are kept as they are, and the agent goes on with that. The
+    #: window is the bound that matters - a conversation that outgrows
+    #: it is refused by the model - so this is a fraction of it. Zero
+    #: turns the summarising off.
+    compact_at: float = 0.5
+
+    #: The share of the context window a request's prompt may take: a
+    #: run that comes near it stops calling tools and answers with what
+    #: it has, rather than being refused by the model mid-flight.
+    context_budget: float = 0.8
+
+    #: What one tool call may add to the conversation, in characters.
+    #: The head and the tail of the output are kept - what was run, and
+    #: what came of it - and the middle goes: the conversation is sent
+    #: again with every turn, so what a tool brings back is paid for
+    #: over and over.
+    tool_output_chars: int = 6000
+
     #: What a million tokens cost, in US dollars: the model's price
     #: for the input it reads and the output it writes. Zero means "not
     #: priced" - the context view then says so instead of quoting a

@@ -47,6 +47,10 @@ QUESTION_ANSWERED = "question_answered"
 AUTH_REQUESTED = "auth_requested"
 AUTH_FINISHED = "auth_finished"
 RUN_FINISHED = "run_finished"
+#: The conversation was summarised: the older turns went into a summary
+#: and the run goes on with that. The frontend says so in the run's
+#: trail - the agent does not read the older turns any more.
+COMPACTION = "compaction"
 STATE_CHANGED = "state_changed"
 #: A submitted transcript cleanup completed (successfully or not).
 CLEANUP_FINISHED = "cleanup_finished"

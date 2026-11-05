@@ -113,6 +113,33 @@ int main(int argc, char **argv)
               "the finished call does not run any more");
     }
 
+    // ---- A conversation that was summarised says so in the trail ------
+    //
+    // The older turns went into a summary to make room in the model's
+    // window, and the agent goes on without them. The pane says so:
+    // a conversation that suddenly forgets what was said is otherwise a
+    // mystery.
+    {
+        ConversationModel model;
+        model.beginExchange(QStringLiteral("keep going"), QStringLiteral("michelle"));
+        model.appendCompaction(18);
+        model.appendResult(QStringLiteral("Here is where I got to."));
+        model.setResult(QStringLiteral("Here is where I got to."));
+        model.finishExchange();
+
+        const QVariantList steps = trail(model);
+        check(steps.size() == 1, "the trail holds the summary");
+        check(kind(steps, 0) == QStringLiteral("compaction"),
+              "the summary is a step of its own");
+        check(steps.at(0).toMap().value(QStringLiteral("body")).toString()
+                  .contains(QStringLiteral("summarised")),
+              "the step says that the conversation was summarised");
+        check(!steps.at(0).toMap().value(QStringLiteral("running")).toBool(),
+              "the summary is not running any more");
+        check(answer(model) == QStringLiteral("Here is where I got to."),
+              "the answer follows the summary");
+    }
+
     // ---- A stretch of tool calls is one step ---------------------------
     {
         ConversationModel model;

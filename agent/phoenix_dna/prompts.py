@@ -144,6 +144,62 @@ def build_title_messages(exchanges: list[tuple[str, str]]) -> list[dict]:
     ]
 
 
+_COMPACTION_SYSTEM = """\
+You summarise a conversation between a user and a desktop AI agent, so \
+that the agent can go on working without reading the whole conversation \
+again. Write the summary in the language the conversation uses.
+
+Keep what the agent cannot do without:
+- what the user wants, and any decision they made;
+- the facts, file paths, URLs, commands and their outcomes that matter;
+- what has been done already, and what is still to be done.
+
+Drop the small talk, the restatements, and the tool output that has \
+already been acted on - the agent can read that from the machine again.
+
+Reply with the summary only - no preamble, no quotes, no title."""
+
+
+#: The budget for the summary's input, and the share of it one message
+#: may take. The budget is the caller's: the conversation to be
+#: summarised is long - that is why it is being summarised - and the
+#: summary call must fit in a window of its own. One message may not
+#: take more than its share, though: the tool output that has already
+#: been acted on is the bulk of it, and the summary is about the
+#: decisions and the facts.
+_COMPACTION_LINE_MIN = 200
+_COMPACTION_LINE_MAX = 2000
+
+
+def build_compaction_messages(messages: list[dict], budget_chars: int) -> list[dict]:
+    """Single-shot messages asking for a summary of a conversation.
+
+    ``messages`` are the messages to summarise (the older turns of the
+    conversation, and the summary of an earlier compaction if there was
+    one). Every one of them is shortened to its share of
+    ``budget_chars``.
+    """
+    texts = []
+    for message in messages:
+        role = str(message.get("role") or "")
+        content = message.get("content")
+        if not isinstance(content, str):
+            content = ""
+        content = content.strip()
+        if content:
+            texts.append(f"{role}: {content}")
+    if not texts:
+        texts = ["(empty conversation)"]
+    share = max(
+        _COMPACTION_LINE_MIN,
+        min(_COMPACTION_LINE_MAX, max(1, int(budget_chars)) // len(texts)),
+    )
+    return [
+        {"role": "system", "content": _COMPACTION_SYSTEM},
+        {"role": "user", "content": "\n".join(text[:share] for text in texts)},
+    ]
+
+
 def build_system_prompt(
     extra_context: str | None = None,
     tool_names: tuple[str, ...] | list[str] = (),

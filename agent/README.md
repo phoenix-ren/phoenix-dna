@@ -251,7 +251,8 @@ interface `dna.phoenix.Agent`.
 | `QuestionAnswered` | `ssss` | run_id, ask_id, status (`answered\|timeout\|cancelled`), JSON of the normalized answers (`{"answers": [{"selected": [labels], "text": "…"}, …]}`) |
 | `SpeechStateChanged` | `s` | the daemon's read-aloud switched between `speaking` and `idle` |
 | `StateChanged` | `ssu` | state, current_run_id, queue_length |
-| `RunFinished` | `sssuuu` | run_id, status (`completed|cancelled|error|max_turns`), final text, turns, tokens in, tokens out |
+| `RunFinished` | `sssuuu` | run_id, status (`completed|cancelled|error|max_turns|max_context`), final text, turns, tokens in, tokens out |
+| `Compaction` | `ssu` | run_id, session_id, how many messages the summary stands for. The conversation was summarised to make room in the model's window: the older turns went into a summary and the run goes on with that |
 
 Quick test from a shell:
 
@@ -271,6 +272,9 @@ environment → `~/.config/phoenix-dna/keys.json` (mode 0600) for keys, and
 |---|---|---|
 | `llm_base_url`, `model` | `PHOENIX_BASE_URL`, `PHOENIX_MODEL` | the endpoint the model calls go to and the model they name. The host in the URL decides the service: a known one brings its own default model and key field, any other is the user's own server |
 | `context_window` | `PHOENIX_CONTEXT_WINDOW` | how many tokens the model holds at once — its context window. The provider knows the size of the models it serves (a million for MiniMax's, 128 000 for OpenAI's and Groq's); this is for a server of one's own, and for another model of a known service. The context view (the ring in the corner of the results window) measures the conversation against it |
+| `compact_at` | — | the share of the context window at which the conversation is summarised: the older turns go into a summary, the recent ones are kept, and the agent goes on with that. The history keeps everything — the summary is only what the model reads. 0 turns it off (default 0.5) |
+| `context_budget` | — | the share of the window a request's prompt may take. A run that comes near it stops calling tools and answers with what it has, rather than being refused by the model mid-flight (default 0.8) |
+| `tool_output_chars` | — | what one tool call may add to the conversation, in characters. The head and the tail of the output are kept, the middle goes: the conversation is sent again with every turn, so what a tool brings back is paid for over and over (default 6000) |
 | `price_input`, `price_output` | `PHOENIX_PRICE_INPUT`, `PHOENIX_PRICE_OUTPUT` | what a million tokens cost, in US dollars. Without them the context view says that the model is not priced, rather than quoting a price of nothing |
 | `minimax_api_key` | `MINIMAX_API_KEY` | the MiniMax key: the LLM by default, and the speech-to-text and speech synthesis when those use MiniMax |
 | `openai_api_key` | `OPENAI_API_KEY` | the OpenAI key: the LLM when the endpoint is OpenAI's, and the speech when the endpoint is |

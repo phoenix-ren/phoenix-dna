@@ -77,6 +77,10 @@ _SIGNAL_MAP = {
         "run_finished",
         ("run_id", "status", "final_text", "turns", "tokens_in", "tokens_out"),
     ),
+    "compaction": (
+        "compaction",
+        ("run_id", "session_id", "summarised"),
+    ),
     "cleanup_finished": (
         "transcript_cleaned",
         ("cleanup_id", "source", "cleaned", "status"),
@@ -113,6 +117,7 @@ _DEFAULTS = {
     "turns": 0,
     "tokens_in": 0,
     "tokens_out": 0,
+    "summarised": 0,
     "cleanup_id": "",
     "source": "",
     "cleaned": "",
@@ -177,6 +182,7 @@ def build_bridge(service) -> SignalBridge:
             "question_answered": service.QuestionAnswered,
             "state_changed": service.StateChanged,
             "run_finished": service.RunFinished,
+            "compaction": service.Compaction,
             "cleanup_finished": service.TranscriptCleaned,
             "session_title_changed": service.SessionTitleChanged,
             "speech_state_changed": service.SpeechStateChanged,
@@ -268,6 +274,13 @@ if dbus is not None:
         def RunFinished(
             self, run_id, status, final_text, turns, tokens_in, tokens_out
         ): ...
+
+        # The conversation was summarised: the older turns went into a
+        # summary and the run goes on with that. The frontend says so
+        # in the run's trail - the agent does not read the older turns
+        # any more.
+        @dbus.service.signal(INTERFACE, signature="ssu")
+        def Compaction(self, run_id, session_id, summarised): ...
 
         @dbus.service.signal(INTERFACE, signature="ssss")
         def TranscriptCleaned(self, cleanup_id, source, cleaned, status): ...

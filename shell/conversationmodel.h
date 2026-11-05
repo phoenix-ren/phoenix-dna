@@ -68,9 +68,10 @@ public:
     /*! \brief The kinds of step the agent's trail is made of. */
     enum class StepKind
     {
-        Thought, //!< the notes the model thinks in
-        Text,    //!< the words the model says
-        Tool     //!< a tool call, with its arguments and its output
+        Thought,   //!< the notes the model thinks in
+        Text,      //!< the words the model says
+        Tool,      //!< a tool call, with its arguments and its output
+        Compaction //!< the conversation was summarised to make room
     };
 
     explicit ConversationModel(QObject *parent = nullptr);
@@ -171,6 +172,14 @@ public:
      * \a status is "success" or "error", \a markdown the call's tail
      * (its outcome and its output). */
     void endToolCall(const QString &status, const QString &markdown);
+
+    /*! \brief The conversation was summarised to make room.
+     *
+     * The older turns went into a summary and the agent goes on with
+     * that: the step says so, because a conversation that suddenly
+     * forgets what was said is otherwise a mystery. \a summarised is
+     * how many messages the summary stands for. */
+    void appendCompaction(int summarised);
 
     /*! \brief The run finished: \c running goes false. */
     void finishExchange();
