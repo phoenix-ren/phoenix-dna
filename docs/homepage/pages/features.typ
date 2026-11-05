@@ -188,6 +188,10 @@ by accident — carries a trash button, and the confirmation that asks
 names the session it is about: the list is full of similar names, and
 the wrong one must not go.
 
+A session can also be named your own way, with the pencil beside the
+trash. Your name stands: the daemon does not rename that session
+again, and its own naming never overwrites yours.
+
 The archive is a SQLite database in your own home directory. There is no
 account to make, no history to import, and nothing of yours sitting in
 someone else's cloud.
