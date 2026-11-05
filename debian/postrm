@@ -1,0 +1,13 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
+# SPDX-License-Identifier: BSD-2-Clause
+
+set -e
+
+if [ "$1" = remove ] && [ -x /usr/bin/kbuildsycoca6 ]; then
+    /usr/bin/kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+fi
+
+#DEBHELPER#
+
+exit 0

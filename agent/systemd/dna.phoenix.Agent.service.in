@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# D-Bus session-bus activation for the agent daemon.
+#
+# The plasmoid talks to the name dna.phoenix.Agent; when nothing owns it, the
+# bus starts the service for the first method call. SystemdService= makes that
+# start systemd's job, so the unit's restart policy, journal and sandboxing
+# apply, and a failure is visible with `systemctl --user status phoenix.service`.
+
+[D-BUS Service]
+Name=@PHOENIX_DBUS_SERVICE_NAME@
+Exec=@PHOENIX_DBUS_SERVICE_EXEC@
+SystemdService=@PHOENIX_DBUS_SYSTEMD_SERVICE@

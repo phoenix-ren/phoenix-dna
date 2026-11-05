@@ -21,3 +21,7 @@ __pycache__/
 # Logs and runtime noise
 *.log
 /design_docs/
+
+# Packaging harness output
+/dist/
+/.rpmbuild/

@@ -1,0 +1,11 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
+# SPDX-License-Identifier: BSD-2-Clause
+#
+# Runs Phoenix DNA from the private directory the package was installed into.
+# The package is deliberately not in site-packages, so PYTHONPATH is extended
+# rather than the interpreter's prefix being written to.
+
+PYTHONPATH="@PHOENIX_AGENT_FULL_DATADIR@${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec "@PHOENIX_AGENT_PYTHON@" -m @PHOENIX_AGENT_MODULE@ "$@"

@@ -151,6 +151,12 @@ systemctl --user restart plasma-plasmashell   # otherwise the panel keeps the ol
 journalctl --user -b --no-pager | grep -i phoenix   # check for QML errors
 ```
 
+A CMake install installs both halves: the plasmoid and the Python agent
+daemon, its `phoenix-dna-agent` launcher, the `phoenix.service` systemd user
+unit and the D-Bus activation file. `-DPHOENIX_INSTALL_AGENT=OFF` leaves the
+Python half to the distribution's own packaging; see [PACKAGING.md](PACKAGING.md)
+for the options and the per-distribution recipes.
+
 The screenshot path can be checked on its own, without the panel:
 
 ```bash
@@ -169,10 +175,16 @@ The Python agent daemon runs as a systemd **user** service, so it comes up
 with the session — nothing has to be started by hand:
 
 ```bash
-agent/systemd/install-user-service.sh      # once
 systemctl --user status phoenix.service
 journalctl --user -u phoenix.service -f
 ```
+
+A system install (`sudo cmake --install build`) puts `phoenix.service` in the
+user unit directory and adds a D-Bus activation file, so the plasmoid's first
+call starts the daemon even if the unit has not been enabled. In a development
+checkout, `agent/systemd/install-user-service.sh` writes the same unit to
+`~/.config/systemd/user/phoenix.service` with `ExecStart` and
+`WorkingDirectory` pointing at the checkout; run it once per checkout.
 
 It runs as the desktop user: it lives on the session bus that
 the plasmoid connects to, and it elevates to root on demand — a command

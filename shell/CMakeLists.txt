@@ -104,22 +104,29 @@ install(FILES ${CMAKE_SOURCE_DIR}/icons/phoenix-dna-avatar.png
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/org.phoenixdna.agent.desktop
         DESTINATION ${KDE_INSTALL_APPDIR})
 
-install(CODE "
-    if (NOT DEFINED ENV{DESTDIR})
-        find_program(PHOENIX_ICON_CACHE gtk-update-icon-cache)
-        if (PHOENIX_ICON_CACHE)
-            execute_process(
-                COMMAND \${PHOENIX_ICON_CACHE} -q -t -i .
-                WORKING_DIRECTORY ${CMAKE_INSTALL_PREFIX}/${KDE_INSTALL_ICONDIR}/hicolor)
+# A source install should work immediately, but a distribution install must
+# not touch the host's caches while DESTDIR points into the package build
+# root. Both halves are guarded by DESTDIR; PHOENIX_UPDATE_CACHES=OFF turns
+# the whole block off for recipes that run their own scriptlets or rely on
+# distro file triggers.
+if(PHOENIX_UPDATE_CACHES)
+    install(CODE "
+        if (NOT DEFINED ENV{DESTDIR})
+            find_program(PHOENIX_ICON_CACHE gtk-update-icon-cache)
+            if (PHOENIX_ICON_CACHE)
+                execute_process(
+                    COMMAND \${PHOENIX_ICON_CACHE} -q -t -i .
+                    WORKING_DIRECTORY \"${KDE_INSTALL_FULL_ICONDIR}/hicolor\")
+            endif()
+            # The desktop entry is new to the system's application database:
+            # the cache is rebuilt so a running taskbar finds it at once.
+            find_program(PHOENIX_KBUILDSYCOCA kbuildsycoca6)
+            if (PHOENIX_KBUILDSYCOCA)
+                execute_process(COMMAND \${PHOENIX_KBUILDSYCOCA})
+            endif()
         endif()
-    endif()
-    # The desktop entry is new to the system's application database: the
-    # cache is rebuilt so a running taskbar finds it at once.
-    find_program(PHOENIX_KBUILDSYCOCA kbuildsycoca6)
-    if (PHOENIX_KBUILDSYCOCA)
-        execute_process(COMMAND \${PHOENIX_KBUILDSYCOCA})
-    endif()
-")
+    ")
+endif()
 
 # C++ classes exposed to QML must be declared in a header: qmltyperegistrar
 # warns "Class X is declared in X.cpp ... registration to QML may fail".
@@ -146,18 +153,20 @@ target_link_libraries(org.phoenixdna.agent PRIVATE
 #
 #   cliptest input.wav [output.wav]
 #   cliptest --stt input.wav
-add_executable(cliptest
-    cliptest.cpp
-    cliprecorder.cpp
-    cliprecorder.h
-    transcriber.cpp
-    transcriber.h
-)
-target_include_directories(cliptest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(cliptest PRIVATE
-    Qt6::Core
-    Qt6::Network
-)
+if(PHOENIX_BUILD_DEVTOOLS)
+    add_executable(cliptest
+        cliptest.cpp
+        cliprecorder.cpp
+        cliprecorder.h
+        transcriber.cpp
+        transcriber.h
+    )
+    target_include_directories(cliptest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(cliptest PRIVATE
+        Qt6::Core
+        Qt6::Network
+    )
+endif()
 
 # Header-only Boost, e.g. <boost/histogram.hpp>.
 phoenixdna_use_boost(org.phoenixdna.agent)
@@ -167,17 +176,21 @@ phoenixdna_use_boost(org.phoenixdna.agent)
 # does and writes it to a PNG.
 #
 #   screenshottest [output.png]
-add_executable(screenshottest
-    screenshottest.cpp
-    windowpicture.cpp
-    windowpicture.h
-)
-target_include_directories(screenshottest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(screenshottest PRIVATE
-    Qt6::Core
-    Qt6::DBus
-    Qt6::Gui
-)
+if(PHOENIX_BUILD_DEVTOOLS)
+    add_executable(screenshottest
+        screenshottest.cpp
+        windowpicture.cpp
+        windowpicture.h
+    )
+    target_include_directories(screenshottest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(screenshottest PRIVATE
+        Qt6::Core
+        Qt6::DBus
+        Qt6::Gui
+    )
+endif()
+
+if(BUILD_TESTING)
 
 # The trail of a run — the steps the results window shows while the agent
 # works — checked without a window: the order of the steps, the grouping
@@ -367,3 +380,5 @@ add_executable(completionsoundtest
 target_include_directories(completionsoundtest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(completionsoundtest PRIVATE Qt6::Core)
 add_test(NAME completionsoundtest COMMAND completionsoundtest)
+
+endif() # BUILD_TESTING
