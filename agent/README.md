@@ -20,6 +20,7 @@ plasmoid (C++/QML)  ──D-Bus──▶  phoenix-dna-agent (this daemon)
                                     (queue, sudo cache)   │
                                                           ▼
                                         tools: bash / read / write / edit / ls / ask_user
+                                               transfer / tavily_search / exa_search
                                                tavily_search / exa_search
 ```
 
@@ -30,7 +31,18 @@ tools are the filesystem quartet (read, write, edit, ls), the web search
 pair (tavily_search, exa_search — registered whenever their API keys are
 configured, and the prompt then tells the model to reach for them on
 anything that depends on current or specific facts, so it never answers
-"I cannot search the web"), the question tool (ask_user) and bash.
+"I cannot search the web"), the transfer tool, the question tool
+(ask_user) and bash.
+
+The transfer tool (see `phoenix_dna/tools/transfer.py`) is the metered
+mover of bytes: downloads from http/https/ftp URLs and torrent `magnet:`
+links, uploads of a local file to an http(s) URL or onto an FTP server.
+It exists because a `wget` through bash times out on anything slower
+than the bash cap, and the workaround the model reaches for — a
+detached command — is invisible to the UI; the tool instead reports the
+bytes as they move (TransferProgress), and the pane meters the pace and
+the share of the thing that is here. Torrents need libtorrent
+(`python3-libtorrent`) and say so clearly when it is missing.
 
 Commands run without a terminal and stdin is closed, so the prompt (and the
 bash tool's description) demand non-interactive flags (`dnf -y`,
@@ -210,6 +222,7 @@ interface `dna.phoenix.Agent`.
 | `ToolProcessStarted` | `sssu` | run_id, call_id, command, pid — a bash tool call's process began. The pid is the command's session leader (commands are spawned with `start_new_session`), so it doubles as the process-group id: the UI meters the command's CPU usage by reading `/proc` for that group while the call runs. |
 | `ToolProcessFinished` | `ssu` | run_id, call_id, pid — that process ended (normally, by timeout or by cancellation; the report is emitted from a `finally` block, so it is reliable) |
 | `WireBytes` | `suuu` | run_id, turn, bytes_sent, bytes_received — the wire traffic of one turn of the conversation with the model: the bytes of the request that went out and the bytes of the answer that came in. The counts are the payload bytes only (the fixed-size HTTP headers are not included), and the UI meters the rate of the connection from them. |
+| `TransferProgress` | `ssstt` | run_id, call_id, direction (`download\|upload`), done, total — the bytes a transfer tool call has moved so far. `done` is cumulative for the call and `total` the bytes the far end promised (0 when it did not name them); the counts are 64-bit because an ISO outruns a 32-bit count. Emitted at most a few times a second while the transfer runs, and once more at its end; the UI meters the pace and the share of the thing that is here from these (see the transfer tool in `phoenix_dna/tools/transfer.py`). |
 | `AuthRequested` / `AuthFinished` | `ss` / `sb` | the administrator password dialog opened / closed |
 | `QuestionAsked` | `sss` | run_id, ask_id, JSON of the form: `questions` (`[{question, header, options: [{label, description}], multiple}]`), an optional `goal`, and `harness: true` for daemon-authored confirmations. The run blocks until answered, cancelled or timed out. |
 | `QuestionAnswered` | `ssss` | run_id, ask_id, status (`answered\|timeout\|cancelled`), JSON of the normalized answers (`{"answers": [{"selected": [labels], "text": "…"}, …]}`) |

@@ -52,7 +52,8 @@ Depends: ${shlibs:Depends},
 Recommends: ffmpeg,
             kdialog,
             sudo,
-            texlive-xetex
+            texlive-xetex,
+            python3-libtorrent
 Description: voice-first AI agent for the KDE Plasma panel
  Phoenix DNA is a desktop-native AI agent for KDE Plasma. It lives in the
  panel, takes dictated or typed prompts, runs them through an LLM-driven agent

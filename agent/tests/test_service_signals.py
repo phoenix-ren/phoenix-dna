@@ -36,6 +36,9 @@ class FakeService:
     def WireBytes(self, *args):
         self.calls.append(("WireBytes", args))
 
+    def TransferProgress(self, *args):
+        self.calls.append(("TransferProgress", args))
+
 
 def test_cleanup_event_maps_to_transcript_cleaned():
     service = FakeService()
@@ -160,3 +163,28 @@ def test_title_event_maps_to_session_title_changed():
     assert service.calls == [
         ("SessionTitleChanged", ("abc123", "First US President"))
     ]
+
+
+def test_transfer_progress_maps_to_transfer_progress():
+    service = FakeService()
+    bridge = SignalBridge({"transfer_progress": service.TransferProgress})
+    bridge.dispatch(
+        events.make(
+            events.TRANSFER_PROGRESS,
+            run_id="run_1",
+            call_id="call_1",
+            direction="download",
+            done=1024,
+            total=47244640256,
+        )
+    )
+    assert service.calls == [
+        ("TransferProgress", ("run_1", "call_1", "download", 1024, 47244640256))
+    ]
+
+
+def test_transfer_progress_defaults_blank_fields():
+    service = FakeService()
+    bridge = SignalBridge({"transfer_progress": service.TransferProgress})
+    bridge.dispatch({"kind": "transfer_progress"})
+    assert service.calls == [("TransferProgress", ("", "", "", 0, 0))]

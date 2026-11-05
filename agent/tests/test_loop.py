@@ -328,6 +328,7 @@ def test_system_prompt_included_in_request(config, home_dir):
         "write",
         "edit",
         "ls",
+        "transfer",
         "tavily_search",
         "exa_search",
     }

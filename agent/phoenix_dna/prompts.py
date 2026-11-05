@@ -45,6 +45,19 @@ _SEARCH_LINE = (
     "that depends on current or specific facts, and cite the source URLs."
 )
 
+#: Appended when the transfer tool is registered: downloads and uploads
+#: belong to it, not to the shell — a wget through bash hides its
+#: progress from the user and can outlive the command's timeout, which
+#: is how a large download turns into a detached command nobody can see.
+_TRANSFER_LINE = (
+    "- The transfer tool moves bytes over the network - downloads (web, "
+    "FTP, torrent magnets) and uploads both - with progress the user "
+    "can watch. Use it for EVERY download and upload instead of curl, "
+    "wget, ftp or a torrent client through bash, whatever the size: a "
+    "big or slow transfer is a tool call with a metered bar, not a "
+    "command that outgrew its timeout."
+)
+
 _STYLE = r"""Tool use:
 - Call tools one step at a time and reason about each result before the next.
 - Commands run without a terminal and stdin is closed: nobody can answer
@@ -136,14 +149,17 @@ def build_system_prompt(
 
     ``tool_names`` are the tools actually registered for the run (the
     daemon passes the built toolset's keys): the search line is appended
-    only when a search tool is among them, so the prompt never advertises
-    a tool the model cannot call.
+    only when a search tool is among them, and the transfer line only
+    when the transfer tool is, so the prompt never advertises a tool
+    the model cannot call.
     """
     now = _dt.datetime.now().strftime("%A, %Y-%m-%d %H:%M")
     context_block = _CONTEXT_BLOCK
     search_names = [n for n in tool_names if n in ("tavily_search", "exa_search")]
     if search_names:
         context_block += "\n" + _SEARCH_LINE.format(names=", ".join(search_names))
+    if "transfer" in tool_names:
+        context_block += "\n" + _TRANSFER_LINE
     parts = [
         _IDENTITY,
         "",

@@ -32,6 +32,7 @@ ecm_target_qml_sources(org.phoenixdna.resultswindow
         qml/LedBar.qml
         qml/WireMeterView.qml
         qml/WireRateRow.qml
+        qml/TransferMeterView.qml
         qml/WizardView.qml
         qml/QuestionInputs.qml
 )

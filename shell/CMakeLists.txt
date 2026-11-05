@@ -37,6 +37,8 @@ plasma_add_applet(org.phoenixdna.agent
         dictationintent.h
         wiremeter.cpp
         wiremeter.h
+        transfermeter.cpp
+        transfermeter.h
         sessiontranscriptmodel.cpp
         sessiontranscriptmodel.h
         cliprecorder.cpp
@@ -315,6 +317,26 @@ target_link_libraries(wiremetertest PRIVATE
 )
 add_test(NAME wiremetertest COMMAND wiremetertest)
 
+# The progress of a running transfer — the moving average over the
+# bytes it moved, and the share of the thing that is here — checked
+# against known traffic: a steady stream reads its own rate, a report
+# of a transfer that never began is not metered, the count and the
+# total drive the share, and a new transfer starts the count afresh.
+# Registers with CTest; run `ctest` from the build directory.
+#
+#   transfermetertest
+add_executable(transfermetertest
+    transfermetertest.cpp
+    transfermeter.cpp
+    transfermeter.h
+)
+target_include_directories(transfermetertest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(transfermetertest PRIVATE
+    Qt6::Core
+    Qt6::Qml
+)
+add_test(NAME transfermetertest COMMAND transfermetertest)
+
 # The transcript of a session — the queries and responses the session
 # search shows — checked without a window: the empty turns are dropped,
 # the rows are handed over a chunk at a time, and the counters the bar at
@@ -352,6 +374,8 @@ add_executable(agentbridgetest
     conversationmodel.h
     cpumeter.cpp
     cpumeter.h
+    transfermeter.cpp
+    transfermeter.h
     wiremeter.cpp
     wiremeter.h
     sessiontranscriptmodel.cpp
