@@ -111,6 +111,14 @@ CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS compactions (
+    session_id TEXT NOT NULL,
+    seq INTEGER PRIMARY KEY AUTOINCREMENT,
+    upto_seq INTEGER NOT NULL,
+    summary TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_compactions_session ON compactions(session_id, seq);
 """
 
 #: The columns the tables gained after they were first written, and how
@@ -237,20 +245,190 @@ class SessionStore:
             self._touch_session(db, session_id)
 
     def read_messages(self, user: str, session_id: str) -> list[dict]:
-        """The session's messages, replayable into the LLM conversation."""
+        """The session's messages, replayable into the LLM conversation.
+
+        A session that has been compacted replays its summary and the
+        turns that came after it: the older turns are summarised, and
+        the summary is what the model reads. The history itself keeps
+        everything - the session search and the transcript show it all.
+        """
         with self._lock:
             db = self._db(user)
-            rows = db.execute(
-                "SELECT message_json FROM messages WHERE session_id = ? ORDER BY seq",
-                (session_id,),
-            ).fetchall()
+            upto = self._compacted_upto(db, session_id)
+            if upto is None:
+                rows = db.execute(
+                    "SELECT message_json FROM messages WHERE session_id = ? ORDER BY seq",
+                    (session_id,),
+                ).fetchall()
+                summary = ""
+            else:
+                rows = db.execute(
+                    "SELECT message_json FROM messages WHERE session_id = ? AND seq > ? "
+                    "ORDER BY seq",
+                    (session_id, upto),
+                ).fetchall()
+                summary = self._compaction_summary(db, session_id)
         messages = []
+        if summary:
+            # The summary stands in for the turns it replaced: it comes
+            # first, and it says what it is.
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "[Summary of the earlier conversation]\n" + summary,
+                }
+            )
         for (blob,) in rows:
             try:
                 messages.append(json.loads(blob))
             except ValueError:
                 log.warning("skipping corrupt message row in %s/%s", user, session_id)
         return messages
+
+    # -- compaction ----------------------------------------------------------
+
+    def compact(
+        self, user: str, session_id: str, upto_seq: int, summary: str
+    ) -> None:
+        """Record that the turns up to ``upto_seq`` are summarised.
+
+        The history keeps every message; what changes is what the model
+        is sent: the summary, and the turns that came after it. A later
+        compaction supersedes an earlier one.
+        """
+        summary = (summary or "").strip()
+        if not summary or upto_seq <= 0:
+            return
+        with self._lock:
+            db = self._db(user)
+            db.execute(
+                "INSERT INTO compactions (session_id, upto_seq, summary, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                (session_id, upto_seq, summary, _utcnow()),
+            )
+        log.info("session %s of %s was summarised up to message %d", session_id, user, upto_seq)
+
+    @staticmethod
+    def _compacted_upto(db: sqlite3.Connection, session_id: str) -> int | None:
+        """The seq the last compaction ends at, or None when there is none.
+
+        The latest compaction wins: it summarises everything the earlier
+        ones did, plus what came after them.
+        """
+        row = db.execute(
+            "SELECT upto_seq FROM compactions WHERE session_id = ? ORDER BY seq DESC LIMIT 1",
+            (session_id,),
+        ).fetchone()
+        return int(row[0]) if row is not None else None
+
+    @staticmethod
+    def _compaction_summary(db: sqlite3.Connection, session_id: str) -> str:
+        """The summary of the last compaction of a session."""
+        row = db.execute(
+            "SELECT summary FROM compactions WHERE session_id = ? ORDER BY seq DESC LIMIT 1",
+            (session_id,),
+        ).fetchone()
+        return str(row[0]) if row is not None else ""
+
+    def compaction_input(
+        self, user: str, session_id: str, keep_tokens: int
+    ) -> tuple[list[dict], int]:
+        """What a compaction would summarise, and the seq it ends at.
+
+        The messages that come after the cut are kept as they are: the
+        recent turns are what the agent is working on. The cut lands on
+        a user message, so that no tool call is left without its result.
+
+        The summary of an earlier compaction is part of what is
+        summarised: a second compaction carries the first one along, so
+        nothing is lost between two of them.
+
+        Returns an empty list when there is nothing to summarise - no
+        user message to cut at, or nothing older than the budget.
+        """
+        with self._lock:
+            db = self._db(user)
+            rows = db.execute(
+                "SELECT seq, role, message_json FROM messages WHERE session_id = ? ORDER BY seq",
+                (session_id,),
+            ).fetchall()
+            previous = self._compaction_summary(db, session_id)
+
+        entries = []
+        for row in rows:
+            try:
+                message = json.loads(row["message_json"])
+            except ValueError:
+                continue
+            if isinstance(message, dict):
+                entries.append((int(row["seq"]), str(row["role"]), message))
+
+        if not entries:
+            return [], 0
+
+        # The kept messages: the most recent ones that fit in the
+        # budget. Everything older than them is what a summary would
+        # stand for.
+        budget = max(0, int(keep_tokens)) * 4
+        used = 0
+        keep_from = 0
+        for index in range(len(entries) - 1, -1, -1):
+            size = len(json.dumps(entries[index][2], ensure_ascii=False))
+            if used + size > budget and index < len(entries) - 1:
+                keep_from = index + 1
+                break
+            used += size
+        else:
+            # Everything fits in the budget: there is nothing to
+            # summarise.
+            return [], 0
+
+        # The kept part may not begin with a tool result: its call went
+        # with the summarised part, and a tool message without its call
+        # is a conversation the model refuses. The cut moves past the
+        # tool results that would start it.
+        while keep_from < len(entries) and entries[keep_from][1] == "tool":
+            keep_from += 1
+        if keep_from == 0:
+            return [], 0
+
+        older = entries[:keep_from]
+        messages: list[dict] = []
+        if previous:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": "[Summary of the earlier conversation]\n" + previous,
+                }
+            )
+        messages.extend(message for _seq, _role, message in older)
+        # The seq the summary ends at: everything from here on is kept.
+        return messages, int(older[-1][0])
+
+    def replay_estimate(self, user: str, session_id: str) -> int:
+        """How many tokens the conversation would carry, roughly.
+
+        The size of the messages the model would be sent, a token being
+        about four characters of them. It is the same measure the
+        context view shows, and the one the compaction threshold is
+        measured against.
+        """
+        with self._lock:
+            db = self._db(user)
+            upto = self._compacted_upto(db, session_id)
+            if upto is None:
+                row = db.execute(
+                    "SELECT SUM(LENGTH(message_json)) AS n FROM messages WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+            else:
+                row = db.execute(
+                    "SELECT SUM(LENGTH(message_json)) AS n FROM messages "
+                    "WHERE session_id = ? AND seq > ?",
+                    (session_id, upto),
+                ).fetchone()
+            summary = self._compaction_summary(db, session_id)
+        return (int(row["n"] or 0) if row is not None else 0) // 4 + len(summary) // 4
 
     # -- audit runs ----------------------------------------------------------
 
@@ -679,10 +857,6 @@ class SessionStore:
                 "SELECT role, COUNT(*) AS n FROM messages WHERE session_id = ? GROUP BY role",
                 (session_id,),
             ).fetchall()
-            size = db.execute(
-                "SELECT SUM(LENGTH(message_json)) AS n FROM messages WHERE session_id = ?",
-                (session_id,),
-            ).fetchone()
             runs = db.execute(
                 "SELECT data_json FROM runs WHERE session_id = ? AND kind = 'run_finished' "
                 "ORDER BY seq",
@@ -719,9 +893,10 @@ class SessionStore:
             output_tokens += int(data.get("tokens_out", 0) or 0)
             cache_tokens += int(data.get("cache_tokens", 0) or 0)
             reasoning_tokens += int(data.get("reasoning_tokens", 0) or 0)
-            context_tokens = max(
-                context_tokens, int(data.get("context_tokens", 0) or 0)
-            )
+            # The last run's prompt is the window as it stands now: the
+            # runs come one after the other, and a compaction between
+            # them makes the window smaller again.
+            context_tokens = int(data.get("context_tokens", 0) or 0)
             completed += 1
 
         # The fresh input: the prompt tokens that were not served from
@@ -730,14 +905,13 @@ class SessionStore:
         # keeps the split honest for one that does not.
         fresh_input = max(0, prompt_tokens - cache_tokens)
 
-        # How full the window is: the biggest prompt the session sent
-        # (the provider counts those, so the number is exact). A
-        # session whose runs predate that record - or one that has not
-        # run yet - is measured by its own size instead: the messages
-        # the next prompt would carry, a token being about four
-        # characters of them.
-        estimated = int(size["n"] or 0) / 4 if size is not None else 0
-        context_used = context_tokens or int(estimated)
+        # How full the window is: the size of the last prompt the
+        # session sent (the provider counts those, so the number is
+        # exact). A session whose runs predate that record - or one that
+        # has not run yet - is measured by the conversation itself
+        # instead: the messages the next prompt would carry, a token
+        # being about four characters of them.
+        context_used = context_tokens or self.replay_estimate(user, session_id)
 
         return {
             "id": session_id,
@@ -936,6 +1110,19 @@ class SessionManager:
 
     def title(self, conversation: Conversation) -> str:
         return self.store.title(conversation.user, conversation.id)
+
+    def compact(self, conversation: Conversation, upto_seq: int, summary: str) -> None:
+        """Replace the older turns of a conversation with a summary.
+
+        The history keeps every message; what changes is what the model
+        is sent: the summary, and the turns that came after it. The
+        conversation in memory is replaced as well, so the run that
+        goes on reads the summary and not the turns it stands for.
+        """
+        self.store.compact(conversation.user, conversation.id, upto_seq, summary)
+        conversation.messages = self.store.read_messages(
+            conversation.user, conversation.id
+        )
 
     def rename(self, user: str, session_id: str, title: str) -> dict | None:
         """Give a session the user's own name, or take that name back.

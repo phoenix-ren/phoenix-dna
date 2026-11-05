@@ -1411,6 +1411,30 @@ Window {
                                                 MarkdownDocument.openLink(link)
                                         }
 
+                                        // ---- The conversation was summarised ----
+                                        // The older turns went into a
+                                        // summary to make room in the
+                                        // model's window: the agent does
+                                        // not read them any more, and the
+                                        // pane says so — a conversation
+                                        // that suddenly forgets what was
+                                        // said is otherwise a mystery.
+                                        Kirigami.SelectableLabel {
+                                            id: compactionText
+                                            objectName: "compactionText"
+
+                                            Layout.fillWidth: true
+                                            visible: trailItem.modelData.kind === "compaction"
+
+                                            text: trailItem.modelData.body
+                                            textFormat: TextEdit.PlainText
+                                            wrapMode: Text.WordWrap
+                                            color: PhoenixTheme.secondaryTextColor
+                                            font.pixelSize: Math.max(
+                                                9, Math.round(
+                                                    Qt.application.font.pixelSize * 0.9))
+                                        }
+
                                         // ---- The notes it thinks in ----
                                         // The model's reasoning: not
                                         // words it says to the user, but

@@ -23,6 +23,25 @@
 #                                 # context view (the ring in the corner
 #                                 # of the results window) measures the
 #                                 # conversation against it.
+# compact_at = 0.5                 # the share of the window at which
+#                                 # the conversation is summarised: the
+#                                 # older turns go into a summary, the
+#                                 # recent ones are kept, and the agent
+#                                 # goes on with that. The history keeps
+#                                 # everything - the summary is only what
+#                                 # the model reads. 0 turns it off.
+# context_budget = 0.8             # the share of the window a request's
+#                                 # prompt may take: a run that comes
+#                                 # near it stops calling tools and
+#                                 # answers with what it has, rather
+#                                 # than being refused mid-flight.
+# tool_output_chars = 6000         # what one tool call may add to the
+#                                 # conversation. The head and the tail
+#                                 # of the output are kept, the middle
+#                                 # goes: the conversation is sent again
+#                                 # with every turn, so what a tool
+#                                 # brings back is paid for over and
+#                                 # over.
 # price_input = 0.30                # what a million input tokens cost,
 # price_output = 1.20               # in US dollars. Without them the
 #                                 # context view says that the model is

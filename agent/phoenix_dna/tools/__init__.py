@@ -49,3 +49,27 @@ def validate_required(spec: ToolSpec, args: dict) -> None:
     missing = [k for k in spec.parameters.get("required", []) if k not in args]
     if missing:
         raise ToolError(f"missing required argument(s): {', '.join(missing)}")
+
+
+def trim_output(text: str, limit: int) -> str:
+    """Shorten a tool's output to what the conversation may carry.
+
+    The head and the tail are kept: the head says what was there, the
+    tail says what came of it (the error, the last lines). The middle
+    goes, with a marker that says how much - the tool can be asked
+    again for the rest.
+
+    The conversation is sent again with every turn, so what a tool
+    brings back is paid for over and over: a tool that returns a
+    megabyte would fill the model's window on its own.
+    """
+    if limit <= 0 or len(text) <= limit:
+        return text
+    head = int(limit * 0.6)
+    tail = limit - head
+    omitted = len(text) - head - tail
+    return (
+        text[:head]
+        + f"\n... [{omitted} characters left out] ...\n"
+        + text[-tail:]
+    )

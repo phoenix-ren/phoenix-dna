@@ -636,6 +636,15 @@ private Q_SLOTS:
                        uint tokensIn,
                        uint tokensOut);
 
+    /*! \brief Compaction: the conversation was summarised to make room.
+     *
+     * The older turns went into a summary and the run goes on with
+     * that; the pane says so in the run's trail, because a
+     * conversation that suddenly forgets what was said is otherwise a
+     * mystery. \a summarised is how many messages the summary stands
+     * for. */
+    void onCompaction(const QString &runId, const QString &sessionId, uint summarised);
+
     /*! \brief RunStarted: reset the streaming state for the new run. */
     void onRunStarted(const QString &runId, const QString &sessionId);
 

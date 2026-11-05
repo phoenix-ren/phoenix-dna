@@ -82,22 +82,26 @@ def main(argv: list[str] | None = None) -> int:
 
     from .service import run_service
 
-    # The transcript cleaner and the session namer are their own provider
+    # The transcript cleaner, the session namer and the summariser of a
+    # conversation that outgrew the model's window are their own provider
     # instances: their single-shot calls are independent of the run loop's
     # provider usage (and of the scripted call sequence a FakeProvider
     # replays).
     try:
         cleanup_provider = build_provider(config)
         title_provider = build_provider(config)
+        compaction_provider = build_provider(config)
     except RuntimeError:
         cleanup_provider = None
         title_provider = None
+        compaction_provider = None
 
     daemon = AgentDaemon(
         config,
         provider=provider,
         cleanup_provider=cleanup_provider,
         title_provider=title_provider,
+        compaction_provider=compaction_provider,
     )
     try:
         run_service(daemon)

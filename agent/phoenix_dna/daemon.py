@@ -44,13 +44,14 @@ from .loop import AgentLoop
 from .privileges import KDialogPasswordProvider, SudoCredentialCache
 from .prompts import (
     build_cleanup_messages,
+    build_compaction_messages,
     build_system_prompt,
     build_title_messages,
     load_context_file,
 )
 from .provider import LLMProvider, build_provider
 from .search import match_sessions
-from .sessions import SessionManager, SessionStore
+from .sessions import Conversation, SessionManager, SessionStore
 from .speech.speaker import Speaker, build_speaker
 from .toolset import build_toolset
 from .tools.ask import AskCoordinator
@@ -61,6 +62,16 @@ log = logging.getLogger("phoenix.daemon")
 #: abandoned. Transcription itself is expected in a few seconds; the cleanup
 #: is one short LLM round-trip and must not lag the overlay for long.
 CLEANUP_TIMEOUT_SECONDS = 20.0
+
+#: The share of the model's context window that is kept as it is when a
+#: conversation is summarised: the rest of the window is room for the
+#: summary and for the run that goes on.
+_COMPACT_KEEP_SHARE = 0.25
+
+#: The share of the window the summary call may read: the material it
+#: summarises is a quarter of the window, and the call has to fit in
+#: the window as well.
+_COMPACT_SUMMARY_SHARE = 0.4
 
 
 def _strip_wrapper_quotes(text: str) -> str:
@@ -106,6 +117,7 @@ class AgentDaemon:
         provider: LLMProvider | None = None,
         cleanup_provider: LLMProvider | None = None,
         title_provider: LLMProvider | None = None,
+        compaction_provider: LLMProvider | None = None,
         password_provider=None,
         emitter=None,
         speaker: Speaker | None = None,
@@ -118,6 +130,9 @@ class AgentDaemon:
         # None disables the respective feature.
         self._cleanup_provider = cleanup_provider
         self._title_provider = title_provider
+        # The same, for the summary of a conversation that has outgrown
+        # the model's context window.
+        self._compaction_provider = compaction_provider
         # One auxiliary worker serves both single-shot calls: a slow
         # cleanup or title must neither delay the prompt queue nor block
         # the D-Bus main loop.
@@ -509,6 +524,55 @@ class AgentDaemon:
         )
         return context
 
+    def _compact(self, conversation: Conversation) -> str | None:
+        """Summarise the older turns of a conversation, if it is time.
+
+        The model has a context window, and a conversation that
+        outgrows it is refused outright. The window is the bound that
+        matters, so the conversation is summarised when it passes a
+        share of it: the older turns go into a summary, the recent
+        ones are kept as they are, and the run goes on with that.
+
+        The history keeps everything - the session search and the
+        transcript show it all - and only what the model is sent
+        changes.
+
+        Returns the number of messages the summary stands for, or None
+        when nothing was summarised.
+        """
+        config = self.config
+        window = int(config.context_window or 0)
+        if self._compaction_provider is None or window <= 0 or config.compact_at <= 0:
+            return None
+        user, session_id = conversation.user, conversation.id
+        threshold = int(window * config.compact_at)
+        if self._sessions.store.replay_estimate(user, session_id) < threshold:
+            return None
+        keep = max(1, int(window * _COMPACT_KEEP_SHARE))
+        messages, upto = self._sessions.store.compaction_input(user, session_id, keep)
+        if not messages or upto <= 0:
+            return None
+        summary = self._summarise(messages, window)
+        if not summary:
+            return None
+        self._sessions.compact(conversation, upto, summary)
+        return len(messages)
+
+    def _summarise(self, messages: list[dict], window: int) -> str:
+        """One LLM call: the summary of a conversation.
+
+        The call reads the material it summarises, so it has to fit in
+        the model's window: its budget is a share of it.
+        """
+        budget = int(window * _COMPACT_SUMMARY_SHARE) * 4
+        parts: list[str] = []
+        for item in self._compaction_provider.stream(
+            build_compaction_messages(messages, budget), tools=[]
+        ):
+            if item.get("type") == "text_delta":
+                parts.append(item["text"])
+        return "".join(parts).strip()
+
     def shutdown(self, timeout: float = 2.0) -> None:
         with self._cond:
             self._stop = True
@@ -673,6 +737,13 @@ class AgentDaemon:
             max_turns=self.config.max_turns,
             cancel_event=cancel,
             vision=vision_enabled(self.config),
+            # The window the model holds at once, and what may fill it:
+            # a run that comes near the limit answers with what it has,
+            # and a conversation that outgrows it is summarised.
+            context_window=int(self.config.context_window or 0),
+            context_budget=float(self.config.context_budget),
+            tool_output_chars=int(self.config.tool_output_chars),
+            compactor=self._compact,
         )
         summary = loop.run(job.prompt, staged)
 

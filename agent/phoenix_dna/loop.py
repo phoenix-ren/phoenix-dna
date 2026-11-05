@@ -19,9 +19,20 @@ from . import events
 from .attachments import build_user_message
 from .provider import CancelledError, LLMError, LLMProvider, ToolSpec
 from .sessions import Conversation, SessionManager
-from .tools import Tool, ToolError, validate_required
+from .tools import Tool, ToolError, trim_output, validate_required
 
 log = logging.getLogger("phoenix.loop")
+
+
+#: What the agent is told when a run has to stop: the turns are spent
+#: or the window is filling, and it must answer with what it has
+#: rather than call another tool.
+_WRAP_UP_PROMPT = """\
+Stop working on this task and answer now: {reason}.
+
+Say what you did, what you found, and what is left to do. Do not call \
+any tool - you may not use one any more. Be brief: this is the answer \
+the user is waiting for."""
 
 
 class AgentLoop:
@@ -38,6 +49,10 @@ class AgentLoop:
         max_turns: int = 24,
         cancel_event: threading.Event | None = None,
         vision: bool = False,
+        context_window: int = 0,
+        context_budget: float = 0.8,
+        tool_output_chars: int = 6000,
+        compactor=None,
     ):
         self.run_id = run_id
         self._provider = provider
@@ -50,6 +65,17 @@ class AgentLoop:
         self._cancel = cancel_event or threading.Event()
         # Whether the model may be sent image parts (see attachments.py).
         self._vision = vision
+        # The model's context window, and the share of it a request's
+        # prompt may take: a run that comes near it stops calling tools
+        # and answers with what it has, rather than being refused by
+        # the model mid-flight.
+        self._context_window = context_window
+        self._context_budget = context_budget
+        # What one tool call may add to the conversation.
+        self._tool_output_chars = tool_output_chars
+        # The callable that summarises the conversation when it has
+        # grown too big to carry (see the daemon's compaction).
+        self._compactor = compactor
 
     # -- public API -----------------------------------------------------------
 
@@ -80,6 +106,11 @@ class AgentLoop:
             build_user_message(prompt, list(attachments or []), vision=self._vision),
         )
 
+        # The conversation may have grown too big to carry: the older
+        # turns are summarised before the run goes on, so that the
+        # window is not filled by what happened long ago.
+        self._maybe_compact()
+
         tokens_in = tokens_out = 0
         cache_tokens = reasoning_tokens = 0
         context_tokens = 0
@@ -95,8 +126,12 @@ class AgentLoop:
                     break
                 turns += 1
                 if turns > self.max_turns:
+                    # The turns are spent: the agent answers with what
+                    # it has, instead of the run ending in nothing.
                     status = "max_turns"
-                    final_text = (
+                    final_text = self._wrap_up(
+                        "you have used up the turns you had for this task"
+                    ) or (
                         last_text or "Stopped: too many tool turns without an answer."
                     )
                     break
@@ -172,15 +207,47 @@ class AgentLoop:
                     status, final_text = "completed", response.text
                     break
 
+                answered: set[str] = set()
                 for call in response.tool_calls:
                     if self._cancel.is_set():
                         status, final_text = "cancelled", ""
                         break
                     output, status_ok = self._execute_tool(call)
+                    answered.add(call.id)
                     if not status_ok and self._cancel.is_set():
                         status, final_text = "cancelled", ""
                         break
                 if status == "cancelled":
+                    # The calls that were not run need an answer too: a
+                    # tool call without a result is a conversation the
+                    # model refuses to read, and the next run replays
+                    # this one.
+                    for call in response.tool_calls:
+                        if call.id not in answered:
+                            self._sessions.append(
+                                self._conversation,
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": call.id,
+                                    "content": "the run was cancelled before this call "
+                                    "was run",
+                                },
+                            )
+                    break
+
+                # The window: the request that just went out filled it
+                # this much, and the next one would fill it more. A run
+                # that comes near the limit stops here and answers with
+                # what it has - the model would refuse the next request
+                # outright, and the work done so far would be lost.
+                #
+                # The check is here, after the tools have run, so that
+                # the conversation the wrap-up sends is whole.
+                if self._window_is_full(context_tokens):
+                    status = "max_context"
+                    final_text = self._wrap_up(
+                        "the conversation is about to fill the model's context window"
+                    ) or last_text
                     break
         except CancelledError:
             status, final_text = "cancelled", ""
@@ -213,6 +280,79 @@ class AgentLoop:
         return summary
 
     # -- internals ---------------------------------------------------------------
+
+    def _window_is_full(self, context_tokens: int) -> bool:
+        """Whether the next request would not fit in the window.
+
+        The size of the request that just went out is known exactly -
+        the provider counted it - and the next one would be a little
+        bigger. A window that is not known (the model has none, or the
+        user named none) is never full.
+        """
+        if self._context_window <= 0 or context_tokens <= 0:
+            return False
+        return context_tokens >= self._context_window * self._context_budget
+
+    def _wrap_up(self, reason: str) -> str:
+        """One last call, without tools: the answer to what was done.
+
+        A run that stops - because the turns ran out, or because the
+        window is filling - ends with what the agent has, not with
+        nothing: the model is asked to say what it did, what it found
+        and what is left to do, and it may not call a tool while doing
+        so.
+
+        Returns the answer, or an empty string when the call failed (the
+        run then falls back to whatever it had).
+        """
+        messages = self._request_messages() + [
+            {"role": "user", "content": _WRAP_UP_PROMPT.format(reason=reason)}
+        ]
+        try:
+            parts: list[str] = []
+            for item in self._provider.stream(
+                messages, [], should_cancel=self._cancel.is_set
+            ):
+                if item.get("type") == "text_delta":
+                    parts.append(item["text"])
+            return "".join(parts).strip()
+        except (CancelledError, LLMError) as exc:
+            log.warning("wrap-up of run %s failed: %s", self.run_id, exc)
+            return ""
+        except Exception:  # defensive: a wrap-up must never crash the run
+            log.exception("wrap-up of run %s crashed", self.run_id)
+            return ""
+
+    def _maybe_compact(self) -> None:
+        """Summarise the older turns when the conversation is too big.
+
+        The daemon's compactor decides whether it is time (it knows the
+        model's context window) and does the summarising; the loop only
+        asks, once the prompt is part of the conversation. It gets the
+        summary back, and says how many messages it stands for.
+        """
+        if self._compactor is None:
+            return
+        try:
+            summarised = self._compactor(self._conversation)
+        except Exception:  # defensive: a failed compaction is not a failed run
+            log.exception("compaction of session %s failed", self._conversation.id)
+            return
+        if not summarised:
+            return
+        log.info(
+            "session %s was summarised: %d messages became a summary",
+            self._conversation.id,
+            summarised,
+        )
+        self._emit(
+            events.make(
+                events.COMPACTION,
+                run_id=self.run_id,
+                session_id=self._conversation.id,
+                summarised=summarised,
+            )
+        )
 
     def _request_messages(self) -> list[dict]:
         return [{"role": "system", "content": self._system_prompt}] + list(
@@ -261,6 +401,13 @@ class AgentLoop:
         except Exception as exc:
             log.exception("tool %s crashed", call.name)
             output, status, details = f"internal error in tool: {exc}", "error", {}
+
+        # What the tool brought back is cut to what the conversation may
+        # carry: the conversation is sent again with every turn, so a
+        # tool that returns a megabyte would fill the model's window on
+        # its own. The tool's own details (what the pane shows) are
+        # untouched.
+        output = trim_output(output, self._tool_output_chars)
 
         self._emit(
             events.make(
