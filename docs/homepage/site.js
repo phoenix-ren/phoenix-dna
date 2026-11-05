@@ -21,3 +21,45 @@
     render(next);
   });
 })();
+
+// Copy-to-clipboard buttons for every code block: the distro cards on the
+// front page, the command figures on the quickstart page, any fenced code.
+(function () {
+  var label = function (done) {
+    return done ? "Copied ✓" : "Copy";
+  };
+  document.querySelectorAll("pre").forEach(function (pre) {
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "copy-btn";
+    button.textContent = label(false);
+    button.title = "Copy to clipboard";
+    button.addEventListener("click", function () {
+      var code = pre.querySelector("code") || pre;
+      var text = code.textContent.replace(/\n+$/, "");
+      var done = function () {
+        button.textContent = label(true);
+        button.classList.add("copied");
+        setTimeout(function () {
+          button.textContent = label(false);
+          button.classList.remove("copied");
+        }, 1600);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); } catch (e) {}
+        document.body.removeChild(ta);
+        done();
+      }
+    });
+    pre.appendChild(button);
+  });
+})();
+
