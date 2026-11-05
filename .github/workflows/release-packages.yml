@@ -161,7 +161,9 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref_name }}
       - name: Trust the checkout for git archive
-        run: git config --system --add safe.directory "$GITHUB_WORKSPACE"
+        # --global, not --system: this job runs on the runner VM as an
+        # unprivileged user, unlike the root containers that build
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build the source archive
         run: |
           packaging/make-source-archive.sh
