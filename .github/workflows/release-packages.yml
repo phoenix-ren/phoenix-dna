@@ -97,9 +97,10 @@ jobs:
           # recipe's own test phase is verified on fresh distro VMs (PACKAGING.md)
           # -S as a second run: dpkg-buildpackage will not take -b with -S,
           # and the .debian.tar.gz it makes is a release asset the quickstart
-          # walks users through building from
+          # walks users through building from. -Zgzip because dpkg-source
+          # would default to xz, and the release carries the .tar.gz name
           DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -us -uc -b
-          DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -us -uc -S
+          DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -us -uc -S -Zgzip
       - uses: actions/upload-artifact@v4
         with:
           name: ubuntu-deb
