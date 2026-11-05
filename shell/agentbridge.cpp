@@ -419,6 +419,53 @@ void AgentBridge::requestSessionDelete(const QString &user, const QString &sessi
             });
 }
 
+void AgentBridge::requestSessionRename(const QString &user,
+                                       const QString &sessionId,
+                                       const QString &title)
+{
+    if (sessionId.isEmpty()) {
+        return;
+    }
+
+    // RenameSession(user, session_id, title) -> JSON summary of the
+    // session as the search lists it now (empty when there was no such
+    // session).
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("RenameSession"));
+    message << user << sessionId << title;
+
+    auto *watcher =
+        new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, sessionId](QDBusPendingCallWatcher *watcher) {
+                const QDBusReply<QString> reply = *watcher;
+                watcher->deleteLater();
+                if (!reply.isValid()) {
+                    qWarning() << "session rename failed:" << reply.error().message();
+                    return;
+                }
+                const QVariantMap summary = parseJsonObject(reply.value());
+                if (summary.isEmpty()) {
+                    // There was no such session: the list says so
+                    // already, and nothing changes.
+                    return;
+                }
+
+                // The entry in the list is the daemon's own answer: the
+                // name a session is listed under is the daemon's to
+                // compute, and it is the one the search matches
+                // against.
+                for (int i = 0; i < m_sessionSummaries.size(); ++i) {
+                    const QVariantMap entry = m_sessionSummaries.at(i).toMap();
+                    if (entry.value(QStringLiteral("id")).toString() == sessionId) {
+                        m_sessionSummaries[i] = summary;
+                        break;
+                    }
+                }
+                Q_EMIT sessionSummariesChanged();
+            });
+}
+
 void AgentBridge::openStoredSession(const QString &user,
                                     const QString &sessionId,
                                     const QString &mode,

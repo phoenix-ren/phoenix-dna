@@ -167,3 +167,50 @@ def test_title_collapses_whitespace_and_wrappers(config):
         assert events_of(events, SESSION_TITLE_CHANGED)[0]["title"] == "A Wrapped Title"
     finally:
         daemon.shutdown()
+
+
+def test_a_manual_name_survives_the_next_run(config):
+    """The name the user gave stands: the model does not name it again."""
+    events = []
+    daemon = AgentDaemon(
+        config,
+        provider=FakeProvider(["answer one", "answer two"]),
+        title_provider=FakeProvider(["First Topic", "Second Topic"]),
+        emitter=events.append,
+    )
+    try:
+        daemon.submit("first question")
+        assert wait_for(lambda: events_of(events, SESSION_TITLE_CHANGED), timeout=5)
+        session_id = events_of(events, "run_started")[0]["session_id"]
+
+        # The user names the session themselves.
+        user = daemon._sessions.store.local_user
+        entry = daemon.rename_session(user, session_id, "My own name")
+        assert entry["summary"] == "My own name"
+        assert entry["title"] == "My own name"
+
+        # The next run would name the session again - and the user's name
+        # stands, so the model is not even asked.
+        daemon.submit("second question", session_id=session_id)
+        assert wait_for(
+            lambda: len(events_of(events, "run_finished")) >= 2, timeout=5
+        )
+        conversation = daemon._sessions.get(session_id)
+        assert title_of(daemon, conversation) == "My own name"
+        # Two names so far: the model's first one and the user's own.
+        assert [e["title"] for e in events_of(events, SESSION_TITLE_CHANGED)] == [
+            "First Topic",
+            "My own name",
+        ]
+    finally:
+        daemon.shutdown()
+
+
+def test_renaming_a_session_that_is_not_there(config):
+    """Renaming a session that is gone is not an error: it says so."""
+    daemon = AgentDaemon(config, provider=FakeProvider(["answer"]))
+    try:
+        user = daemon._sessions.store.local_user
+        assert daemon.rename_session(user, "missing", "A name") is None
+    finally:
+        daemon.shutdown()

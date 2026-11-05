@@ -365,6 +365,20 @@ public:
      */
     Q_INVOKABLE void requestSessionDelete(const QString &user, const QString &sessionId);
 
+    /*! \brief Asks the daemon to name a session the user's way.
+     *
+     * RenameSession(user, session_id, title) gives the session the name
+     * the user chose: from now on the model's own name - which is
+     * rewritten after every completed run - never overwrites it. An
+     * empty title takes the user's name away, and the session is listed
+     * under its first query again.
+     *
+     * The answer is the session's entry as the search lists it now, so
+     * the list follows the daemon's own naming. */
+    Q_INVOKABLE void requestSessionRename(const QString &user,
+                                          const QString &sessionId,
+                                          const QString &title);
+
     /*! \brief Opens a stored session in the results pane.
      *
      * The session's messages are fetched from the daemon and loaded into

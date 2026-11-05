@@ -270,6 +270,15 @@ public:
      * user throws a session away. */
     Q_INVOKABLE void deleteSession(const QString &sessionId);
 
+    /*! \brief Names a session the user's way.
+     *
+     * The name stands from now on: the model's own name — which is
+     * rewritten after every completed run — never overwrites it. An
+     * empty name takes the user's name away, and the session is listed
+     * under its first query again.
+     */
+    Q_INVOKABLE void renameSession(const QString &sessionId, const QString &title);
+
     /*! \brief Opens a stored session in the results pane.
      *
      * The session's history is loaded into the conversation model and

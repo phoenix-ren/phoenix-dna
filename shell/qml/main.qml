@@ -775,6 +775,12 @@ PlasmoidItem {
             Phoenix.PhoenixController.deleteSession(sessionId);
         }
 
+        // A session the user named: the daemon keeps that name against
+        // the model's own, and the list follows its answer.
+        onSessionRenameRequested: (sessionId, title) => {
+            Phoenix.PhoenixController.renameSession(sessionId, title);
+        }
+
         // The panel's search button is a toggle: it shows the search
         // while it is pressed.
         onOpened: Phoenix.PhoenixController.setSessionSearchOpen(true);

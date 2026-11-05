@@ -484,6 +484,14 @@ void PhoenixController::deleteSession(const QString &sessionId)
     m_agent->requestSessionDelete(searchUser(), sessionId);
 }
 
+void PhoenixController::renameSession(const QString &sessionId, const QString &title)
+{
+    // The daemon owns the names too: it keeps the user's own name
+    // against the model's, and answers with the name the session is
+    // listed under now.
+    m_agent->requestSessionRename(searchUser(), sessionId, title);
+}
+
 void PhoenixController::openSessionResults(const QString &sessionId,
                                            const QString &mode,
                                            const QString &title)

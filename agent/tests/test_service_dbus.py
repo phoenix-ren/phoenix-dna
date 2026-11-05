@@ -299,3 +299,41 @@ def test_delete_session_rejects_an_invalid_user(client):
     _bus, iface = client
     with pytest.raises(dbus.exceptions.DBusException, match="invalid user"):
         iface.DeleteSession("../etc", "whatever")
+
+
+def test_rename_session_over_dbus(client):
+    """A session can be named by the user, and the name is what it is listed under."""
+    bus, iface = client
+    from phoenix_dna.sessions import _local_username
+
+    user = _local_username()
+    finished = threading.Event()
+    bus.add_signal_receiver(
+        lambda *_a: finished.set(), signal_name="RunFinished", dbus_interface=None
+    )
+    iface.SubmitPrompt("session to rename", "")
+    assert finished.wait(15)
+
+    sessions = json.loads(str(iface.SearchSessions(user, "session to rename")))
+    assert sessions
+    session_id = sessions[0]["id"]
+
+    entry = json.loads(str(iface.RenameSession(user, session_id, "My own name")))
+    assert entry["id"] == session_id
+    assert entry["title"] == "My own name"
+    assert entry["summary"] == "My own name"
+
+    # The list shows the session under its new name.
+    listed = json.loads(str(iface.SearchSessions(user, "My own")))
+    assert [s["id"] for s in listed] == [session_id]
+
+    # A session that is not there cannot be named.
+    assert str(iface.RenameSession(user, "missing", "A name")) == ""
+
+
+def test_rename_session_rejects_an_invalid_user(client):
+    import dbus
+
+    _bus, iface = client
+    with pytest.raises(dbus.exceptions.DBusException, match="invalid user"):
+        iface.RenameSession("../etc", "whatever", "A name")

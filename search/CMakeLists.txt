@@ -31,27 +31,28 @@ ecm_finalize_qml_module(org.phoenixdna.search)
 
 if(BUILD_TESTING)
 
-# Headless check of the search's delete flow: a session that is thrown
-# away cannot be brought back, so the delete button only asks — the
-# confirmation names the session, and only the confirmation hands it
-# over to be deleted.
+# Headless check of the search's session actions: a session that is
+# thrown away cannot be brought back, so the delete button only asks —
+# the confirmation names the session, and only the confirmation hands
+# it over to be deleted. A session can also be named the user's way,
+# and that name stands against the model's own.
 #
 # The test loads the real overlay from the module above, not a copy.
 #
-#   deleteflowtest
-add_executable(deleteflowtest deleteflowtest.cpp)
-target_compile_definitions(deleteflowtest PRIVATE
-    PHOENIX_DELETE_FLOW_TEST="${CMAKE_CURRENT_SOURCE_DIR}/qml/DeleteFlowTest.qml")
-target_link_libraries(deleteflowtest PRIVATE
+#   sessionactionstest
+add_executable(sessionactionstest sessionactionstest.cpp)
+target_compile_definitions(sessionactionstest PRIVATE
+    PHOENIX_SESSION_ACTIONS_TEST="${CMAKE_CURRENT_SOURCE_DIR}/qml/SessionActionsTest.qml")
+target_link_libraries(sessionactionstest PRIVATE
     Qt6::Gui
     Qt6::Qml
     Qt6::Quick
 )
 # The module is loaded by the QML engine from the import path (the build
 # tree's bin directory), the way the app loads it.
-add_dependencies(deleteflowtest org.phoenixdna.search org.phoenixdna.theme)
-add_test(NAME deleteflowtest COMMAND deleteflowtest)
-set_tests_properties(deleteflowtest PROPERTIES
+add_dependencies(sessionactionstest org.phoenixdna.search org.phoenixdna.theme)
+add_test(NAME sessionactionstest COMMAND sessionactionstest)
+set_tests_properties(sessionactionstest PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}/bin")
 
 endif() # BUILD_TESTING

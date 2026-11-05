@@ -89,6 +89,10 @@ PlasmaCore.Dialog {
     // shell asks the daemon to throw it away.
     signal sessionDeleteRequested(string sessionId)
 
+    // Emitted when the user confirms a new name for a session: the
+    // shell asks the daemon to keep it.
+    signal sessionRenameRequested(string sessionId, string title)
+
     // The session the user is about to throw away, and the name it is
     // listed under. The confirmation asks about one session at a time.
     property string pendingDeleteId: ""
@@ -97,6 +101,19 @@ PlasmaCore.Dialog {
     // Whether the confirmation is up: nothing behind it can be
     // reached while it is.
     readonly property bool deleting: pendingDeleteId.length > 0
+
+    // The session being renamed, the name it has now, and the name the
+    // user is typing.
+    property string pendingRenameId: ""
+    property string pendingRenameText: ""
+
+    // Whether the rename is up: the window belongs to the name while
+    // it is.
+    readonly property bool renaming: pendingRenameId.length > 0
+
+    // Whether a question is up at all: the window is modal then, and
+    // the list behind it is out of reach.
+    readonly property bool modal: deleting || renaming
 
     // The session the right pane shows, and its place in the list.
     property string currentSessionId: ""
@@ -298,6 +315,38 @@ PlasmaCore.Dialog {
         pendingDeleteName = ""
     }
 
+    // Asks for a new name for the session at \a index: the field comes
+    // up with the name the session has now.
+    function askRename(index) {
+        if (index < 0 || index > summaries.length - 1) {
+            return
+        }
+        const session = summaries[index]
+        // The name first, the session second: the field is shown with
+        // the name the session has, and it takes the keyboard as soon
+        // as the question is up.
+        pendingRenameText = session.title || ""
+        pendingRenameId = session.id
+    }
+
+    // The new name was accepted: the session goes to the daemon, which
+    // keeps it against the model's own naming.
+    function confirmRename() {
+        const id = pendingRenameId
+        const title = pendingRenameText
+        pendingRenameId = ""
+        pendingRenameText = ""
+        if (id.length > 0) {
+            sessionRenameRequested(id, title)
+        }
+    }
+
+    // The new name was declined: the session keeps the one it has.
+    function cancelRename() {
+        pendingRenameId = ""
+        pendingRenameText = ""
+    }
+
     // A new set of results: keep the selected session when it is still
     // in the list, otherwise start at the top.
     onSummariesChanged: {
@@ -319,11 +368,13 @@ PlasmaCore.Dialog {
         id: content
 
         focus: true
-        // Escape closes the confirmation first: the question it asks
-        // is nearer to the user than the window it sits in.
+        // Escape closes the question that is up first: it is nearer to
+        // the user than the window it sits in.
         Keys.onEscapePressed: {
             if (searchOverlay.deleting) {
                 searchOverlay.cancelDelete()
+            } else if (searchOverlay.renaming) {
+                searchOverlay.cancelRename()
             } else {
                 searchOverlay.dismiss()
             }
@@ -335,14 +386,14 @@ PlasmaCore.Dialog {
         Shortcut {
             sequences: ["Up"]
             context: Qt.WindowShortcut
-            enabled: !searchOverlay.deleting
+            enabled: !searchOverlay.modal
             onActivated: searchOverlay.moveSelection(-1)
         }
 
         Shortcut {
             sequences: ["Down"]
             context: Qt.WindowShortcut
-            enabled: !searchOverlay.deleting
+            enabled: !searchOverlay.modal
             onActivated: searchOverlay.moveSelection(1)
         }
 
@@ -351,7 +402,7 @@ PlasmaCore.Dialog {
         Shortcut {
             sequences: ["Return", "Enter"]
             context: Qt.WindowShortcut
-            enabled: !searchOverlay.deleting
+            enabled: !searchOverlay.modal
             onActivated: searchOverlay.activateCurrentSession()
         }
 
@@ -448,7 +499,7 @@ PlasmaCore.Dialog {
                     selectByMouse: true
                     // The confirmation is a modal question: the list
                     // behind it does not narrow down while it is up.
-                    enabled: !searchOverlay.deleting
+                    enabled: !searchOverlay.modal
 
                     onTextChanged: {
                         if (!searchOverlay.clearingQuery) {
@@ -541,11 +592,11 @@ PlasmaCore.Dialog {
 
                                 anchors.fill: parent
                                 anchors.margins: Kirigami.Units.smallSpacing
-                                // The delete button stands at the end of
-                                // the row: the names must not run under
-                                // it.
+                                // The rename and delete buttons stand at
+                                // the end of the row: the names must not
+                                // run under them.
                                 anchors.rightMargin: Kirigami.Units.smallSpacing
-                                    + deleteButton.width
+                                    + renameButton.width + deleteButton.width
                                 spacing: 0
 
                                 // The summary name: the session's title,
@@ -623,6 +674,33 @@ PlasmaCore.Dialog {
 
                                 PC3.ToolTip {
                                     text: i18n("Delete this session")
+                                }
+                            }
+
+                            // The rename button: the session's own name,
+                            // the one the model would give it or the one
+                            // the user chose.
+                            //
+                            // It stands next to the delete button, and
+                            // says what it does in the accent colour
+                            // once the pointer is on it.
+                            PC3.ToolButton {
+                                id: renameButton
+                                objectName: "renameButton"
+
+                                anchors.right: deleteButton.left
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                icon.source: LucideIcons.url("pencil",
+                                    hovered ? PhoenixTheme.linkColor
+                                            : PhoenixTheme.secondaryTextColor)
+                                icon.width: Kirigami.Units.iconSizes.small
+                                icon.height: Kirigami.Units.iconSizes.small
+
+                                onClicked: searchOverlay.askRename(sessionItem.index)
+
+                                PC3.ToolTip {
+                                    text: i18n("Rename this session")
                                 }
                             }
                         }
@@ -1086,6 +1164,130 @@ PlasmaCore.Dialog {
                             icon.source: LucideIcons.url("trash",
                                                         PhoenixTheme.errorColor)
                             onClicked: searchOverlay.confirmDelete()
+                        }
+                    }
+                }
+            }
+        }
+
+        // ---- The new name -----------------------------------------------
+        // The name the user gives the session: it stands against the
+        // model's own naming, which is rewritten after every run.
+        Rectangle {
+            id: renameScrim
+            objectName: "renameScrim"
+
+            anchors.fill: parent
+            visible: searchOverlay.renaming
+            // The window behind the question is dimmed: the name is
+            // what the user is asked for now.
+            color: Qt.rgba(0, 0, 0, 0.45)
+
+            // Nothing behind the scrim is reachable while it is up.
+            MouseArea {
+                anchors.fill: parent
+                onClicked: searchOverlay.cancelRename()
+            }
+
+            Rectangle {
+                id: renameCard
+                objectName: "renameCard"
+
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 2 * Kirigami.Units.gridUnit, 420)
+                implicitHeight: renameColumn.implicitHeight
+                    + 2 * Kirigami.Units.gridUnit
+                radius: Kirigami.Units.smallSpacing
+                color: PhoenixTheme.backgroundColor
+                border.width: 1
+                border.color: PhoenixTheme.backdropBorderColor
+
+                ColumnLayout {
+                    id: renameColumn
+
+                    anchors.fill: parent
+                    anchors.margins: Kirigami.Units.gridUnit
+                    spacing: Kirigami.Units.smallSpacing
+
+                    Kirigami.Heading {
+                        Layout.fillWidth: true
+                        level: 6
+                        text: i18n("Rename this session")
+                        color: PhoenixTheme.headingTextColor
+                    }
+
+                    // The name: what the session is called now is in
+                    // the field, and what the user types replaces it.
+                    PC3.TextField {
+                        id: renameField
+                        objectName: "renameField"
+
+                        Layout.fillWidth: true
+                        placeholderText: i18n("Name this session…")
+                        selectByMouse: true
+
+                        // The field's own text is the truth once it is
+                        // edited, so the overlay is told about it.
+                        text: searchOverlay.pendingRenameText
+                        onTextChanged: {
+                            if (searchOverlay.renaming) {
+                                searchOverlay.pendingRenameText = text
+                            }
+                        }
+
+                        // Return takes the name: the field is what the
+                        // user is here for.
+                        onAccepted: searchOverlay.confirmRename()
+
+                        // The name is what the user is here for, so the
+                        // field takes the keyboard and shows the old
+                        // name ready to be replaced.
+                        Connections {
+                            target: searchOverlay
+
+                            function onRenamingChanged() {
+                                if (searchOverlay.renaming) {
+                                    renameField.forceActiveFocus()
+                                    renameField.selectAll()
+                                }
+                            }
+                        }
+                    }
+
+                    // An empty name is an answer too: the session goes
+                    // back to the name the model gives it.
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: i18n("The name stands from now on: the agent "
+                                 + "will not rename this session again. Leave "
+                                 + "it empty to let the agent name it again.")
+                        color: PhoenixTheme.secondaryTextColor
+                        font.pixelSize: Math.max(
+                            9, Math.round(Qt.application.font.pixelSize * 0.8))
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Kirigami.Units.smallSpacing
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Item { Layout.fillWidth: true }
+
+                        PC3.Button {
+                            objectName: "cancelRenameButton"
+
+                            text: i18n("Cancel")
+                            onClicked: searchOverlay.cancelRename()
+                        }
+
+                        PC3.Button {
+                            objectName: "confirmRenameButton"
+
+                            text: i18n("Rename")
+                            icon.source: LucideIcons.url("pencil",
+                                                        PhoenixTheme.linkColor)
+                            onClicked: searchOverlay.confirmRename()
                         }
                     }
                 }

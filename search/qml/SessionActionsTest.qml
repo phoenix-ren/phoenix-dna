@@ -6,18 +6,17 @@ import QtQuick.Window
 import org.phoenixdna.search
 
 /*
- * The session search's delete flow, exercised on the real overlay.
+ * The session search's session actions, exercised on the real overlay.
  *
  * The overlay under test is the real one, loaded from the session-search
- * QML module (see DeleteFlowTest.qml) — not a copy of it — so what the
+ * QML module (see SessionActionsTest.qml) — not a copy of it — so what the
  * test measures is what the user sees.
  *
  * A session that is thrown away cannot be brought back, so the button
  * only asks: the confirmation names the session, and only the
- * confirmation hands the session to the daemon. The test walks that
- * round trip: the click opens the question, the question names the
- * session, declining it leaves everything alone, and accepting it asks
- * for exactly that session to be deleted.
+ * confirmation hands the session to the daemon. A session can also be
+ * named the user's way, and the field for it comes up with the name the
+ * session has. The test walks both round trips.
  */
 Window {
     id: root
@@ -41,7 +40,7 @@ Window {
             {
                 "id": "s1",
                 "mode": "user",
-                "title": "",
+                "title": "Disk tuning",
                 "summary": "Disk tuning",
                 "preview": "how much disk is left?",
                 "createdAt": "2026-01-01T00:00:00+00:00",
@@ -60,14 +59,17 @@ Window {
             }
         ]
 
-        // The sessions the user threw away: the overlay hands them to
-        // the shell, which asks the daemon to delete them.
+        // The sessions the user threw away, and the ones they named.
         property var deleted: []
+        property var renamed: []
         onSessionDeleteRequested: (sessionId) => root.deleted.push(sessionId)
+        onSessionRenameRequested: (sessionId, title) =>
+            root.renamed.push({ "id": sessionId, "title": title })
     }
 
-    // The sessions the user threw away.
+    // The sessions the user threw away, and the ones they named.
     property var deleted: []
+    property var renamed: []
 
     // Walks the item tree for the named object.
     function findByName(item, name) {
@@ -87,13 +89,13 @@ Window {
         return null
     }
 
-    // The session list of the overlay, and the delete button of the row
-    // at \a index.
+    // The session list of the overlay, and the button of the row at
+    // \a index that is named \a button.
     function listOf(overlayItem) {
         return findByName(overlayItem.contentItem, "sessionList")
     }
 
-    function deleteButtonOf(overlayItem, index) {
+    function buttonOf(overlayItem, index, button) {
         const list = listOf(overlayItem)
         if (!list) {
             return null
@@ -102,7 +104,12 @@ Window {
         if (!row) {
             return null
         }
-        return findByName(row, "deleteButton")
+        return findByName(row, button)
+    }
+
+    // The name field of the rename question.
+    function renameFieldOf(overlayItem) {
+        return findByName(overlayItem.contentItem, "renameField")
     }
 
     property int failures: 0
@@ -152,7 +159,11 @@ Window {
                  stepTheQuestionNamesTheSession,
                  stepDecliningLeavesEverythingAlone,
                  stepAcceptingAsksForThatSession,
-                 stepTheSecondSessionToo]
+                 stepEveryRowCanBeNamed,
+                 stepTheFieldComesUpWithTheName,
+                 stepDecliningANameChangesNothing,
+                 stepAcceptingANameAsksForIt,
+                 stepAnEmptyNameIsAnAnswerToo]
         step = 0
         done = false
     }
@@ -161,19 +172,19 @@ Window {
 
     // ---- The steps -----------------------------------------------------
 
-    // Every row of the list carries a delete button: the session's way
-    // out of the history.
+    // Every row of the list carries a delete button and a rename
+    // button: the session's way out of the history, and its own name.
     function stepEveryRowCanBeThrownAway() {
         root.check(root.listOf(overlay) !== null, "the session list is found")
-        root.check(root.deleteButtonOf(overlay, 0) !== null,
+        root.check(root.buttonOf(overlay, 0, "deleteButton") !== null,
                    "the first row carries a delete button")
-        root.check(root.deleteButtonOf(overlay, 1) !== null,
+        root.check(root.buttonOf(overlay, 1, "deleteButton") !== null,
                    "the second row carries a delete button")
     }
 
     // The click does not delete anything: it asks.
     function stepTheClickOnlyAsks() {
-        const button = root.deleteButtonOf(overlay, 0)
+        const button = root.buttonOf(overlay, 0, "deleteButton")
         if (!button) {
             return
         }
@@ -213,7 +224,7 @@ Window {
 
     // Accepting asks for exactly that session.
     function stepAcceptingAsksForThatSession() {
-        const button = root.deleteButtonOf(overlay, 1)
+        const button = root.buttonOf(overlay, 1, "deleteButton")
         if (!button) {
             return
         }
@@ -230,9 +241,92 @@ Window {
                    "the confirmation goes away once it is accepted")
     }
 
-    // The flow works for every row, not just the first two.
-    function stepTheSecondSessionToo() {
-        root.check(root.deleted.length === 1 && root.deleted[0] === "s2",
-                   "exactly one session was thrown away")
+    // Every row carries a rename button as well.
+    function stepEveryRowCanBeNamed() {
+        root.check(root.buttonOf(overlay, 0, "renameButton") !== null,
+                   "the first row carries a rename button")
+        root.check(root.buttonOf(overlay, 1, "renameButton") !== null,
+                   "the second row carries a rename button")
+    }
+
+    // The field comes up with the name the session has now, so the
+    // user can change it rather than write it from scratch.
+    function stepTheFieldComesUpWithTheName() {
+        const button = root.buttonOf(overlay, 0, "renameButton")
+        if (!button) {
+            return
+        }
+        root.check(overlay.renaming === false,
+                   "no name is asked for before the click")
+        button.clicked()
+        root.check(overlay.renaming === true,
+                   "the click asks for a name")
+        root.check(overlay.pendingRenameId === "s1",
+                   "the name is asked for the clicked session ("
+                   + overlay.pendingRenameId + ")")
+        const field = root.renameFieldOf(overlay)
+        root.check(field !== null, "the name field is found")
+        root.check(field !== null && field.text === "Disk tuning",
+                   "the field comes up with the name the session has ("
+                   + (field ? field.text : "") + ")")
+    }
+
+    // Declining a name changes nothing.
+    function stepDecliningANameChangesNothing() {
+        overlay.cancelRename()
+        root.check(overlay.renaming === false,
+                   "the question goes away when it is declined")
+        root.check(root.renamed.length === 0,
+                   "declining names nothing")
+    }
+
+    // Accepting asks for exactly that session, with the name that was
+    // typed.
+    function stepAcceptingANameAsksForIt() {
+        const button = root.buttonOf(overlay, 1, "renameButton")
+        const field = root.renameFieldOf(overlay)
+        if (!button || !field) {
+            return
+        }
+        button.clicked()
+        root.check(overlay.pendingRenameId === "s2",
+                   "the second row asks about the second session")
+        // What the user types is what the overlay knows.
+        field.text = "My own name"
+        root.check(overlay.pendingRenameText === "My own name",
+                   "the typed name is the one the overlay holds ("
+                   + overlay.pendingRenameText + ")")
+        overlay.confirmRename()
+        root.check(root.renamed.length === 1,
+                   "the question asks for one session to be named")
+        root.check(root.renamed.length === 1
+                   && root.renamed[0].id === "s2"
+                   && root.renamed[0].title === "My own name",
+                   "the session and the name asked for are the ones that "
+                   + "were typed")
+        root.check(overlay.renaming === false,
+                   "the question goes away once it is accepted")
+    }
+
+    // An empty name is an answer too: the session goes back to the
+    // name the model gives it.
+    function stepAnEmptyNameIsAnAnswerToo() {
+        const button = root.buttonOf(overlay, 0, "renameButton")
+        const field = root.renameFieldOf(overlay)
+        if (!button || !field) {
+            return
+        }
+        button.clicked()
+        field.text = ""
+        root.check(overlay.pendingRenameText === "",
+                   "the empty name is what the overlay holds")
+        overlay.confirmRename()
+        root.check(root.renamed.length === 2,
+                   "the empty name is asked for as well")
+        root.check(root.renamed.length === 2
+                   && root.renamed[1].id === "s1"
+                   && root.renamed[1].title === "",
+                   "the session asked for is the one that was clicked, and "
+                   + "the name asked for is the empty one")
     }
 }

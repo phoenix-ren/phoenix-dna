@@ -353,6 +353,31 @@ if dbus is not None:
                 )
             return json.dumps(messages, ensure_ascii=False)
 
+        @dbus.service.method(INTERFACE, in_signature="sss", out_signature="s")
+        def RenameSession(self, user, session_id, title):
+            """Give a session the user's own name, or take that name back.
+
+            The name stands from now on: the model's own name - which is
+            rewritten after every completed run - never overwrites it. An
+            empty name takes the user's name away, and the session is
+            listed under its first query again.
+
+            Returns the session's entry as the search lists it now (the
+            same shape a search answer carries), or the empty string when
+            there was no such session.
+            """
+            try:
+                summary = self._daemon.rename_session(
+                    str(user), str(session_id), str(title)
+                )
+            except ValueError as exc:
+                raise dbus.exceptions.DBusException(
+                    f"{_ERROR}.InvalidArgument", str(exc)
+                )
+            if summary is None:
+                return ""
+            return json.dumps(summary, ensure_ascii=False)
+
         @dbus.service.method(INTERFACE, in_signature="ss", out_signature="b")
         def DeleteSession(self, user, session_id):
             """Delete a session from the user's history.
