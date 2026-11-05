@@ -53,6 +53,11 @@ def test_store_reports_the_shape_of_a_session(tmp_path):
     assert context["tokensOut"] == 20
     assert context["totalTokens"] == 120
 
+    # The window: the run recorded no prompt size, so the session is
+    # measured by its own size instead.
+    assert context["contextUsedEstimated"] is True
+    assert context["contextUsed"] > 0
+
     # A session that is not there has no context to report.
     assert store.session_context(user, "missing") == {}
     assert store.session_context(user, "") == {}
@@ -87,6 +92,39 @@ def test_store_splits_the_cached_part_of_the_prompt(tmp_path):
     # The total is the sum of the three - the cached tokens are
     # counted once, not twice.
     assert context["totalTokens"] == 220_544
+
+
+def test_store_measures_the_window_by_the_biggest_prompt(tmp_path):
+    store = SessionStore(tmp_path / "users")
+    user = store.local_user
+
+    # Two runs: the first asked with a small prompt, the second with a
+    # big one (the conversation grew in between).
+    store.record_run(
+        user,
+        "user",
+        "s1",
+        "run_finished",
+        {"status": "completed", "tokens_in": 1_000, "tokens_out": 50,
+         "context_tokens": 900},
+    )
+    store.record_run(
+        user,
+        "user",
+        "s1",
+        "run_finished",
+        {"status": "completed", "tokens_in": 40_000, "tokens_out": 900,
+         "context_tokens": 38_000},
+    )
+
+    context = store.session_context(user, "s1")
+
+    # The window is as full as the biggest prompt made it: the sum of
+    # the prompts (41 000) says nothing about the room that is left.
+    assert context["contextUsed"] == 38_000
+    assert context["contextUsedEstimated"] is False
+    # The spend is the sum, and it is a different number.
+    assert context["totalTokens"] == 41_950
 
 
 def _daemon_with(config, answer="an answer"):
@@ -129,7 +167,11 @@ def test_daemon_answers_with_the_model_and_the_share(tmp_path):
         # The fake provider spends 11 input and 7 output tokens per
         # turn; the share of the window is what that is.
         assert context["totalTokens"] == 18
-        assert context["usage"] == 1.8
+        # The window itself: the size of the prompt the run asked with,
+        # not the sum of the prompts.
+        assert context["contextUsed"] == 11
+        assert context["contextUsedEstimated"] is False
+        assert context["usage"] == 1.1
 
         # No price configured: the view says so rather than quoting a
         # price of nothing.

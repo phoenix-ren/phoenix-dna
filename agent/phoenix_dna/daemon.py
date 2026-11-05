@@ -478,7 +478,11 @@ class AgentDaemon:
 
         config = self.config
         limit = int(config.context_window or 0)
-        total = int(context.get("totalTokens", 0))
+        # How full the window is: the size of the biggest prompt the
+        # session sent - not the sum of every request's prompt, which
+        # counts the same tokens once per request and says nothing
+        # about how much room is left.
+        used = int(context.get("contextUsed", 0))
         priced = bool(config.price_input or config.price_output)
         cost = 0.0
         if priced:
@@ -493,7 +497,9 @@ class AgentDaemon:
                 "provider": config.llm_provider,
                 "model": config.model,
                 "contextLimit": limit,
-                "usage": round(total / limit * 100.0, 1) if limit > 0 else 0.0,
+                "contextUsed": used,
+                "contextUsedEstimated": bool(context.get("contextUsedEstimated", False)),
+                "usage": round(used / limit * 100.0, 1) if limit > 0 else 0.0,
                 "priced": priced,
                 # Rounded to keep the float out of the answer's noise,
                 # but far enough down to keep a price of a fraction of

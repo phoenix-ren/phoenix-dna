@@ -40,9 +40,13 @@ Item {
     readonly property int contextLimit: context
         ? Number(context.contextLimit || 0) : 0
 
-    // The tokens the session has spent of that window.
-    readonly property int totalTokens: context
-        ? Number(context.totalTokens || 0) : 0
+    // How much of that window the session takes up: the size of the
+    // biggest prompt it sent. This is not the sum of every request's
+    // prompt - the conversation is sent again with every turn, so that
+    // sum counts the same tokens over and over and says nothing about
+    // how much room is left.
+    readonly property int contextUsed: context
+        ? Number(context.contextUsed || 0) : 0
 
     // Whether the window's size is known at all: without it there is
     // no share to draw.
@@ -50,7 +54,7 @@ Item {
 
     // The share of the window in use, zero to one.
     readonly property real fraction: known
-        ? Math.max(0, Math.min(1, totalTokens / contextLimit))
+        ? Math.max(0, Math.min(1, contextUsed / contextLimit))
         : 0
 
     // The share in per cent, as the ring shows it.
@@ -127,8 +131,9 @@ Item {
     PC3.ToolTip {
         visible: root.hovered
         text: root.known
-            ? i18n("Context: %1%% used — %2 of %3 tokens", root.percent,
-                   root.totalTokens.toLocaleString(Qt.locale(), "f", 0),
+            ? i18n("Context: %1%% of the window used — %2 of %3 tokens",
+                   root.percent,
+                   root.contextUsed.toLocaleString(Qt.locale(), "f", 0),
                    root.contextLimit.toLocaleString(Qt.locale(), "f", 0))
             : i18n("Context: the size of the model's context window is not known")
     }

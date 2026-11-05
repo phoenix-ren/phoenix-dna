@@ -287,16 +287,29 @@ separately and never read aloud.
 ## The context window
 
 The corner of the results window carries a ring: how much of the model's
-context window the session on screen has used. A click on it opens a
-window with the numbers behind that share — which model is in force, how
-much it holds at once, the tokens the session spent (the fresh input, the
-output, the part of the prompt the server answered from its cache, and
-the reasoning), how many queries and answers the session holds, what it
-cost, and when it began. `Esc` — or the **Close** button — puts it away.
+context window the session on screen takes up. A click on it opens a
+window with the numbers behind it — which model is in force, how much it
+holds at once, how full it is, the tokens the session spent (the fresh
+input, the output, the part of the prompt the server answered from its
+cache, and the reasoning), how many queries and answers the session
+holds, what it cost, and when it began. `Esc` — or the **Close** button —
+puts it away.
 
 The ring belongs to the session, so it lives with the conversation rather
 than in the panel widget: the widget is the app's presence, not any one
 conversation's.
+
+Two numbers are worth telling apart, and the view tells them apart:
+
+* **How full the window is** — the size of the biggest prompt the
+  session sent. This is what the ring shows, and it is what decides
+  whether the next prompt still fits.
+* **What the session spent** — the sum of every request's prompt and
+  answer. The conversation is sent again with every turn, so the same
+  tokens are counted again and again: a session of a few dozen requests
+  spends millions of tokens while the window is barely a tenth full.
+  That is normal, and it is why most of it is *cache*: the server
+  answers from its prompt cache, which is cheap and quick.
 
 How much the model holds at once is the provider's own number (a million
 tokens for MiniMax's models, 128 000 for OpenAI's and Groq's), and the
@@ -321,6 +334,11 @@ price_output = 1.20
 
 Without them the window says that the model is not priced, rather than
 quoting a price of nothing.
+
+The conversation grows with every turn and is never shortened, so a
+session that goes on long enough will fill the window whatever the
+model's limit is. Compacting it — summarising the older turns and going
+on with the summary — is the next thing to build.
 
 ## Dictation (speech to text)
 

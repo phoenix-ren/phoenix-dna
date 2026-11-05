@@ -679,6 +679,10 @@ class SessionStore:
                 "SELECT role, COUNT(*) AS n FROM messages WHERE session_id = ? GROUP BY role",
                 (session_id,),
             ).fetchall()
+            size = db.execute(
+                "SELECT SUM(LENGTH(message_json)) AS n FROM messages WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
             runs = db.execute(
                 "SELECT data_json FROM runs WHERE session_id = ? AND kind = 'run_finished' "
                 "ORDER BY seq",
@@ -701,6 +705,7 @@ class SessionStore:
         output_tokens = 0
         cache_tokens = 0
         reasoning_tokens = 0
+        context_tokens = 0
         completed = 0
         for (blob,) in runs:
             try:
@@ -714,6 +719,9 @@ class SessionStore:
             output_tokens += int(data.get("tokens_out", 0) or 0)
             cache_tokens += int(data.get("cache_tokens", 0) or 0)
             reasoning_tokens += int(data.get("reasoning_tokens", 0) or 0)
+            context_tokens = max(
+                context_tokens, int(data.get("context_tokens", 0) or 0)
+            )
             completed += 1
 
         # The fresh input: the prompt tokens that were not served from
@@ -721,6 +729,15 @@ class SessionStore:
         # the prompt ones reports them that way already; the floor
         # keeps the split honest for one that does not.
         fresh_input = max(0, prompt_tokens - cache_tokens)
+
+        # How full the window is: the biggest prompt the session sent
+        # (the provider counts those, so the number is exact). A
+        # session whose runs predate that record - or one that has not
+        # run yet - is measured by its own size instead: the messages
+        # the next prompt would carry, a token being about four
+        # characters of them.
+        estimated = int(size["n"] or 0) / 4 if size is not None else 0
+        context_used = context_tokens or int(estimated)
 
         return {
             "id": session_id,
@@ -736,6 +753,10 @@ class SessionStore:
             "cacheTokens": cache_tokens,
             "reasoningTokens": reasoning_tokens,
             "totalTokens": fresh_input + output_tokens + cache_tokens,
+            # How much of the model's context window the session takes
+            # up, and whether that number is measured or estimated.
+            "contextUsed": context_used,
+            "contextUsedEstimated": context_tokens == 0,
         }
 
     # -- deleting a session ---------------------------------------------------
