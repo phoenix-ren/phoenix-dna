@@ -14,7 +14,7 @@
   Dictate a prompt, get a native answer — with the desktop, not a browser tab, doing the work.
 ])
 #html.elem("div", attrs: (class: "badges"), [
-  #html.elem("span", attrs: (class: "badge accent"), [v0.1.0])
+  #html.elem("span", attrs: (class: "badge accent"), [v0.2.0])
   #html.elem("span", attrs: (class: "badge"), [KDE Plasma 6.4+])
   #html.elem("span", attrs: (class: "badge"), [Qt 6.7+])
   #html.elem("span", attrs: (class: "badge"), [Fedora · Arch · Kubuntu])
@@ -61,7 +61,15 @@
   ])
   #html.elem("div", attrs: (class: "card"), [
     #html.elem("h4", [Meters that tell the truth])
-    #html.elem("p", [A CPU meter on the running tool, and a wire meter in bytes per second — the pace of the conversation with the model.])
+    #html.elem("p", [A CPU meter on the running tool, a wire meter in bytes per second, a transfer meter on the download in progress — and a ring for the context the session has used.])
+  ])
+  #html.elem("div", attrs: (class: "card"), [
+    #html.elem("h4", [Transfers you can watch])
+    #html.elem("p", [An ISO is not a command. Downloads — web, FTP, torrent magnets — and uploads are a tool of their own, metered as they run, with a budget and a stall alarm.])
+  ])
+  #html.elem("div", attrs: (class: "card"), [
+    #html.elem("h4", [Fork, and try again])
+    #html.elem("p", [The answer went nowhere? Branch the conversation at any of your own prompts: the fork grows on its own, and the original keeps its history.])
   ])
   #html.elem("div", attrs: (class: "card"), [
     #html.elem("h4", [Provider-agnostic])
@@ -80,7 +88,7 @@
     #html.elem("h4", [Fedora 45+])
     ````bash
     dnf install \
-      https://github.com/phoenix-ren/phoenix-dna/releases/download/v0.1.0/phoenix-dna-0.1.0-1.fc45.x86_64.rpm
+      https://github.com/phoenix-ren/phoenix-dna/releases/download/v0.2.0/phoenix-dna-0.2.0-1.fc45.x86_64.rpm
     ````
   ])
   #html.elem("div", attrs: (class: "distro"), [
@@ -92,8 +100,8 @@
   #html.elem("div", attrs: (class: "distro"), [
     #html.elem("h4", [Kubuntu 26.04+])
     ````bash
-    curl -LO https://github.com/phoenix-ren/phoenix-dna/releases/download/v0.1.0/phoenix-dna_0.1.0-1_amd64.deb
-    sudo apt install ./phoenix-dna_0.1.0-1_amd64.deb
+    curl -LO https://github.com/phoenix-ren/phoenix-dna/releases/download/v0.2.0/phoenix-dna_0.2.0-1_amd64.deb
+    sudo apt install ./phoenix-dna_0.2.0-1_amd64.deb
     ````
   ])
 ])

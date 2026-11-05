@@ -5,6 +5,42 @@
 #import "/layout.typ": *
 #show: page.with(title: "Changelog", subtitle: "What changed, release by release.", active: "changelog")
 
+== 0.2.0 [2026-11-05]
+
+The conversation gets instruments of its own — and an archive it can be
+tended in. Everything below is new since 0.1.0:
+
+- *Metered transfers* — a download (a web URL, an FTP server, a torrent
+  magnet) or an upload is a tool call of its own, metered while it runs:
+  the pace of the bytes and how much of the thing is here. A download
+  writes `.part` and is renamed into place only when it is complete, the
+  budget defaults to an hour and caps at a day, and a socket silent for
+  ninety seconds is a stalled transfer, not a slow one. The prompts warn
+  the model off `curl` and `wget` for moving files — by name, because
+  the decision it has to interrupt is made in commands.
+- *The context view* — a ring in the corner of the conversation window
+  says how much of the model's context window the session has used. A
+  click opens the numbers behind the share: the model in force, how much
+  it holds at once, the tokens the session spent (the fresh input, the
+  output, the part the server answered from its cache, the reasoning),
+  the turns it holds, what it cost, and when it began.
+- *Forks* — a conversation can be branched into a session of its own at
+  any of your own prompts. The fork holds everything up to the prompt —
+  the prompt itself and the answer that followed it — and the original
+  is not touched: the two grow apart.
+- *Session tending* — name a session yourself and the name stands: the
+  daemon is never asked for another. Throw a session away with a
+  confirmation that names it — the list is full of similar names, and
+  the wrong one must not go.
+- *The settings window restarts the daemon for you* when the LLM key is
+  saved. No more pasting a key and then doing `systemctl --user restart
+  phoenix.service` by hand; the endpoint and the model still ask for it,
+  and the window says so when they do.
+- *This website* — new since 0.1.0: a manual that walks every window,
+  button and shortcut in the order a conversation goes, the features in
+  detail, per-distro quickstarts, and this changelog, compiled from the
+  repository and deployed on every push.
+
 == 0.1.0 [2026-11-05]
 
 First public release. Everything below is new — the highlights, as the

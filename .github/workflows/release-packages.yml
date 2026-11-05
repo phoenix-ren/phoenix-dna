@@ -95,11 +95,15 @@ jobs:
           cd "pkg/phoenix-dna-$version"
           # nocheck: the CPU-meter test does not survive CI containers; the
           # recipe's own test phase is verified on fresh distro VMs (PACKAGING.md)
-          DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -us -uc -b
+          # -S as well: the .debian.tar.gz is a release asset the quickstart
+          # walks users through building from
+          DEB_BUILD_OPTIONS=nocheck dpkg-buildpackage -us -uc -b -S
       - uses: actions/upload-artifact@v4
         with:
           name: ubuntu-deb
-          path: pkg/*.deb
+          path: |
+            pkg/*.deb
+            pkg/*.debian.tar.gz
           if-no-files-found: error
 
   arch-pkg:
@@ -150,6 +154,20 @@ jobs:
         with:
           path: artifacts
           merge-multiple: true
+      - name: Checkout the tag for the recipes and the source archive
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - name: Trust the checkout for git archive
+        run: git config --system --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Build the source archive
+        run: |
+          packaging/make-source-archive.sh
+          version=$(sed -n \
+              's/^__version__[[:space:]]*=[[:space:]]*"\([^"]*\)".*$/\1/p' \
+              agent/phoenix_dna/__init__.py)
+          # the same bytes under the Debian source package's name
+          cp "dist/phoenix-dna-$version.tar.gz" "dist/phoenix-dna_$version.orig.tar.gz"
       - name: Attach the packages to the release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -163,6 +181,10 @@ jobs:
           rpms=$(find artifacts -name '*.rpm' ! -name '*debug*')
           debs=$(find artifacts -name '*.deb')
           arch=$(find artifacts -name '*.pkg.tar.zst' ! -name '*debug*')
-          echo "uploading:" $rpms $debs $arch
-          gh release upload "$tag" $rpms $debs $arch --clobber
+          # the recipes and the source archives: the assets the quickstart
+          # builds from — v0.1.0 had to upload them by hand
+          tgzs=$(find artifacts dist -name '*.tar.gz')
+          recipes="packaging/fedora/phoenix-dna.spec packaging/arch/PKGBUILD"
+          echo "uploading:" $rpms $debs $arch $tgzs $recipes
+          gh release upload "$tag" $rpms $debs $arch $tgzs $recipes --clobber
           gh release view "$tag" --json assets --jq '.assets[].name'

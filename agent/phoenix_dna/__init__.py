@@ -10,4 +10,4 @@ need administrator rights are escalated on demand) and streams progress
 back as D-Bus signals.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

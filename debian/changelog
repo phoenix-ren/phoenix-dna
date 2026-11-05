@@ -1,3 +1,13 @@
+phoenix-dna (0.2.0-1) unstable; urgency=medium
+
+  * Metered transfers: downloads and uploads are a tool of their own.
+  * Context view: a ring in the conversation window, and the numbers
+    behind it.
+  * Session forks, session rename and delete.
+  * Saving the LLM key in the settings window restarts the daemon.
+
+ -- Phoenix Ren <ren@phoenixren.space>  Thu, 05 Nov 2026 11:35:25 +0000
+
 phoenix-dna (0.1.0-1) unstable; urgency=medium
 
   * Initial package.

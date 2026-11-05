@@ -111,7 +111,9 @@ def client(service, bus_address):
 
 def test_ping_and_version(client):
     _bus, iface = client
-    assert iface.Ping() == "0.1.0"
+    from phoenix_dna import __version__
+
+    assert iface.Ping() == __version__
 
 
 def test_full_run_over_dbus(client):

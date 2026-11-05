@@ -13,7 +13,7 @@
 # step; packaging/check-versions.sh enforces it.
 
 Name:           phoenix-dna
-Version:        0.1.0
+Version:        0.2.0
 Release:        1%{?dist}
 Summary:        Voice-first AI agent for the KDE Plasma panel
 License:        BSD-2-Clause AND FSFAP AND ISC AND MIT
@@ -121,5 +121,11 @@ fi
 %{_libdir}/qt6/qml/org/phoenixdna/
 
 %changelog
+* Thu Nov 05 2026 Phoenix Ren <ren@phoenixren.space> - 0.2.0-1
+- Metered transfers: downloads and uploads are a tool of their own.
+- Context view: a ring in the conversation window, and the numbers behind it.
+- Session forks, session rename and delete.
+- Saving the LLM key in the settings window restarts the daemon.
+
 * Wed Nov 04 2026 Phoenix Ren <ren@phoenixren.space> - 0.1.0-1
 - Initial package.

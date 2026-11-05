@@ -13,7 +13,7 @@
         "Icon": "org.phoenixdna.agent",
         "License": "BSD-2-Clause",
         "Name": "Phoenix DNA",
-        "Version": "0.1.0",
+        "Version": "0.2.0",
         "Website": "https://example.com/phoenixdna"
     },
     "X-Plasma-API-Minimum-Version": "6.0"
