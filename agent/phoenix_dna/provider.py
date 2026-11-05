@@ -50,6 +50,26 @@ class LLMError(Exception):
     """Any provider failure (transport, HTTP, or malformed payload)."""
 
 
+def _usage_detail(usage: dict, section: str, key: str) -> int:
+    """One number out of a usage payload's detail section.
+
+    The OpenAI-compatible usage carries the interesting numbers in
+    sections of their own - ``prompt_tokens_details`` for the tokens
+    the server answered from its cache, ``completion_tokens_details``
+    for the ones the model spent thinking - and every provider fills
+    them in as it please. A missing section, a missing key or a value
+    that is not a number all mean the same thing: the server did not
+    say, so it is zero.
+    """
+    details = usage.get(section)
+    if not isinstance(details, dict):
+        return 0
+    try:
+        return int(details.get(key, 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 @dataclass(frozen=True)
 class ToolSpec:
     name: str
@@ -89,6 +109,13 @@ class ToolCall:
 class Usage:
     input_tokens: int = 0
     output_tokens: int = 0
+    #: The part of the prompt the server answered from its cache: the
+    #: tokens it did not have to read again. A part of the input
+    #: tokens, not an addition to them.
+    cache_tokens: int = 0
+    #: The tokens the model spent thinking: a part of the output
+    #: tokens, reported apart by the providers that count them.
+    reasoning_tokens: int = 0
 
 
 @dataclass
@@ -384,6 +411,14 @@ class OpenAICompatProvider:
                         input_tokens=int(chunk["usage"].get("prompt_tokens", 0) or 0),
                         output_tokens=int(
                             chunk["usage"].get("completion_tokens", 0) or 0
+                        ),
+                        cache_tokens=_usage_detail(
+                            chunk["usage"], "prompt_tokens_details", "cached_tokens"
+                        ),
+                        reasoning_tokens=_usage_detail(
+                            chunk["usage"],
+                            "completion_tokens_details",
+                            "reasoning_tokens",
                         ),
                     )
                 choices = chunk.get("choices") or []

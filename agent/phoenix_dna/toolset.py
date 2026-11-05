@@ -1,7 +1,8 @@
 # SPDX-FileCopyrightText: 2026 Phoenix DNA contributors
 # SPDX-License-Identifier: BSD-2-Clause
 
-"""The agent's toolset: the files, the shell and the questions.
+"""The agent's toolset: the files, the shell, the transfers and the
+questions.
 
 The agent works as the desktop user, in their home directory. Commands
 that need administrator rights are escalated on demand (see
@@ -24,15 +25,17 @@ from .tools.ask import AskUserTool
 from .tools.files import EditTool, LsTool, ReadTool, WriteTool
 from .tools.search import ExaSearchTool, TavilySearchTool
 from .tools.shell import BashTool
+from .tools.transfer import TransferTool
 
-#: The tools the agent has: the filesystem quartet, the web search pair
-#: and the question tool.
+#: The tools the agent has: the filesystem quartet, the web search pair,
+#: the transfer tool and the question tool.
 TOOL_NAMES = (
     "bash",
     "read",
     "write",
     "edit",
     "ls",
+    "transfer",
     "tavily_search",
     "exa_search",
     "ask_user",
@@ -52,6 +55,7 @@ def build_toolset(
     run_id: str = "",
     ask_coordinator=None,
     process_notifier=None,
+    transfer_notifier=None,
 ) -> dict[str, Tool]:
     """Instantiate the tools for a run.
 
@@ -61,7 +65,8 @@ def build_toolset(
     registered when an ``ask_coordinator`` is given (the daemon always
     passes one; bare-loop users get the tool only when they can deliver
     answers). ``process_notifier`` receives the started/finished pid of
-    every command the bash tool runs, so the UI can meter its CPU usage.
+    every command the bash tool runs, and ``transfer_notifier`` the byte
+    counts of every transfer, so the UI can meter both.
     """
     workdir = working_dir(home_dir)
     workdir.mkdir(parents=True, exist_ok=True)  # ~ exists; cheap insurance
@@ -103,6 +108,12 @@ def build_toolset(
             tools["edit"] = EditTool(workdir)
         elif name == "ls":
             tools["ls"] = LsTool(workdir)
+        elif name == "transfer":
+            # The metered mover of bytes: downloads (web, FTP, magnets)
+            # and uploads, reported to the UI as they happen.
+            tools["transfer"] = TransferTool(
+                workdir, transfer_notifier=transfer_notifier
+            )
         elif name == "tavily_search":
             key = config.keys.get("tavily_api_key", "")
             if key:

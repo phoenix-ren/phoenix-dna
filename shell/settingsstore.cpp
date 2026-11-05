@@ -405,6 +405,15 @@ void SettingsStore::refresh()
         m_llmModel = llmModel;
         Q_EMIT llmEndpointChanged();
     }
+    // How much the model holds at once: the context view measures the
+    // conversation against it. Zero means nothing is named, and the
+    // provider's own default is in force then.
+    const int llmContextWindow =
+        keys.value(QStringLiteral("context_window")).toString().toInt();
+    if (llmContextWindow != m_llmContextWindow) {
+        m_llmContextWindow = llmContextWindow;
+        Q_EMIT llmContextWindowChanged();
+    }
     if (sttEndpoint != m_sttEndpoint || sttModel != m_sttModel) {
         m_sttEndpoint = sttEndpoint;
         m_sttModel = sttModel;
@@ -787,6 +796,26 @@ bool SettingsStore::saveLlmEndpoint(const QString &endpoint, const QString &mode
     }
     // The daemon resolves its endpoint when it starts, like its key.
     setStatus(i18n("The endpoint was stored. Restart the agent daemon to apply it: "
+                   "systemctl --user restart phoenix.service"),
+              false);
+    return true;
+}
+
+bool SettingsStore::saveLlmContextWindow(int tokens)
+{
+    // How much the model holds at once. Zero removes the entry, so the
+    // provider's own default is in force again.
+    if (!writeKeyField(QStringLiteral("context_window"),
+                       tokens > 0 ? QString::number(tokens) : QString())) {
+        return false;
+    }
+
+    m_llmContextWindow = tokens > 0 ? tokens : 0;
+    Q_EMIT llmContextWindowChanged();
+
+    // The daemon resolves its configuration when it starts, like its
+    // key and its endpoint.
+    setStatus(i18n("The context window was stored. Restart the agent daemon to apply it: "
                    "systemctl --user restart phoenix.service"),
               false);
     return true;

@@ -138,6 +138,53 @@ int main(int argc, char **argv)
               "the step is done");
     }
 
+    // ---- A transfer says which way its bytes move ----------------------
+    {
+        ConversationModel model;
+        model.beginExchange(QStringLiteral("fetch and file it"),
+                            QStringLiteral("michelle"));
+        // A download, an upload of what arrived, and a plain command
+        // around them: one step, its tools and their directions kept.
+        model.beginToolCall(QStringLiteral("transfer"), QStringLiteral("head"),
+                            QStringLiteral("download"));
+        model.endToolCall(QStringLiteral("success"), QStringLiteral("tail"));
+        model.beginToolCall(QStringLiteral("transfer"), QStringLiteral("head"),
+                            QStringLiteral("upload"));
+        model.endToolCall(QStringLiteral("success"), QStringLiteral("tail"));
+        model.beginToolCall(QStringLiteral("bash"), QStringLiteral("head"));
+        model.endToolCall(QStringLiteral("success"), QStringLiteral("tail"));
+
+        const QVariantList steps = trail(model);
+        check(steps.size() == 1, "the three calls are one step");
+        const QVariantMap step = steps.at(0).toMap();
+        check(step.value(QStringLiteral("tools")).toStringList()
+                  == QStringList({QStringLiteral("transfer"),
+                                  QStringLiteral("transfer"),
+                                  QStringLiteral("bash")}),
+              "the transfer tool is listed once per direction");
+        check(step.value(QStringLiteral("directions")).toStringList()
+                  == QStringList({QStringLiteral("download"),
+                                  QStringLiteral("upload"), QString()}),
+              "each tool carries its direction, blanks for the rest");
+
+        // Two downloads of one stretch name the tool once: the direction
+        // is what the pane needs, not the repetition.
+        ConversationModel twice;
+        twice.beginExchange(QStringLiteral("fetch two"), QStringLiteral("michelle"));
+        twice.beginToolCall(QStringLiteral("transfer"), QStringLiteral("head"),
+                            QStringLiteral("download"));
+        twice.endToolCall(QStringLiteral("success"), QStringLiteral("tail"));
+        twice.beginToolCall(QStringLiteral("transfer"), QStringLiteral("head"),
+                            QStringLiteral("download"));
+        twice.endToolCall(QStringLiteral("success"), QStringLiteral("tail"));
+        const QVariantList two = trail(twice);
+        check(two.at(0).toMap().value(QStringLiteral("tools")).toStringList()
+                  == QStringList({QStringLiteral("transfer")}),
+              "two downloads of a stretch name the tool once");
+        check(two.at(0).toMap().value(QStringLiteral("count")).toInt() == 2,
+              "but the step counts them both");
+    }
+
     // ---- A call that is still running says so -------------------------
     {
         ConversationModel model;

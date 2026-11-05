@@ -131,6 +131,19 @@ public:
         Q_EMIT dataChanged(idx, idx);
     }
 
+    // Replaces the trail of the exchange — the steps the window renders,
+    // in the shape ConversationModel::stepsFor() gives them (kind, body,
+    // count, tools, directions, status, running, startedAt, endedAt).
+    Q_INVOKABLE void setSteps(const QVariantList &steps)
+    {
+        if (m_rows.isEmpty()) {
+            return;
+        }
+        m_rows[0].steps = steps;
+        const QModelIndex idx = index(0, 0);
+        Q_EMIT dataChanged(idx, idx);
+    }
+
     // The test is done.
     Q_INVOKABLE void finish()
     {

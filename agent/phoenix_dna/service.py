@@ -61,6 +61,10 @@ _SIGNAL_MAP = {
         "tool_process_finished",
         ("run_id", "call_id", "pid"),
     ),
+    "transfer_progress": (
+        "transfer_progress",
+        ("run_id", "call_id", "direction", "done", "total"),
+    ),
     "auth_requested": ("auth_requested", ("run_id", "message")),
     "auth_finished": ("auth_finished", ("run_id", "success")),
     "question_asked": ("question_asked", ("run_id", "ask_id", "question_json")),
@@ -97,6 +101,9 @@ _DEFAULTS = {
     "turn": 0,
     "bytes_sent": 0,
     "bytes_received": 0,
+    "direction": "",
+    "done": 0,
+    "total": 0,
     "text": "",
     "final_text": "",
     "message": "",
@@ -163,6 +170,7 @@ def build_bridge(service) -> SignalBridge:
             "wire_bytes": service.WireBytes,
             "tool_process_started": service.ToolProcessStarted,
             "tool_process_finished": service.ToolProcessFinished,
+            "transfer_progress": service.TransferProgress,
             "auth_requested": service.AuthRequested,
             "auth_finished": service.AuthFinished,
             "question_asked": service.QuestionAsked,
@@ -232,6 +240,14 @@ if dbus is not None:
         # That process ended — normally, by timeout or by cancellation.
         @dbus.service.signal(INTERFACE, signature="ssu")
         def ToolProcessFinished(self, run_id, call_id, pid): ...
+
+        # The bytes a transfer tool call has moved so far: done is
+        # cumulative for the call, total is what the far end promised
+        # (0 when it did not). The UI meters the rate of the transfer
+        # from these, the way WireBytes feeds the meter of the
+        # conversation itself.
+        @dbus.service.signal(INTERFACE, signature="ssstt")
+        def TransferProgress(self, run_id, call_id, direction, done, total): ...
 
         @dbus.service.signal(INTERFACE, signature="ss")
         def AuthRequested(self, run_id, message): ...
@@ -420,6 +436,27 @@ if dbus is not None:
             if summary is None:
                 return ""
             return json.dumps(summary, ensure_ascii=False)
+
+        @dbus.service.method(INTERFACE, in_signature="ss", out_signature="s")
+        def GetSessionContext(self, user, session_id):
+            """One session's context window, as the context view shows it.
+
+            Returns a JSON object: the session's title and timestamps,
+            how many queries and answers it holds, the tokens its runs
+            spent (the fresh input, the output, the cached part of the
+            prompt and the reasoning), the model in force with the size
+            of its context window, the share of that window the session
+            has used, and what the tokens cost.
+
+            An empty object means there is no such session.
+            """
+            try:
+                context = self._daemon.session_context(str(user), str(session_id))
+            except ValueError as exc:
+                raise dbus.exceptions.DBusException(
+                    f"{_ERROR}.InvalidArgument", str(exc)
+                )
+            return json.dumps(context, ensure_ascii=False)
 
         @dbus.service.method(INTERFACE, in_signature="", out_signature="(ssu)")
         def GetState(self):

@@ -15,14 +15,15 @@ from phoenix_dna.toolset import TOOL_NAMES, build_toolset, working_dir
 
 
 def test_tool_names():
-    # The agent has the filesystem quartet, the web search pair and the
-    # question tool.
+    # The agent has the filesystem quartet, the web search pair, the
+    # transfer tool and the question tool.
     assert set(TOOL_NAMES) == {
         "bash",
         "read",
         "write",
         "edit",
         "ls",
+        "transfer",
         "tavily_search",
         "exa_search",
         "ask_user",
@@ -45,12 +46,15 @@ def test_build_toolset(config, home_dir):
         "write",
         "edit",
         "ls",
+        "transfer",
         "tavily_search",
         "exa_search",
     }
     assert tools["bash"].cwd == home_dir
     # no credential cache: the bash tool cannot escalate to root
     assert tools["bash"].credential_cache is None
+    # the transfer tool is always there, and carries the metering hook
+    assert tools["transfer"].transfer_notifier is None
 
     # without search keys the search tools are simply not registered
     stripped = dataclasses.replace(config, keys={})
@@ -60,7 +64,20 @@ def test_build_toolset(config, home_dir):
         "write",
         "edit",
         "ls",
+        "transfer",
     }
+
+
+def test_build_toolset_wires_transfer_notifier(config, home_dir):
+    seen = []
+
+    def notifier(direction, done, total):
+        seen.append((direction, done, total))
+
+    tools = build_toolset(
+        config, home_dir=home_dir, transfer_notifier=notifier
+    )
+    assert tools["transfer"].transfer_notifier is notifier
 
 
 def test_build_toolset_with_ask_coordinator(config, home_dir):
@@ -96,6 +113,7 @@ def test_build_toolset_with_credential_cache(config, fake_sudo):
         "write",
         "edit",
         "ls",
+        "transfer",
         "tavily_search",
         "exa_search",
         "ask_user",
@@ -126,6 +144,9 @@ def test_system_prompt(config):
     # without registered search tools the prompt must not advertise any
     assert "tavily_search" not in prompt
     assert "exa_search" not in prompt
+    # and no transfer tool either: the prompt never advertises a tool
+    # the run does not have
+    assert "transfer tool" not in prompt
     # the agent can ask the user a question
     assert "ask_user" in prompt
 
@@ -133,6 +154,9 @@ def test_system_prompt(config):
     # so the model reaches for them instead of refusing.
     with_tools = build_system_prompt(tool_names=TOOL_NAMES)
     assert "tavily_search" in with_tools and "exa_search" in with_tools
+    # the transfer tool is advertised too, so downloads and uploads go
+    # through it rather than through the shell
+    assert "transfer tool" in with_tools
 
     # A subset (only one key configured) is advertised as-is.
     only_tavily = build_system_prompt(tool_names=("bash", "read", "tavily_search"))

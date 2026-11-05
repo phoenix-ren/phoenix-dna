@@ -458,6 +458,51 @@ class AgentDaemon:
         """
         return self._sessions.fork(user, session_id, exchange_index)
 
+    def session_context(self, user: str, session_id: str) -> dict:
+        """One session's context window, as the context view shows it.
+
+        The session's own numbers (see SessionStore.session_context)
+        and the model's: which provider and model are in force, how
+        much that model holds at once, and what the session's tokens
+        cost.
+
+        The cost is only known when the model is priced: the prices are
+        the user's own (price_input and price_output), for a provider
+        that quotes them per million tokens. Without them the view
+        says the price is unknown rather than quoting a price of
+        nothing.
+        """
+        context = self._sessions.store.session_context(user, session_id)
+        if not context:
+            return {}
+
+        config = self.config
+        limit = int(config.context_window or 0)
+        total = int(context.get("totalTokens", 0))
+        priced = bool(config.price_input or config.price_output)
+        cost = 0.0
+        if priced:
+            cost = (
+                int(context.get("tokensIn", 0)) * float(config.price_input)
+                + int(context.get("tokensOut", 0)) * float(config.price_output)
+                + int(context.get("cacheTokens", 0)) * float(config.price_input)
+            ) / 1_000_000.0
+
+        context.update(
+            {
+                "provider": config.llm_provider,
+                "model": config.model,
+                "contextLimit": limit,
+                "usage": round(total / limit * 100.0, 1) if limit > 0 else 0.0,
+                "priced": priced,
+                # Rounded to keep the float out of the answer's noise,
+                # but far enough down to keep a price of a fraction of
+                # a cent: the view does the rounding that is seen.
+                "cost": round(cost, 10),
+            }
+        )
+        return context
+
     def shutdown(self, timeout: float = 2.0) -> None:
         with self._cond:
             self._stop = True
@@ -542,6 +587,32 @@ class AgentDaemon:
 
         return notify
 
+    def _transfer_notifier(self, run_id: str):
+        """The callback the transfer tool reports its bytes through.
+
+        Runs on the worker thread (from the pump, or the poll loop of a
+        magnet); the event rides the same queue to D-Bus as everything
+        else. ``done`` is cumulative for the call and ``total`` is what
+        the far end promised (0 when it did not), so the UI can meter
+        both the rate and the share. The call id is whatever call is in
+        flight - tool calls are sequential, so it is exactly this
+        transfer's.
+        """
+
+        def notify(direction: str, done: int, total: int) -> None:
+            self._emit(
+                events.make(
+                    events.TRANSFER_PROGRESS,
+                    run_id=run_id,
+                    call_id=self._current_call_id,
+                    direction=str(direction),
+                    done=int(done),
+                    total=int(total),
+                )
+            )
+
+        return notify
+
     def _execute(self, job: PendingPrompt) -> None:
         cancel = self._current_cancel
 
@@ -567,6 +638,7 @@ class AgentDaemon:
             run_id=job.run_id,
             ask_coordinator=self._asks,
             process_notifier=self._bash_process_notifier(job.run_id),
+            transfer_notifier=self._transfer_notifier(job.run_id),
         )
         conversation = self._sessions.get(job.session_id)
         system_prompt = build_system_prompt(

@@ -81,6 +81,7 @@ class AgentLoop:
         )
 
         tokens_in = tokens_out = 0
+        cache_tokens = reasoning_tokens = 0
         turns = 0
         last_text = ""
         status = "error"
@@ -135,6 +136,8 @@ class AgentLoop:
                 if response.usage is not None:
                     tokens_in += response.usage.input_tokens
                     tokens_out += response.usage.output_tokens
+                    cache_tokens += response.usage.cache_tokens
+                    reasoning_tokens += response.usage.reasoning_tokens
                 last_text = response.text or last_text
 
                 # The turn's wire traffic: the request that went out and
@@ -187,9 +190,15 @@ class AgentLoop:
             "turns": turns,
             "tokens_in": tokens_in,
             "tokens_out": tokens_out,
+            "cache_tokens": cache_tokens,
+            "reasoning_tokens": reasoning_tokens,
         }
-        self._emit(events.make(events.RUN_FINISHED, **summary))
+        # The run is recorded before it is announced: the context view
+        # asks the daemon for the session's tokens the moment the run
+        # is over, and the answer must already carry this run - the
+        # audit trail is where the tokens come from.
         self._sessions.record(self._conversation, "run_finished", dict(summary))
+        self._emit(events.make(events.RUN_FINISHED, **summary))
         return summary
 
     # -- internals ---------------------------------------------------------------

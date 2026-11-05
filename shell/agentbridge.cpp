@@ -135,6 +135,12 @@ AgentBridge::AgentBridge(QObject *parent) : QObject(parent)
     QDBusConnection::sessionBus().connect(kDaemonService, kDaemonPath, kDaemonInterface,
                                           QStringLiteral("WireBytes"), this,
                                           SLOT(onWireBytes(QString, uint, uint, uint)));
+    // The bytes a transfer tool call moves: cumulative counts with the
+    // total when the far end named one, which the transfer meter turns
+    // into the pace and the share of the thing that is here.
+    QDBusConnection::sessionBus().connect(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("TransferProgress"), this,
+        SLOT(onTransferProgress(QString, QString, QString, qulonglong, qulonglong)));
     QDBusConnection::sessionBus().connect(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("TranscriptCleaned"), this,
         SLOT(onTranscriptCleaned(QString, QString, QString, QString)));
@@ -526,7 +532,55 @@ void AgentBridge::requestSessionFork(const QString &user,
                     m_conversation.truncate(row + 1);
                 }
 
+                // The fork is a session of its own, with its own
+                // numbers: the context view asks for them again.
+                refreshSessionContext();
+
                 Q_EMIT sessionForked(forkId);
+            });
+}
+
+void AgentBridge::refreshSessionContext()
+{
+    // The session the widget is following: the one the latest run
+    // belongs to, or the one the user opened from the history. Without
+    // one there is no context to report.
+    if (m_sessionId.isEmpty()) {
+        if (!m_sessionContext.isEmpty()) {
+            m_sessionContext.clear();
+            Q_EMIT sessionContextChanged();
+        }
+        return;
+    }
+
+    // GetSessionContext(user, session_id) -> JSON object: the session's
+    // own numbers and the model's, as the context view shows them.
+    const quint64 request = ++m_contextRequest;
+    const QString sessionId = m_sessionId;
+    const QString user = m_sessionUser.isEmpty() ? localUserName() : m_sessionUser;
+
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("GetSessionContext"));
+    message << user << sessionId;
+
+    auto *watcher =
+        new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, request, sessionId](QDBusPendingCallWatcher *watcher) {
+                const QDBusReply<QString> reply = *watcher;
+                watcher->deleteLater();
+                if (!reply.isValid()) {
+                    qWarning() << "session context failed:" << reply.error().message();
+                    return;
+                }
+                if (request != m_contextRequest || sessionId != m_sessionId) {
+                    // Another session's context was asked for meanwhile:
+                    // this answer belongs to a session that is no longer
+                    // the one on screen.
+                    return;
+                }
+                m_sessionContext = parseJsonObject(reply.value());
+                Q_EMIT sessionContextChanged();
             });
 }
 
@@ -538,10 +592,17 @@ void AgentBridge::openStoredSession(const QString &user,
     // The widget follows this session from now on: a follow-on typed in
     // the results pane continues that very conversation.
     setSessionId(sessionId);
+    // The user whose history it belongs to: the older daemon's sessions
+    // ("root" mode) keep their own, the rest are the local user's.
+    m_sessionUser = mode == QLatin1String("root") ? QStringLiteral("root") : user;
     if (m_sessionTitle != title) {
         m_sessionTitle = title;
         Q_EMIT sessionTitleChanged();
     }
+
+    // The session's context window: what this session has spent of the
+    // model's, which the daemon knows from the audit trail of its runs.
+    refreshSessionContext();
 
     // The transcript of the session, fetched like the search overlay's
     // own copy - but into the conversation model this time, so the
@@ -930,6 +991,14 @@ void AgentBridge::onRunStarted(const QString &runId, const QString &sessionId)
     }
     if (ours && m_sessionId != sessionId) {
         setSessionId(sessionId);
+        // A run of the local agent belongs to the local user's history.
+        m_sessionUser = localUserName();
+        // A new session starts with an empty context: the numbers of
+        // the one before it would name a conversation that is over.
+        if (!m_sessionContext.isEmpty()) {
+            m_sessionContext.clear();
+            Q_EMIT sessionContextChanged();
+        }
     }
 
     // The pane opens now, not at the model's first token: the provider
@@ -1034,18 +1103,31 @@ void AgentBridge::onToolCallStarted(const QString &runId,
     // block; anything else is shown as the raw JSON arguments.
     QString language = QStringLiteral("json");
     QString body = argsJson;
+    QString direction;
     QJsonParseError parseError;
     const QJsonDocument doc = QJsonDocument::fromJson(argsJson.toUtf8(), &parseError);
-    if (parseError.error == QJsonParseError::NoError && tool == QLatin1String("bash")) {
+    const bool argsParsed = parseError.error == QJsonParseError::NoError;
+    if (argsParsed && tool == QLatin1String("bash")) {
         const QJsonObject args = doc.object();
         if (args.contains(QLatin1String("command"))) {
             language = QStringLiteral("bash");
             body = args.value(QLatin1String("command")).toString();
         }
     }
+    if (argsParsed && tool == QLatin1String("transfer")) {
+        // The arguments say which way the bytes will go: an upload names
+        // the local file it sends (source), a download only the address
+        // it pulls. The rule is the tool's own (tools/transfer.py):
+        // keep the two in step, or the meter and the label disagree.
+        const QJsonObject args = doc.object();
+        const bool upload = args.contains(QLatin1String("source"));
+        direction = upload ? QStringLiteral("upload") : QStringLiteral("download");
+        m_transferMeter.begin(upload, args.value(QLatin1String("url")).toString());
+    }
     m_conversation.beginToolCall(tool,
                                  QStringLiteral("#### %1 %2\n\n%3")
-                                     .arg(QStringLiteral("⚒"), tool, fencedBlock(body, language)));
+                                     .arg(QStringLiteral("⚒"), tool, fencedBlock(body, language)),
+                                 direction);
 }
 
 void AgentBridge::onToolCallFinished(const QString &runId,
@@ -1056,7 +1138,6 @@ void AgentBridge::onToolCallFinished(const QString &runId,
 {
     Q_UNUSED(runId)
     Q_UNUSED(callId)
-    Q_UNUSED(tool)
 
     // Tail of the step: outcome plus the command's output, fenced so the
     // pane's Markdown renderer shows it verbatim.
@@ -1065,6 +1146,12 @@ void AgentBridge::onToolCallFinished(const QString &runId,
     m_conversation.endToolCall(
         status, QStringLiteral("%1\n\n%2")
                     .arg(mark, fencedBlock(elideOutput(output, kToolLogOutputLimit), QString())));
+
+    // A finished transfer ends its meter, whatever the outcome: the
+    // counts that still arrive belong to nobody.
+    if (tool == QLatin1String("transfer")) {
+        m_transferMeter.release();
+    }
 }
 
 void AgentBridge::onToolProcessStarted(const QString &runId,
@@ -1095,6 +1182,22 @@ void AgentBridge::onWireBytes(const QString &runId, uint turn, uint bytesSent, u
     Q_UNUSED(runId)
 
     m_wireMeter.addTraffic(int(turn), bytesSent, bytesReceived);
+}
+
+void AgentBridge::onTransferProgress(const QString &runId,
+                                     const QString &callId,
+                                     const QString &direction,
+                                     qulonglong done,
+                                     qulonglong total)
+{
+    Q_UNUSED(runId)
+    Q_UNUSED(callId)
+    Q_UNUSED(direction)
+
+    // The meter knows the transfer it is metering (ToolCallStarted
+    // began it); the counts are cumulative, and it folds the deltas
+    // into the pace itself.
+    m_transferMeter.addProgress(done, total);
 }
 
 QString AgentBridge::senderNameForMode(const QString &mode)
@@ -1193,6 +1296,11 @@ void AgentBridge::onRunFinished(const QString &runId,
     if (!finalText.trimmed().isEmpty()) {
         Q_EMIT resultReady();
     }
+
+    // The run is over, so the session has spent what it spent: the
+    // context view asks the daemon for the numbers again, and the ring
+    // in the pane's corner moves with them.
+    refreshSessionContext();
 }
 
 void AgentBridge::onAuthFinished(const QString &runId, bool success)

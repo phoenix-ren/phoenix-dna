@@ -207,6 +207,10 @@ step the agent took, each one a header you can click.
   folded, it costs nothing to display.
 - *A tool* — *Used 2 bash*, *Used 1 read* — the commands it ran, folded
   by default too. A step that failed turns its title red.
+- *A transfer* — *Downloading…* while it runs, *Downloaded* when it is
+  over (and *Uploading…* / *Uploaded* the other way round) — the files
+  it moved over the network, titled by what it is doing rather than by
+  the tool's name.
 - *A spinner* while the step is still running, and *the elapsed time*
   once it is done. A step that took less than a second shows no time at
   all: it was quick, and it is over.
@@ -239,7 +243,7 @@ megaphone button that reads that answer aloud.
 
 == The meters
 
-Two meters tell you what the agent is doing, both drawn as rows of LEDs
+Three meters tell you what the agent is doing, drawn as rows of LEDs
 that fill up like a level meter in a sound editor.
 
 - The *CPU meter* sits on the running tool: *CPU*, the bar, the
@@ -248,6 +252,12 @@ that fill up like a level meter in a sound editor.
   going for five minutes proves it with a meter.
 - The *wire meter* is two bars, *OUT* and *IN*, in bytes per second: the
   pace of the conversation with the model, each way.
+- The *transfer meter* sits on the running download or upload: a bar
+  labelled *DL* or *UL* for the pace of the bytes, and a progress bar
+  with the count — `1.2 GB of 4.4 GB (27%)` — for how much of the thing
+  is here. When the far end does not say how big the thing is, the bar
+  travels instead of filling, and the count stands alone. A download
+  the agent runs is a download you can watch.
 
 The meters fade in while a step runs and fade out when it is done. The
 CPU meter turns amber past 60 % and red past 85 %.

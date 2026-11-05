@@ -20,6 +20,7 @@ plasmoid (C++/QML)  ──D-Bus──▶  phoenix-dna-agent (this daemon)
                                     (queue, sudo cache)   │
                                                           ▼
                                         tools: bash / read / write / edit / ls / ask_user
+                                               transfer / tavily_search / exa_search
                                                tavily_search / exa_search
 ```
 
@@ -30,7 +31,18 @@ tools are the filesystem quartet (read, write, edit, ls), the web search
 pair (tavily_search, exa_search — registered whenever their API keys are
 configured, and the prompt then tells the model to reach for them on
 anything that depends on current or specific facts, so it never answers
-"I cannot search the web"), the question tool (ask_user) and bash.
+"I cannot search the web"), the transfer tool, the question tool
+(ask_user) and bash.
+
+The transfer tool (see `phoenix_dna/tools/transfer.py`) is the metered
+mover of bytes: downloads from http/https/ftp URLs and torrent `magnet:`
+links, uploads of a local file to an http(s) URL or onto an FTP server.
+It exists because a `wget` through bash times out on anything slower
+than the bash cap, and the workaround the model reaches for — a
+detached command — is invisible to the UI; the tool instead reports the
+bytes as they move (TransferProgress), and the pane meters the pace and
+the share of the thing that is here. Torrents need libtorrent
+(`python3-libtorrent`) and say so clearly when it is missing.
 
 Commands run without a terminal and stdin is closed, so the prompt (and the
 bash tool's description) demand non-interactive flags (`dnf -y`,
@@ -215,6 +227,7 @@ interface `dna.phoenix.Agent`.
 | `RenameSession` | `sss → s` | `(user, session_id, title)` → the session's entry as the search lists it now (the same shape a search answer carries), or the empty string when there was no such session. The name the user gives stands: the model's own name — which is rewritten after every completed run — never overwrites it. An empty title takes the user's name away, and the session is listed under its first query again. |
 | `ForkSession` | `ssi → s` | `(user, session_id, exchange_index)` → the fork's entry as the search lists it (the same shape a search answer carries), or the empty string when there was no such session or no such query. `exchange_index` counts the user's queries: 1 is the first thing the user asked in the session, 2 the next one. The fork holds the conversation up to that query — the query itself and the answer that followed it — and what came after stays in the session it was forked from. The fork is a session of its own: it has its own id and name, and the follow-ups typed after it continue it. Its entry carries `parentId` (the session it was forked from) and `forkIndex` (the query it was forked at). |
 | `DeleteSession` | `ss → b` | `(user, session_id)` → whether there was a session to delete. The session's messages and the audit trail of its runs go with it: what is left behind would be an orphan nobody ever sees again. A session of another user is not touched. |
+| `GetSessionContext` | `ss → s` | `(user, session_id)` → JSON object: what the session spent of the model's context window. It carries the session's `title`, `createdAt` and `updatedAt`, how many `userMessages`, `assistantMessages` and `messageCount` it holds, the tokens its runs spent (`tokensIn` — the fresh input, `tokensOut`, `cacheTokens` and `reasoningTokens` — and `totalTokens`), the model in force (`provider`, `model`), the size of its context window (`contextLimit`), the share of that window the session has used (`usage`, in per cent) and what the tokens cost (`cost`, and `priced` — false when the model has no price). The tokens come from the audit trail of the session's runs, so a session opened from the history reports the same numbers as the one that is running. An empty object means there is no such session. |
 | `SpeakText` | `s → ` | Speak an arbitrary string on demand (the results pane's "Read aloud"). The text is normalized and segmented exactly like an answer — math is spoken as mathematics, code fences are skipped. A no-op when speech is not enabled. |
 | `StopSpeaking` | ` → ` | Interrupt playback immediately and drop what is queued. |
 | `GetSpeechState` | ` → bs` | `(enabled, state)`; state is `idle` or `speaking`. |
@@ -232,6 +245,7 @@ interface `dna.phoenix.Agent`.
 | `ToolProcessStarted` | `sssu` | run_id, call_id, command, pid — a bash tool call's process began. The pid is the command's session leader (commands are spawned with `start_new_session`), so it doubles as the process-group id: the UI meters the command's CPU usage by reading `/proc` for that group while the call runs. |
 | `ToolProcessFinished` | `ssu` | run_id, call_id, pid — that process ended (normally, by timeout or by cancellation; the report is emitted from a `finally` block, so it is reliable) |
 | `WireBytes` | `suuu` | run_id, turn, bytes_sent, bytes_received — the wire traffic of one turn of the conversation with the model: the bytes of the request that went out and the bytes of the answer that came in. The counts are the payload bytes only (the fixed-size HTTP headers are not included), and the UI meters the rate of the connection from them. |
+| `TransferProgress` | `ssstt` | run_id, call_id, direction (`download\|upload`), done, total — the bytes a transfer tool call has moved so far. `done` is cumulative for the call and `total` the bytes the far end promised (0 when it did not name them); the counts are 64-bit because an ISO outruns a 32-bit count. Emitted at most a few times a second while the transfer runs, and once more at its end; the UI meters the pace and the share of the thing that is here from these (see the transfer tool in `phoenix_dna/tools/transfer.py`). |
 | `AuthRequested` / `AuthFinished` | `ss` / `sb` | the administrator password dialog opened / closed |
 | `QuestionAsked` | `sss` | run_id, ask_id, JSON of the form: `questions` (`[{question, header, options: [{label, description}], multiple}]`), an optional `goal`, and `harness: true` for daemon-authored confirmations. The run blocks until answered, cancelled or timed out. |
 | `QuestionAnswered` | `ssss` | run_id, ask_id, status (`answered\|timeout\|cancelled`), JSON of the normalized answers (`{"answers": [{"selected": [labels], "text": "…"}, …]}`) |
@@ -256,6 +270,8 @@ environment → `~/.config/phoenix-dna/keys.json` (mode 0600) for keys, and
 | Key / setting | Env var | Purpose |
 |---|---|---|
 | `llm_base_url`, `model` | `PHOENIX_BASE_URL`, `PHOENIX_MODEL` | the endpoint the model calls go to and the model they name. The host in the URL decides the service: a known one brings its own default model and key field, any other is the user's own server |
+| `context_window` | `PHOENIX_CONTEXT_WINDOW` | how many tokens the model holds at once — its context window. The provider knows the size of the models it serves (a million for MiniMax's, 128 000 for OpenAI's and Groq's); this is for a server of one's own, and for another model of a known service. The context view (the ring in the corner of the results window) measures the conversation against it |
+| `price_input`, `price_output` | `PHOENIX_PRICE_INPUT`, `PHOENIX_PRICE_OUTPUT` | what a million tokens cost, in US dollars. Without them the context view says that the model is not priced, rather than quoting a price of nothing |
 | `minimax_api_key` | `MINIMAX_API_KEY` | the MiniMax key: the LLM by default, and the speech-to-text and speech synthesis when those use MiniMax |
 | `openai_api_key` | `OPENAI_API_KEY` | the OpenAI key: the LLM when the endpoint is OpenAI's, and the speech when the endpoint is |
 | `groq_api_key` | `GROQ_API_KEY` | the Groq key, in the same way |

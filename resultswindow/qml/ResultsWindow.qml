@@ -8,6 +8,7 @@ import QtQuick.Layouts
 import QtCore
 import org.kde.plasma.components as PC3
 import org.kde.kirigami as Kirigami
+import org.phoenixdna.context as PhoenixContext
 import org.phoenixdna.theme
 
 /*
@@ -105,6 +106,23 @@ Window {
     // running thought step. Bound by the shell to the agent bridge's
     // meter; null leaves the meters out.
     property var wireMeter: null
+
+    // The progress of the transfer the agent is running (see
+    // AgentBridge): the pace of the bytes and the share of the thing
+    // that is here, drawn under the running transfer step — a level
+    // meter and a progress bar, so a download that takes an hour is an
+    // hour of something to watch. Bound by the shell to the agent
+    // bridge's meter; null leaves the meter out.
+    property var transferMeter: null
+
+    // What the session on screen spent of the model's context window: the
+    // map the daemon answered with (see AgentBridge::sessionContext).
+    // Bound by the shell; the ring in the corner of the window reads it.
+    property var context: null
+
+    // Emitted when the context ring is clicked: the details are wanted.
+    // The shell opens the context overlay, which has them.
+    signal contextRequested()
 
     // ---- Follow-on input, mirroring the dictation overlay ---------------
     // The transcript of a follow-on being dictated into the window, and the
@@ -303,6 +321,17 @@ Window {
             return i18n("%1m %2s", minutes, total % 60)
         }
         return i18n("%1h %2m", Math.floor(minutes / 60), minutes % 60)
+    }
+
+    // What a transfer call is called in the trail's titles: the doing
+    // while it runs, the done once it is over — "Downloading…" reads
+    // better than "Used 1 transfer", and the step is labelled as the
+    // specific thing it is.
+    function transferLabel(direction, running) {
+        if (direction === "upload") {
+            return running ? i18n("Uploading…") : i18n("Uploaded")
+        }
+        return running ? i18n("Downloading…") : i18n("Downloaded")
     }
 
     // The header of a folded-away step: the notes the agent thinks in
@@ -565,6 +594,44 @@ Window {
             // that) made the text hug the window's edges and read cramped.
             anchors.margins: Kirigami.Units.gridUnit
             spacing: Kirigami.Units.smallSpacing
+
+            // ---- Top: the session's name and its context ring ------------
+            // The ring says how much of the model's context window this
+            // session has used; a click on it opens the context overlay,
+            // which has the numbers behind that share. The context of a
+            // session belongs to the session, so it is here and not in
+            // the panel widget: the widget is the app's presence, not
+            // any one conversation's.
+            RowLayout {
+                id: headerBar
+
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                Kirigami.Heading {
+                    Layout.fillWidth: true
+                    // KF6 6.31 has no Kirigami.Heading.Level enum; levels are plain ints.
+                    level: 6
+                    elide: Text.ElideRight
+
+                    text: resultsWindow.sessionTitle.length > 0
+                        ? resultsWindow.sessionTitle
+                        : i18n("Conversation")
+                    color: PhoenixTheme.subheadingTextColor
+                }
+
+                PhoenixContext.ContextRing {
+                    id: contextRing
+                    objectName: "contextRing"
+
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.large
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.large
+
+                    context: resultsWindow.context
+
+                    onClicked: resultsWindow.contextRequested()
+                }
+            }
 
             Flickable {
                 id: scroller
@@ -1452,12 +1519,50 @@ Window {
                                         // itself — so it is dimmed and
                                         // folded away, one click away.
                                         SectionHeader {
+                                            id: toolStepHeader
+                                            objectName: "toolStepHeader"
+
                                             Layout.fillWidth: true
                                             visible: trailItem.modelData.kind === "tool"
 
-                                            title: i18n("Used %1 %2",
-                                                       trailItem.modelData.count,
-                                                       trailItem.modelData.tools.join(", "))
+                                            // A step of transfer calls is
+                                            // titled by what it is doing —
+                                            // "Downloading…" while it runs,
+                                            // "Downloaded" once it is over —
+                                            // rather than by the tool's
+                                            // name: the doing is the title,
+                                            // the tool is the detail. A step
+                                            // that mixes transfers with
+                                            // other tools keeps the "Used n
+                                            // …" shape, the transfer as its
+                                            // verb in the list. Tool calls
+                                            // run one at a time, so of a
+                                            // step's calls only the last can
+                                            // be the one still running.
+                                            title: {
+                                                const step = trailItem.modelData
+                                                let allTransfers = step.tools.length > 0
+                                                const parts = []
+                                                for (let i = 0; i < step.tools.length; ++i) {
+                                                    const tool = step.tools[i]
+                                                    if (tool === "transfer") {
+                                                        const direction = i < step.directions.length
+                                                            && step.directions[i] !== ""
+                                                            ? step.directions[i] : "download"
+                                                        parts.push(resultsWindow.transferLabel(
+                                                            direction,
+                                                            step.running && i === step.tools.length - 1))
+                                                    } else {
+                                                        allTransfers = false
+                                                        parts.push(tool)
+                                                    }
+                                                }
+                                                if (allTransfers) {
+                                                    return parts.join(", ")
+                                                }
+                                                return i18n("Used %1 %2",
+                                                            step.count, parts.join(", "))
+                                            }
                                             expanded: trailItem.open
                                             busy: trailItem.modelData.running
                                             failed: trailItem.modelData.status === "error"
@@ -1499,6 +1604,41 @@ Window {
                                             // the bar cannot breathe with the
                                             // digits.
                                             maxCores: meter ? meter.coreCount : 16
+                                        }
+
+                                        // ---- The meter under the transfer ----
+                                        // While this step's transfer runs, the
+                                        // pace of its bytes and the share of
+                                        // the thing that is here: the level
+                                        // meter for the pace (the same row
+                                        // the wire meter draws, "DL" or "UL"),
+                                        // the progress bar for the distance
+                                        // still to go. The run's tools execute
+                                        // one at a time, so the bridge's one
+                                        // transfer meter serves whoever is
+                                        // running, and it shows exactly while
+                                        // a transfer of this step is in
+                                        // flight.
+                                        TransferMeterView {
+                                            Layout.fillWidth: true
+                                            Layout.topMargin: Kirigami.Units.smallSpacing
+                                            // As the CPU meter beside it: a
+                                            // transfer meter of this shape
+                                            // reads best compact.
+                                            Layout.maximumWidth: Math.min(
+                                                resultsWindow.width * 0.33, 300)
+
+                                            readonly property var meter:
+                                                resultsWindow.transferMeter
+
+                                            showing: Boolean(meter && meter.active
+                                                && trailItem.modelData.running)
+                                            uploading: meter ? meter.uploading : false
+                                            done: meter ? meter.done : 0.0
+                                            total: meter ? meter.total : 0.0
+                                            rate: meter ? meter.rate : 0.0
+                                            rateFraction: meter
+                                                ? meter.rateFraction : 0.0
                                         }
 
                                         Kirigami.SelectableLabel {

@@ -66,6 +66,7 @@ Recommends:     ffmpeg-free
 Recommends:     kdialog
 Recommends:     sudo
 Recommends:     texlive-xetex
+Recommends:     python3-libtorrent
 
 %description
 Phoenix DNA is a desktop-native AI agent for KDE Plasma. It lives in the

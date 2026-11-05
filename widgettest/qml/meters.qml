@@ -3,8 +3,8 @@
 
 //
 // The meters of the results window, in a plain window: the CPU meter
-// of a running command and the pair of rate meters of the conversation
-// with the model.
+// of a running command, the pair of rate meters of the conversation
+// with the model, and the progress meter of a running transfer.
 //
 // The testbench loads the applet plugin, so the Plasma components (and
 // the theme's colours) are there as they are in the panel — the bare
@@ -52,6 +52,19 @@ Rectangle {
             sendRate: root.sendRate
             receiveRate: root.receiveRate
         }
+
+        // The transfer meter: the pace of the bytes and the share of
+        // the thing that is here.
+        TransferMeterView {
+            Layout.fillWidth: true
+            Layout.maximumWidth: 300
+            showing: true
+            uploading: false
+            done: root.transferDone
+            total: 47244640256
+            rate: root.transferRate
+            rateFraction: root.transferFraction
+        }
     }
 
     // The values the testbench drives, so the meters can be seen at
@@ -61,6 +74,9 @@ Rectangle {
     property real receiveFraction: 0.75
     property real sendRate: 4096
     property real receiveRate: 65536
+    property real transferDone: 11811160064
+    property real transferRate: 12582912
+    property real transferFraction: 0.62
 
     // A slow sweep, so a grab catches the meters mid-animation.
     SequentialAnimation {
@@ -73,6 +89,21 @@ Rectangle {
         NumberAnimation {
             target: root; property: "receiveFraction"
             from: 1.0; to: 0.05; duration: 2500
+        }
+    }
+
+    // The transfer's share of its total, swept the same way: the
+    // progress bar filling is the meter's own animation.
+    SequentialAnimation {
+        running: true
+        loops: Animation.Infinite
+        NumberAnimation {
+            target: root; property: "transferDone"
+            from: 0; to: 47244640256; duration: 6000
+        }
+        NumberAnimation {
+            target: root; property: "transferDone"
+            from: 47244640256; to: 0; duration: 6000
         }
     }
 
