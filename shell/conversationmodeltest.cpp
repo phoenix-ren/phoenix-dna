@@ -264,6 +264,61 @@ int main(int argc, char **argv)
               "no working note is ever part of the answer");
     }
 
+    // ---- The exchanges are numbered, and the fork keeps a prefix -------
+    //
+    // The fork is taken at one of the user's queries, so the model has
+    // to say which row carries which query: the first thing the user
+    // asked is number 1, the next one 2. A run begun elsewhere (the
+    // REPL, another widget) carries no query and so no number.
+    //
+    // The fork then keeps the exchanges up to that row and drops the
+    // rest: what came after stayed in the session the fork was taken
+    // from.
+    {
+        ConversationModel model;
+        model.beginExchange(QStringLiteral("first question"), QStringLiteral("michelle"));
+        model.appendResult(QStringLiteral("first answer"));
+        model.finishExchange();
+        // A run begun elsewhere: no query, no number.
+        model.beginExchange(QString(), QString());
+        model.appendResult(QStringLiteral("someone else's answer"));
+        model.finishExchange();
+        model.beginExchange(QStringLiteral("second question"), QStringLiteral("michelle"));
+        model.appendResult(QStringLiteral("second answer"));
+        model.finishExchange();
+
+        const auto number = [&model](int row) {
+            return model.data(model.index(row), ConversationModel::ExchangeRole).toInt();
+        };
+        check(number(0) == 1, "the first query is number 1");
+        check(number(1) == 0, "a run without a query carries no number");
+        check(number(2) == 2, "the second query is number 2");
+
+        check(model.rowOfExchange(1) == 0, "the first query sits in the first row");
+        check(model.rowOfExchange(2) == 2, "the second query sits in the third row");
+        check(model.rowOfExchange(3) == -1, "a number the history does not hold is -1");
+        check(model.rowOfExchange(0) == -1, "no query is no row");
+
+        // The fork at the first query: the exchange and the run of
+        // somebody else go, the rest stays as it was.
+        model.truncate(model.rowOfExchange(1) + 1);
+        check(model.rowCount() == 1, "the fork keeps the exchange it was taken at");
+        check(model.data(model.index(0), ConversationModel::PromptRole).toString()
+                  == QStringLiteral("first question"),
+              "the exchange the fork was taken at is untouched");
+        check(model.data(model.index(0), ConversationModel::ResultRole).toString()
+                  == QStringLiteral("first answer"),
+              "its answer is untouched too");
+        check(number(0) == 1, "the exchange keeps its number");
+
+        // A count beyond the history changes nothing.
+        model.truncate(99);
+        check(model.rowCount() == 1, "a count beyond the history changes nothing");
+        // A negative one empties it.
+        model.truncate(-1);
+        check(model.rowCount() == 0, "a negative count empties the history");
+    }
+
     if (failures > 0) {
         printf("%d check(s) failed\n", failures);
         return 1;

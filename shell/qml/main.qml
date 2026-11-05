@@ -144,6 +144,17 @@ PlasmoidItem {
         function onStoredSessionOpened() {
             resultsWindow.showResult();
         }
+
+        // A fork was taken: the conversation on screen was branched into
+        // a new session, and the pane follows the fork from now on (the
+        // exchanges up to the fork point stay on screen; what came
+        // after stayed in the session the fork was taken from). The
+        // notice says so, because a conversation that quietly becomes
+        // another one is a conversation the user cannot account for.
+        function onSessionForked(sessionId) {
+            resultsWindow.showNotice(
+                i18n("Forked here — the follow-ups now run in a session of their own."));
+        }
     }
 
     // The transcript updates asynchronously while the agent is listening,
@@ -493,6 +504,13 @@ PlasmoidItem {
 
         // The card's "Show questions" brings the dismissed overlay back.
         onShowQuestionsRequested: wizardOverlay.reopen()
+
+        // A fork of the conversation on screen: the daemon branches the
+        // session into a new one at the query the user pointed at, and
+        // the pane follows the fork from there — the follow-ups typed
+        // in it continue the fork, not the session it came from.
+        onForkRequested: (exchange) =>
+            Phoenix.PhoenixController.forkSession(exchange)
 
         // The same toggle the panel widget's record button performs, but
         // with the opposite intent: the pane's own record button

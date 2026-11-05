@@ -25,6 +25,12 @@ Schema (per DB)::
 for faithful replay into the LLM conversation. ``runs`` is the audit trail
 (run_started / run_finished); only ``messages`` are replayed on resume.
 System prompts are not persisted - they are rebuilt on every run.
+
+A session may be a fork of another one: ``parent_id`` names the session it
+was branched from and ``fork_index`` the query it was branched at (see
+``fork_session``). The fork is a session of its own - it has its own id,
+its own name and its own history - and the session it came from keeps
+everything it had.
 """
 
 from __future__ import annotations
@@ -80,7 +86,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     title TEXT NOT NULL DEFAULT '',
     title_manual INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
+    updated_at TEXT NOT NULL,
+    parent_id TEXT NOT NULL DEFAULT '',
+    fork_index INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS messages (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,6 +121,8 @@ CREATE TABLE IF NOT EXISTS meta (
 #: later has to be added to the old databases too.
 _MIGRATIONS = (
     ("sessions", "title_manual", "INTEGER NOT NULL DEFAULT 0"),
+    ("sessions", "parent_id", "TEXT NOT NULL DEFAULT ''"),
+    ("sessions", "fork_index", "INTEGER NOT NULL DEFAULT 0"),
 )
 
 #: The query that reads a user's sessions with everything the search
@@ -126,6 +136,7 @@ _MIGRATIONS = (
 _SESSION_SUMMARY_SQL = (
     "SELECT s.id AS id, s.mode AS mode, s.title AS title, "
     "       s.created_at AS created_at, s.updated_at AS updated_at, "
+    "       s.parent_id AS parent_id, s.fork_index AS fork_index, "
     "       (SELECT m.content FROM messages m "
     "         WHERE m.session_id = s.id AND m.role = 'user' "
     "         ORDER BY m.seq LIMIT 1) AS first_query, "
@@ -429,6 +440,136 @@ class SessionStore:
             ).fetchone()
         return self._summary_of(updated)
 
+    # -- forking a session ----------------------------------------------------
+
+    def fork_session(
+        self, user: str, session_id: str, exchange_index: int
+    ) -> dict | None:
+        """Branch a session into a new one, at one of the user's queries.
+
+        The fork holds the conversation up to that query: the query
+        itself and the answer that followed it - everything the agent
+        said and did in that exchange. What came after stays in the
+        session it was forked from: the fork is the other way round, not
+        a copy of both.
+
+        The fork is a session of its own - its own id, its own name, its
+        own place in the history - and the follow-ups typed after it
+        continue it. The session it was forked from is not touched at
+        all: it keeps its own history, and the two of them grow apart.
+
+        ``exchange_index`` counts the user's queries: 1 is the first
+        thing the user asked in that session, 2 the next one, and so on.
+        The queries are counted as the session holds them, so the fork
+        lands on the exchange the user pointed at even when the agent
+        did a dozen things in between.
+
+        Returns the fork's entry as the search lists it, or None when
+        there was no such session, no such query, or the session belongs
+        to somebody else.
+        """
+        session_id = (session_id or "").strip()
+        try:
+            exchange_index = int(exchange_index)
+        except (TypeError, ValueError):
+            return None
+        if not session_id or exchange_index < 1:
+            return None
+
+        with self._lock:
+            db = self._db(user)
+            session = db.execute(
+                "SELECT id, mode, title FROM sessions WHERE id = ? AND user = ?",
+                (session_id, user),
+            ).fetchone()
+            if session is None:
+                # Nothing there: the session is gone, or it belongs to
+                # somebody else.
+                return None
+            messages = db.execute(
+                "SELECT ts, role, content, message_json FROM messages "
+                "WHERE session_id = ? ORDER BY seq",
+                (session_id,),
+            ).fetchall()
+
+        # The exchange to fork at: the user's n-th query and everything
+        # that came with it, up to their next query.
+        start = None
+        queries = 0
+        for index, message in enumerate(messages):
+            if message["role"] == "user":
+                queries += 1
+                if queries == exchange_index:
+                    start = index
+                    break
+        if start is None:
+            # The session holds fewer queries than that: there is no
+            # such exchange to fork at.
+            return None
+        end = len(messages)
+        for index in range(start + 1, len(messages)):
+            if messages[index]["role"] == "user":
+                end = index
+                break
+
+        title = self._fork_title(str(session["title"] or ""), messages)
+        fork_id = uuid4().hex[:12]
+        now = _utcnow()
+        with self._lock:
+            db = self._db(user)
+            db.execute(
+                "INSERT INTO sessions (id, user, mode, title, title_manual, "
+                "created_at, updated_at, parent_id, fork_index) "
+                "VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)",
+                (
+                    fork_id,
+                    user,
+                    str(session["mode"]),
+                    title,
+                    now,
+                    now,
+                    session_id,
+                    exchange_index,
+                ),
+            )
+            for message in messages[:end]:
+                db.execute(
+                    "INSERT INTO messages (session_id, ts, role, content, message_json) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (
+                        fork_id,
+                        message["ts"],
+                        message["role"],
+                        message["content"],
+                        message["message_json"],
+                    ),
+                )
+            updated = db.execute(
+                _SESSION_SUMMARY_SQL + " AND s.id = ?", (user, fork_id)
+            ).fetchone()
+        log.info(
+            "forked session %s at query %d into %s", session_id, exchange_index, fork_id
+        )
+        return self._summary_of(updated)
+
+    @staticmethod
+    def _fork_title(title: str, messages) -> str:
+        """The name a fork carries until the model names it itself.
+
+        The name of the session it was forked from, marked as a fork -
+        the two would otherwise be indistinguishable in the history.
+        A session that was never named is named after its first query,
+        the way the search lists it.
+        """
+        base = (title or "").strip()
+        if not base:
+            for message in messages:
+                if message["role"] == "user":
+                    base = " ".join(str(message["content"] or "").split())
+                    break
+        base = base[:_PREVIEW_LENGTH].strip()
+        return f"{base} (fork)" if base else "Fork"
+
     # -- session search --------------------------------------------------------
 
     def list_sessions(self, user: str) -> list[dict]:
@@ -454,6 +595,10 @@ class SessionStore:
         The summary name is the title when the session has one - the
         user's own or the model's - and its first query when it has
         none, so a session that was never named is still findable.
+
+        A fork says where it came from: ``parentId`` names the session
+        it was branched from, ``forkIndex`` the query it was branched
+        at. Both are empty for a session that was not forked.
         """
         first_query = str(row["first_query"] or "")
         title = str(row["title"] or "")
@@ -466,6 +611,8 @@ class SessionStore:
             "createdAt": str(row["created_at"]),
             "updatedAt": str(row["updated_at"]),
             "messageCount": int(row["message_count"]),
+            "parentId": str(row["parent_id"] or ""),
+            "forkIndex": int(row["fork_index"] or 0),
         }
 
     def session_messages(self, user: str, session_id: str) -> list[dict]:
@@ -792,3 +939,13 @@ class SessionManager:
         for key in [key for key in self._cache if key[1] == session_id]:
             del self._cache[key]
         return deleted
+
+    def fork(self, user: str, session_id: str, exchange_index: int) -> dict | None:
+        """Branch a session into a new one, at one of the user's queries.
+
+        The fork is a session of its own: it gets its own id, so the
+        cache never holds it under the name of the session it was
+        forked from. Returns the fork's entry as the search lists it,
+        or None when there was no such session or no such query.
+        """
+        return self.store.fork_session(user, session_id, exchange_index)

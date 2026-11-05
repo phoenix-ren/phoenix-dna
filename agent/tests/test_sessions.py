@@ -298,6 +298,151 @@ def test_rename_of_a_session_that_is_not_there(tmp_path):
     assert store.rename_session(store.local_user, "missing", "A name") is None
 
 
+def test_a_fork_holds_the_conversation_up_to_its_query(tmp_path):
+    """The fork is the conversation up to the query it was taken at.
+
+    Everything the agent said and did in that exchange comes with it -
+    the tool calls included, so the replay into the model is faithful -
+    and what came after stays in the session it was forked from.
+    """
+    store = SessionStore(tmp_path / "users")
+    manager = SessionManager(store)
+    user = store.local_user
+    conv = manager.get("s1")
+    manager.append(conv, {"role": "user", "content": "first question"})
+    manager.append(conv, {"role": "assistant", "content": "first answer"})
+    manager.append(
+        conv,
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{"id": "call_1", "type": "function"}],
+        },
+    )
+    manager.append(conv, {"role": "tool", "content": "tool output", "tool_call_id": "call_1"})
+    manager.append(conv, {"role": "user", "content": "second question"})
+    manager.append(conv, {"role": "assistant", "content": "second answer"})
+
+    entry = store.fork_session(user, "s1", 1)
+    assert entry is not None
+    fork_id = entry["id"]
+    assert fork_id != "s1"
+
+    # The fork holds the first exchange, with the tool call in it.
+    assert [m["content"] for m in store.read_messages(user, fork_id)] == [
+        "first question",
+        "first answer",
+        "",
+        "tool output",
+    ]
+    # The session it was forked from keeps everything it had.
+    assert [m["content"] for m in store.read_messages(user, "s1")] == [
+        "first question",
+        "first answer",
+        "",
+        "tool output",
+        "second question",
+        "second answer",
+    ]
+
+    # The fork says where it came from.
+    assert entry["parentId"] == "s1"
+    assert entry["forkIndex"] == 1
+    # And it is a session of its own, listed beside the one it came from.
+    listed = {s["id"]: s for s in store.list_sessions(user)}
+    assert set(listed) == {"s1", fork_id}
+    assert listed[fork_id]["messageCount"] == 4
+
+
+def test_a_fork_at_the_last_query_is_the_whole_conversation(tmp_path):
+    """Forking at the last query copies the conversation whole."""
+    store = SessionStore(tmp_path / "users")
+    manager = SessionManager(store)
+    user = store.local_user
+    conv = manager.get("s1")
+    manager.append(conv, {"role": "user", "content": "first question"})
+    manager.append(conv, {"role": "assistant", "content": "first answer"})
+    manager.append(conv, {"role": "user", "content": "second question"})
+    manager.append(conv, {"role": "assistant", "content": "second answer"})
+
+    entry = store.fork_session(user, "s1", 2)
+    assert [m["content"] for m in store.read_messages(user, entry["id"])] == [
+        "first question",
+        "first answer",
+        "second question",
+        "second answer",
+    ]
+
+
+def test_a_fork_is_named_after_the_session_it_came_from(tmp_path):
+    """Two sessions with the same name would not be told apart."""
+    store = SessionStore(tmp_path / "users")
+    manager = SessionManager(store)
+    user = store.local_user
+    conv = manager.get("s1")
+    manager.append(conv, {"role": "user", "content": "how much disk is left?"})
+    store.rename_session(user, "s1", "Disk tuning")
+
+    entry = store.fork_session(user, "s1", 1)
+    assert entry["title"] == "Disk tuning (fork)"
+    assert entry["summary"] == "Disk tuning (fork)"
+
+
+def test_a_fork_of_a_session_that_is_not_there(tmp_path):
+    """Forking a session that is gone is not an error: it says so."""
+    store = SessionStore(tmp_path / "users")
+    user = store.local_user
+    assert store.fork_session(user, "missing", 1) is None
+    # Nor is forking at a query the session does not hold.
+    store.append_message(user, "user", "s1", {"role": "user", "content": "only one"})
+    assert store.fork_session(user, "s1", 2) is None
+    assert store.fork_session(user, "s1", 0) is None
+
+
+def test_a_fork_touches_no_other_user(tmp_path):
+    """A session id names one user's session: the others are not touched."""
+    store = SessionStore(tmp_path / "users")
+    user = store.local_user
+    store.append_message(user, "user", "mine", {"role": "user", "content": "mine"})
+    store.append_message(
+        "root", "root", "theirs", {"role": "user", "content": "theirs"}
+    )
+
+    assert store.fork_session(user, "theirs", 1) is None
+    assert store.read_messages("root", "theirs") != []
+
+    entry = store.fork_session("root", "theirs", 1)
+    assert entry is not None
+    assert store.read_messages(user, "mine") != []
+
+
+def test_the_store_gains_the_fork_columns(tmp_path):
+    """A database written by the older daemon gets the columns it lacks.
+
+    The tables are created with "IF NOT EXISTS", so a database that
+    already has them keeps its own shape - the columns added later have
+    to be added to it as well.
+    """
+    users = tmp_path / "users"
+    user = _local_username()
+    (users / user).mkdir(parents=True)
+    connection = sqlite3.connect(users / user / "sessions.db")
+    connection.executescript(
+        "CREATE TABLE sessions ("
+        "  id TEXT PRIMARY KEY, user TEXT NOT NULL, mode TEXT NOT NULL,"
+        "  title TEXT NOT NULL DEFAULT '',"
+        "  created_at TEXT NOT NULL, updated_at TEXT NOT NULL);"
+    )
+    connection.commit()
+    connection.close()
+
+    store = SessionStore(users)
+    store.append_message(user, "user", "s1", {"role": "user", "content": "mine"})
+    entry = store.fork_session(user, "s1", 1)
+    assert entry is not None
+    assert entry["parentId"] == "s1"
+
+
 def test_the_store_gains_the_manual_name_column(tmp_path):
     """A database written by the older daemon gets the column it lacks.
 

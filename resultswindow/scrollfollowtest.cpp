@@ -46,7 +46,7 @@ void messageHandler(QtMsgType type, const QMessageLogContext &context,
 
 /*!
  * A conversation of one exchange, in the roles the window's Repeater
- * asks for: prompt, sender, result, running, steps.
+ * asks for: prompt, sender, result, running, steps, exchangeNumber.
  *
  * The window's delegate reads them as *required properties*, which a
  * plain QML array cannot supply — so the test drives the window with a
@@ -67,7 +67,8 @@ public:
         SenderRole,
         ResultRole,
         RunningRole,
-        StepsRole
+        StepsRole,
+        ExchangeRole
     };
 
     TestConversation()
@@ -100,6 +101,10 @@ public:
             return row.running;
         case StepsRole:
             return row.steps;
+        case ExchangeRole:
+            // The exchange's number: the user's queries are counted, so
+            // the first thing they asked is 1.
+            return index.row() + 1;
         default:
             return {};
         }
@@ -111,7 +116,8 @@ public:
                 {SenderRole, "sender"},
                 {ResultRole, "result"},
                 {RunningRole, "running"},
-                {StepsRole, "steps"}};
+                {StepsRole, "steps"},
+                {ExchangeRole, "exchangeNumber"}};
     }
 
     // Replaces the answer of the exchange — the "run" streaming.

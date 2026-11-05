@@ -374,6 +374,51 @@ def test_rename_session_rejects_an_invalid_user(client):
         iface.RenameSession("../etc", "whatever", "A name")
 
 
+def test_fork_session_over_dbus(client):
+    """A session can be branched into a new one at one of its queries."""
+    bus, iface = client
+    from phoenix_dna.sessions import _local_username
+
+    user = _local_username()
+    finished = threading.Event()
+    bus.add_signal_receiver(
+        lambda *_a: finished.set(), signal_name="RunFinished", dbus_interface=None
+    )
+    iface.SubmitPrompt("session to fork", "")
+    assert finished.wait(15)
+
+    sessions = json.loads(str(iface.SearchSessions(user, "session to fork")))
+    assert sessions
+    session_id = sessions[0]["id"]
+
+    entry = json.loads(str(iface.ForkSession(user, session_id, 1)))
+    assert entry["id"] != session_id
+    assert entry["parentId"] == session_id
+    assert entry["forkIndex"] == 1
+    assert "fork" in entry["summary"]
+
+    # The fork is a session of its own: it holds the conversation up to
+    # the query it was taken at...
+    fork_messages = json.loads(str(iface.GetSessionTranscript(user, entry["id"])))
+    assert [m["role"] for m in fork_messages] == ["user", "assistant"]
+    assert fork_messages[0]["content"] == "session to fork"
+
+    # ...and the session it was forked from is untouched.
+    original = json.loads(str(iface.GetSessionTranscript(user, session_id)))
+    assert [m["content"] for m in original] == [m["content"] for m in fork_messages]
+
+    # A fork of a session that is not there says so.
+    assert str(iface.ForkSession(user, "missing", 1)) == ""
+
+
+def test_fork_session_rejects_an_invalid_user(client):
+    import dbus
+
+    _bus, iface = client
+    with pytest.raises(dbus.exceptions.DBusException, match="invalid user"):
+        iface.ForkSession("../etc", "whatever", 1)
+
+
 def test_transfer_progress_signal_carries_64_bit_counts(client, service):
     """The bytes of a transfer, over the wire.
 

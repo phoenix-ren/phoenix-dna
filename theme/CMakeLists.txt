@@ -70,6 +70,7 @@ set(PHOENIX_LUCIDE_ICONS
     clipboard-list
     eye
     eye-off
+    git-branch
     info
     keyboard
     megaphone

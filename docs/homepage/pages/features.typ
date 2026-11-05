@@ -192,6 +192,12 @@ A session can also be named your own way, with the pencil beside the
 trash. Your name stands: the daemon does not rename that session
 again, and its own naming never overwrites yours.
 
+A conversation can be forked, too: the little branch button beside one
+of your own prompts branches it into a session of its own at that point.
+The fork holds the conversation up to that prompt — the prompt itself
+and the answer that followed it — and what came after stays where it
+was. The follow-ups typed after the fork continue the fork.
+
 The archive is a SQLite database in your own home directory. There is no
 account to make, no history to import, and nothing of yours sitting in
 someone else's cloud.

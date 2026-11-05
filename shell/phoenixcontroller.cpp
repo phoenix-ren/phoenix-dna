@@ -492,6 +492,19 @@ void PhoenixController::renameSession(const QString &sessionId, const QString &t
     m_agent->requestSessionRename(searchUser(), sessionId, title);
 }
 
+void PhoenixController::forkSession(int exchangeIndex)
+{
+    // The daemon owns the history, so it does the branching: it copies
+    // the conversation up to the query the user pointed at into a new
+    // session and answers with it. The widget follows the fork from
+    // then on.
+    const QString sessionId = m_agent->sessionId();
+    if (sessionId.isEmpty()) {
+        return;
+    }
+    m_agent->requestSessionFork(searchUser(), sessionId, exchangeIndex);
+}
+
 void PhoenixController::openSessionResults(const QString &sessionId,
                                            const QString &mode,
                                            const QString &title)

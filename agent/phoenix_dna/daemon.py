@@ -443,6 +443,21 @@ class AgentDaemon:
         """
         return self._sessions.delete(user, session_id)
 
+    def fork_session(
+        self, user: str, session_id: str, exchange_index: int
+    ) -> dict | None:
+        """Branch a session into a new one, at one of the user's queries.
+
+        The fork holds the conversation up to that query; the session it
+        was forked from keeps everything it had, including what came
+        after. The fork is a session of its own, so the follow-ups
+        typed after the fork continue it.
+
+        Returns the fork's entry as the search lists it, or None when
+        there was no such session or no such query.
+        """
+        return self._sessions.fork(user, session_id, exchange_index)
+
     def session_context(self, user: str, session_id: str) -> dict:
         """One session's context window, as the context view shows it.
 
