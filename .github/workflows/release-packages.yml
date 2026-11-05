@@ -152,17 +152,15 @@ jobs:
     needs: [fedora-rpm, ubuntu-deb, arch-pkg]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
       - name: Checkout the tag for the recipes and the source archive
         uses: actions/checkout@v5
         with:
           ref: ${{ inputs.tag || github.ref_name }}
       - name: Trust the checkout for git archive
         # --global, not --system: this job runs on the runner VM as an
-        # unprivileged user, unlike the root containers that build
+        # unprivileged user, unlike the root containers that build. And
+        # the checkout comes first: it cleans the workspace, and would
+        # sweep away anything an earlier step had put there
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build the source archive
         run: |
@@ -172,6 +170,10 @@ jobs:
               agent/phoenix_dna/__init__.py)
           # the same bytes under the Debian source package's name
           cp "dist/phoenix-dna-$version.tar.gz" "dist/phoenix-dna_$version.orig.tar.gz"
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
       - name: Attach the packages to the release
         env:
           GH_TOKEN: ${{ github.token }}
