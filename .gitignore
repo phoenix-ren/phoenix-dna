@@ -25,3 +25,7 @@ __pycache__/
 # Packaging harness output
 /dist/
 /.rpmbuild/
+
+# homepage build outputs
+docs/homepage/site/
+docs/homepage/.typst-tool/
