@@ -330,6 +330,7 @@ void AgentBridge::requestSessionTranscript(const QString &user, const QString &s
     // picked, and the bar at the top of the window says what is on
     // its way.
     m_transcript->clear();
+    m_transcriptSessionId = sessionId;
 
     QDBusMessage message = QDBusMessage::createMethodCall(
         kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("GetSessionTranscript"));
@@ -367,6 +368,54 @@ void AgentBridge::requestSessionTranscript(const QString &user, const QString &s
                         },
                         Qt::QueuedConnection);
                 });
+            });
+}
+
+void AgentBridge::requestSessionDelete(const QString &user, const QString &sessionId)
+{
+    if (sessionId.isEmpty()) {
+        return;
+    }
+
+    // DeleteSession(user, session_id) -> bool: whether there was a
+    // session to delete.
+    QDBusMessage message = QDBusMessage::createMethodCall(
+        kDaemonService, kDaemonPath, kDaemonInterface, QStringLiteral("DeleteSession"));
+    message << user << sessionId;
+
+    auto *watcher =
+        new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(message), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, sessionId](QDBusPendingCallWatcher *watcher) {
+                const QDBusReply<bool> reply = *watcher;
+                watcher->deleteLater();
+                if (!reply.isValid()) {
+                    qWarning() << "session delete failed:" << reply.error().message();
+                    return;
+                }
+
+                // The session leaves the list: the daemon has deleted
+                // it, or it never had it — a stale entry in the list
+                // is a session that is not in the history either way.
+                for (int i = m_sessionSummaries.size() - 1; i >= 0; --i) {
+                    const QVariantMap summary = m_sessionSummaries.at(i).toMap();
+                    if (summary.value(QStringLiteral("id")).toString() == sessionId) {
+                        m_sessionSummaries.removeAt(i);
+                    }
+                }
+
+                // The transcript of a session that is gone goes with
+                // it: what it holds is no longer in the history, and
+                // showing it would be showing a conversation the user
+                // has just thrown away. This happens before the list
+                // says so, so that the view picks another session
+                // against an empty transcript.
+                if (m_transcriptSessionId == sessionId) {
+                    m_transcript->clear();
+                    m_transcriptSessionId.clear();
+                }
+
+                Q_EMIT sessionSummariesChanged();
             });
 }
 

@@ -5,11 +5,15 @@
 #include "keysfile.h"
 #include "providerendpoint.h"
 
+#include <boost/asio.hpp>
+#include <boost/process/v2/process.hpp>
+
 #include <KGlobalAccel>
 #include <KLocalizedString>
 
 #include <QAction>
 #include <QDir>
+#include <QFile>
 #include <QFileDevice>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -688,12 +692,64 @@ bool SettingsStore::saveLlmApiKey(const QString &apiKey)
     }
 
     // The daemon resolves its key once, at startup — unlike the
-    // transcriber, which re-reads keys.json per request.
+    // transcriber, which re-reads keys.json per request. Restart the
+    // agent daemon ourselves, so the new key is in force at once: the
+    // user does not have to run systemctl by hand. Boost.Process does
+    // the spawning, so no shell is involved.
+    bool restarted = false;
+    QString restartError;
+    try {
+        boost::asio::io_context io;
+        boost::system::error_code ec;
+        QString systemctlPath = QStringLiteral("/usr/bin/systemctl");
+        if (!QFile::exists(systemctlPath)) {
+            systemctlPath = QStringLiteral("/bin/systemctl");
+        }
+        if (!QFile::exists(systemctlPath)) {
+            systemctlPath = QStringLiteral("systemctl");
+        }
+        boost::process::v2::process proc(
+            io, systemctlPath.toStdString(),
+            {QStringLiteral("--user").toStdString(),
+             QStringLiteral("restart").toStdString(),
+             QStringLiteral("phoenix.service").toStdString()},
+            ec);
+        if (ec) {
+            restartError = QString::fromStdString(ec.message());
+        } else {
+            proc.wait(ec);
+            if (ec) {
+                restartError = QString::fromStdString(ec.message());
+            } else if (proc.exit_code() != 0) {
+                restartError = i18n("exit code %1", proc.exit_code());
+            } else {
+                restarted = true;
+            }
+        }
+    } catch (const std::exception &ex) {
+        restartError = QString::fromUtf8(ex.what());
+    }
+
     if (apiKey.trimmed().isEmpty()) {
-        setStatus(i18n("The LLM API key was removed from %1.", keysFilePath()), false);
+        if (restarted) {
+            setStatus(i18n("The LLM API key was removed from %1 and the "
+                           "agent daemon restarted.", keysFilePath()),
+                      false);
+        } else {
+            setStatus(i18n("The LLM API key was removed from %1. Restart the "
+                           "agent daemon to apply it: systemctl --user "
+                           "restart phoenix.service (%2)",
+                           keysFilePath(), restartError),
+                      false);
+        }
+    } else if (restarted) {
+        setStatus(i18n("The LLM API key was stored and the agent daemon "
+                       "restarted."),
+                  false);
     } else {
-        setStatus(i18n("The LLM API key was stored. Restart the agent daemon to apply it: "
-                       "systemctl --user restart phoenix.service"),
+        setStatus(i18n("The LLM API key was stored. Restart the agent daemon "
+                       "to apply it: systemctl --user restart phoenix.service "
+                       "(%1)", restartError),
                   false);
     }
     return true;

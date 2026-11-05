@@ -48,6 +48,7 @@ ICONS = {
     "info": "MIT",
     "plus": "MIT",
     "search": "MIT",
+    "trash": "MIT",
     "x": "MIT",
 }
 

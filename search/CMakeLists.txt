@@ -28,3 +28,30 @@ ecm_target_qml_sources(org.phoenixdna.search
 )
 
 ecm_finalize_qml_module(org.phoenixdna.search)
+
+if(BUILD_TESTING)
+
+# Headless check of the search's delete flow: a session that is thrown
+# away cannot be brought back, so the delete button only asks — the
+# confirmation names the session, and only the confirmation hands it
+# over to be deleted.
+#
+# The test loads the real overlay from the module above, not a copy.
+#
+#   deleteflowtest
+add_executable(deleteflowtest deleteflowtest.cpp)
+target_compile_definitions(deleteflowtest PRIVATE
+    PHOENIX_DELETE_FLOW_TEST="${CMAKE_CURRENT_SOURCE_DIR}/qml/DeleteFlowTest.qml")
+target_link_libraries(deleteflowtest PRIVATE
+    Qt6::Gui
+    Qt6::Qml
+    Qt6::Quick
+)
+# The module is loaded by the QML engine from the import path (the build
+# tree's bin directory), the way the app loads it.
+add_dependencies(deleteflowtest org.phoenixdna.search org.phoenixdna.theme)
+add_test(NAME deleteflowtest COMMAND deleteflowtest)
+set_tests_properties(deleteflowtest PROPERTIES
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QML_IMPORT_PATH=${CMAKE_BINARY_DIR}/bin")
+
+endif() # BUILD_TESTING

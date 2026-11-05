@@ -106,6 +106,7 @@ find_package(Plasma REQUIRED)
 # links no shared objects. The config package that ships with Boost is used
 # instead of the deprecated FindBoost module.
 find_package(Boost ${BOOST_MIN_VERSION} REQUIRED COMPONENTS headers CONFIG)
+find_package(Boost ${BOOST_MIN_VERSION} REQUIRED COMPONENTS process CONFIG)
 
 # Makes a target use the header-only Boost libraries.
 #

@@ -34,6 +34,12 @@ import org.phoenixdna.theme
  * them (the same MarkdownDocument.linkify walk), so a session read
  * from the history opens its files, pages and mailboxes the same way.
  *
+ * A session can also be thrown away: every entry of the list carries a
+ * delete button, and the click opens a confirmation, because a session
+ * that is gone cannot be brought back. The daemon does the deleting —
+ * the session and everything that belongs to it — and the list follows
+ * its answer.
+ *
  * The window is a transparent overlay: the dark backdrop is painted by
  * the content itself, the window around it stays bare. Like the
  * dictation overlay it is a Plasma Dialog, because on Wayland an
@@ -78,6 +84,19 @@ PlasmaCore.Dialog {
     // shell opens the results window on that session, so the
     // conversation can be continued there.
     signal sessionActivated(string sessionId, string mode, string title)
+
+    // Emitted when the user confirms the deletion of a session: the
+    // shell asks the daemon to throw it away.
+    signal sessionDeleteRequested(string sessionId)
+
+    // The session the user is about to throw away, and the name it is
+    // listed under. The confirmation asks about one session at a time.
+    property string pendingDeleteId: ""
+    property string pendingDeleteName: ""
+
+    // Whether the confirmation is up: nothing behind it can be
+    // reached while it is.
+    readonly property bool deleting: pendingDeleteId.length > 0
 
     // The session the right pane shows, and its place in the list.
     property string currentSessionId: ""
@@ -251,6 +270,34 @@ PlasmaCore.Dialog {
         return -1
     }
 
+    // Asks whether the session at \a index may be thrown away: the
+    // confirmation comes up, naming the session.
+    function askDelete(index) {
+        if (index < 0 || index > summaries.length - 1) {
+            return
+        }
+        const session = summaries[index]
+        pendingDeleteId = session.id
+        pendingDeleteName = session.summary || session.title
+            || session.preview || ""
+    }
+
+    // The confirmation was accepted: the session goes to the daemon.
+    function confirmDelete() {
+        const id = pendingDeleteId
+        pendingDeleteId = ""
+        pendingDeleteName = ""
+        if (id.length > 0) {
+            sessionDeleteRequested(id)
+        }
+    }
+
+    // The confirmation was declined: the session stays where it is.
+    function cancelDelete() {
+        pendingDeleteId = ""
+        pendingDeleteName = ""
+    }
+
     // A new set of results: keep the selected session when it is still
     // in the list, otherwise start at the top.
     onSummariesChanged: {
@@ -272,7 +319,15 @@ PlasmaCore.Dialog {
         id: content
 
         focus: true
-        Keys.onEscapePressed: searchOverlay.dismiss()
+        // Escape closes the confirmation first: the question it asks
+        // is nearer to the user than the window it sits in.
+        Keys.onEscapePressed: {
+            if (searchOverlay.deleting) {
+                searchOverlay.cancelDelete()
+            } else {
+                searchOverlay.dismiss()
+            }
+        }
 
         // The arrow keys and Return belong to the list, not to the text
         // field: shortcuts rather than key handlers, because the text
@@ -280,12 +335,14 @@ PlasmaCore.Dialog {
         Shortcut {
             sequences: ["Up"]
             context: Qt.WindowShortcut
+            enabled: !searchOverlay.deleting
             onActivated: searchOverlay.moveSelection(-1)
         }
 
         Shortcut {
             sequences: ["Down"]
             context: Qt.WindowShortcut
+            enabled: !searchOverlay.deleting
             onActivated: searchOverlay.moveSelection(1)
         }
 
@@ -294,6 +351,7 @@ PlasmaCore.Dialog {
         Shortcut {
             sequences: ["Return", "Enter"]
             context: Qt.WindowShortcut
+            enabled: !searchOverlay.deleting
             onActivated: searchOverlay.activateCurrentSession()
         }
 
@@ -388,6 +446,9 @@ PlasmaCore.Dialog {
                     Layout.fillWidth: true
                     placeholderText: i18n("Search sessions…")
                     selectByMouse: true
+                    // The confirmation is a modal question: the list
+                    // behind it does not narrow down while it is up.
+                    enabled: !searchOverlay.deleting
 
                     onTextChanged: {
                         if (!searchOverlay.clearingQuery) {
@@ -480,6 +541,11 @@ PlasmaCore.Dialog {
 
                                 anchors.fill: parent
                                 anchors.margins: Kirigami.Units.smallSpacing
+                                // The delete button stands at the end of
+                                // the row: the names must not run under
+                                // it.
+                                anchors.rightMargin: Kirigami.Units.smallSpacing
+                                    + deleteButton.width
                                 spacing: 0
 
                                 // The summary name: the session's title,
@@ -528,6 +594,35 @@ PlasmaCore.Dialog {
                                 // on there, with a follow-up.
                                 onDoubleClicked: {
                                     searchOverlay.activateSession(sessionItem.index)
+                                }
+                            }
+
+                            // The delete button: the session's way out
+                            // of the history.
+                            //
+                            // It stands quietly at the end of every row
+                            // and says what it does in the error colour
+                            // once the pointer is on it. The click only
+                            // asks — the confirmation is what throws the
+                            // session away.
+                            PC3.ToolButton {
+                                id: deleteButton
+                                objectName: "deleteButton"
+
+                                anchors.right: parent.right
+                                anchors.rightMargin: Kirigami.Units.smallSpacing
+                                anchors.verticalCenter: parent.verticalCenter
+
+                                icon.source: LucideIcons.url("trash",
+                                    hovered ? PhoenixTheme.errorColor
+                                            : PhoenixTheme.secondaryTextColor)
+                                icon.width: Kirigami.Units.iconSizes.small
+                                icon.height: Kirigami.Units.iconSizes.small
+
+                                onClicked: searchOverlay.askDelete(sessionItem.index)
+
+                                PC3.ToolTip {
+                                    text: i18n("Delete this session")
                                 }
                             }
                         }
@@ -899,6 +994,99 @@ PlasmaCore.Dialog {
                             ? i18n("This session has no messages yet.")
                             : i18n("Select a session to see its conversation.")
                         color: PhoenixTheme.secondaryTextColor
+                    }
+                }
+            }
+        }
+
+        // ---- The confirmation ------------------------------------------
+        // A session that is thrown away cannot be brought back, so the
+        // click on the delete button only asks: this layer covers the
+        // whole overlay, and the question names the session it is
+        // about.
+        Rectangle {
+            id: deleteScrim
+            objectName: "deleteScrim"
+
+            anchors.fill: parent
+            visible: searchOverlay.deleting
+            // The window behind the question is dimmed: the question
+            // is what the user is asked now.
+            color: Qt.rgba(0, 0, 0, 0.45)
+
+            // Nothing behind the scrim is reachable while it is up.
+            MouseArea {
+                anchors.fill: parent
+                onClicked: searchOverlay.cancelDelete()
+            }
+
+            Rectangle {
+                id: deleteCard
+                objectName: "deleteCard"
+
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 2 * Kirigami.Units.gridUnit, 420)
+                implicitHeight: deleteColumn.implicitHeight
+                    + 2 * Kirigami.Units.gridUnit
+                radius: Kirigami.Units.smallSpacing
+                // The card is opaque enough to stand out from the
+                // dimmed window behind it: a pane's own fill would
+                // vanish into the scrim in the dark mode.
+                color: PhoenixTheme.backgroundColor
+                border.width: 1
+                border.color: PhoenixTheme.backdropBorderColor
+
+                ColumnLayout {
+                    id: deleteColumn
+
+                    anchors.fill: parent
+                    anchors.margins: Kirigami.Units.gridUnit
+                    spacing: Kirigami.Units.smallSpacing
+
+                    Kirigami.Heading {
+                        Layout.fillWidth: true
+                        level: 6
+                        text: i18n("Delete this session?")
+                        color: PhoenixTheme.headingTextColor
+                    }
+
+                    // The session is named: the list is full of
+                    // similar names, and the wrong one must not go.
+                    Text {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        text: searchOverlay.pendingDeleteName.length > 0
+                            ? i18n("“%1” and its conversation will be removed "
+                                 + "from the history. This cannot be undone.",
+                                 searchOverlay.pendingDeleteName)
+                            : i18n("The session and its conversation will be "
+                                 + "removed from the history. This cannot be "
+                                 + "undone.")
+                        color: PhoenixTheme.textColor
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Kirigami.Units.smallSpacing
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Item { Layout.fillWidth: true }
+
+                        PC3.Button {
+                            objectName: "cancelDeleteButton"
+
+                            text: i18n("Cancel")
+                            onClicked: searchOverlay.cancelDelete()
+                        }
+
+                        PC3.Button {
+                            objectName: "confirmDeleteButton"
+
+                            text: i18n("Delete")
+                            icon.source: LucideIcons.url("trash",
+                                                        PhoenixTheme.errorColor)
+                            onClicked: searchOverlay.confirmDelete()
+                        }
                     }
                 }
             }

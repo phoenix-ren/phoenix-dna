@@ -133,6 +133,10 @@ class Speaker;
  * queries and responses. Both answers arrive asynchronously, and one
  * that belongs to a superseded request is dropped: the list never shows
  * the results of an older query.
+ *
+ * The history can be pruned as well: DeleteSession(user, session_id)
+ * throws a session away — its queries and responses, the audit trail of
+ * its runs — and the session leaves the list at once.
  */
 class AgentBridge : public QObject
 {
@@ -350,6 +354,16 @@ public:
      * superseded one is dropped.
      */
     Q_INVOKABLE void requestSessionTranscript(const QString &user, const QString &sessionId);
+
+    /*! \brief Asks the daemon to delete a session from the user's history.
+     *
+     * DeleteSession(user, session_id) removes the session and everything
+     * that belongs to it - its queries and responses, the audit trail of
+     * its runs. The answer arrives asynchronously: a session that was
+     * deleted leaves the search list at once (sessionSummariesChanged),
+     * and the transcript of a session that is gone goes with it.
+     */
+    Q_INVOKABLE void requestSessionDelete(const QString &user, const QString &sessionId);
 
     /*! \brief Opens a stored session in the results pane.
      *
@@ -679,6 +693,10 @@ private:
     // selected one.
     QVariantList m_sessionSummaries;
     SessionTranscriptModel *m_transcript = nullptr;
+    // The session whose transcript the search shows: the one that was
+    // picked last. A deleted session takes its transcript with it, so
+    // the bridge has to know whose it is.
+    QString m_transcriptSessionId;
     // The daemon-side read-aloud client (see speaker.h): owned here so
     // every surface reaches it through the same bridge.
     Speaker *m_speech = nullptr;

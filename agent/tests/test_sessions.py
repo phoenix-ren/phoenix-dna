@@ -172,6 +172,67 @@ def test_stored_transcript_text_drops_unclosed_thinking(tmp_path):
     assert messages[-1]["content"] == "Answer first."
 
 
+def test_delete_session_takes_everything_with_it(tmp_path):
+    """A deleted session is gone: its messages and its runs too."""
+    store = SessionStore(tmp_path / "users")
+    user = store.local_user
+    store.append_message(user, "user", "keep", {"role": "user", "content": "mine"})
+    store.append_message(user, "user", "drop", {"role": "user", "content": "theirs"})
+    store.record_run(user, "user", "drop", "run_finished", {"status": "completed"})
+
+    assert store.delete_session(user, "drop") is True
+
+    assert store.read_messages(user, "drop") == []
+    assert store.session_messages(user, "drop") == []
+    assert [s["id"] for s in store.list_sessions(user)] == ["keep"]
+
+    db = sqlite3.connect(store.db_path(user))
+    runs = db.execute(
+        "SELECT COUNT(*) FROM runs WHERE session_id = 'drop'"
+    ).fetchone()[0]
+    assert runs == 0
+
+    # The other session is untouched.
+    assert [m["content"] for m in store.read_messages(user, "keep")] == ["mine"]
+
+
+def test_delete_session_touches_no_other_user(tmp_path):
+    """A session id names one user's session: the others are not touched."""
+    store = SessionStore(tmp_path / "users")
+    user = store.local_user
+    store.append_message(user, "user", "mine", {"role": "user", "content": "mine"})
+    store.append_message(
+        "root", "root", "theirs", {"role": "user", "content": "theirs"}
+    )
+
+    # The session exists, but it belongs to another user.
+    assert store.delete_session(user, "theirs") is False
+    assert store.read_messages("root", "theirs") != []
+
+    assert store.delete_session("root", "theirs") is True
+    assert store.read_messages("root", "theirs") == []
+
+
+def test_delete_session_that_is_not_there(tmp_path):
+    """Deleting a session that is gone is not an error: it says so."""
+    store = SessionStore(tmp_path / "users")
+    assert store.delete_session(store.local_user, "missing") is False
+    assert store.delete_session(store.local_user, "") is False
+
+
+def test_the_manager_forgets_a_deleted_session(tmp_path):
+    """The cache must not hand a deleted conversation back."""
+    store = SessionStore(tmp_path / "users")
+    manager = SessionManager(store)
+    conv = manager.get("sess42")
+    manager.append(conv, {"role": "user", "content": "hello"})
+
+    assert manager.delete(store.local_user, "sess42") is True
+
+    # The conversation is gone from the cache, not merely from the disk.
+    assert manager.get("sess42").messages == []
+
+
 def test_legacy_jsonl_import(tmp_path):
     legacy = tmp_path / "sessions"
     for mode, sid, contents in (
