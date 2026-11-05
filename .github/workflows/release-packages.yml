@@ -156,9 +156,12 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           tag='${{ inputs.tag || github.ref_name }}'
-          gh release upload "$tag" \
-              artifacts/*.rpm \
-              artifacts/*.deb \
-              artifacts/*.pkg.tar.zst \
-              --clobber
+          # download-artifact keeps each artifact's internal directories
+          # (e.g. RPMS/x86_64); flatten with find. The debuginfo/debugsource
+          # RPMs stay in the workflow artifacts, off the release.
+          rpms=$(find artifacts -name '*.rpm' ! -name '*debug*')
+          debs=$(find artifacts -name '*.deb')
+          arch=$(find artifacts -name '*.pkg.tar.zst')
+          echo "uploading:" $rpms $debs $arch
+          gh release upload "$tag" $rpms $debs $arch --clobber
           gh release view "$tag" --json assets --jq '.assets[].name'
